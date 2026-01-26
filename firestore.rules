@@ -1,0 +1,116 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data;
+    }
+    
+    function hasRole(role) {
+      let userData = getUserData();
+      let roles = ['disciple', 'nouveau', 'mentor', 'adjoint_berger', 'berger', 'admin'];
+      return roles.indexOf(userData.role) >= roles.indexOf(role);
+    }
+    
+    function belongsToFamily(familleId) {
+      let userData = getUserData();
+      return userData.role == 'admin' || userData.famille_id == familleId;
+    }
+    
+    function isAdmin() {
+      return getUserData().role == 'admin';
+    }
+    
+    // FAMILLES
+    match /familles/{familleId} {
+      allow read: if isAuthenticated() && belongsToFamily(familleId);
+      allow create, update, delete: if isAuthenticated() && isAdmin();
+    }
+    
+    // UTILISATEURS
+    match /utilisateurs/{userId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        isAdmin() ||
+        (hasRole('berger') && resource.data.famille_id == getUserData().famille_id) ||
+        (hasRole('mentor') && resource.data.mentor_id == request.auth.uid) ||
+        (resource.data.famille_id == getUserData().famille_id)
+      );
+      
+      allow create: if isAuthenticated() && 
+        hasRole('mentor') && 
+        request.resource.data.famille_id == getUserData().famille_id;
+      
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == userId && 
+         request.resource.data.famille_id == resource.data.famille_id &&
+         request.resource.data.role == resource.data.role) ||
+        (hasRole('berger') && resource.data.famille_id == getUserData().famille_id) ||
+        isAdmin()
+      );
+      
+      allow delete: if isAuthenticated() && (
+        (hasRole('berger') && resource.data.famille_id == getUserData().famille_id) ||
+        isAdmin()
+      );
+    }
+    
+    // PROGRAMMES
+    match /programmes/{programmeId} {
+      allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
+      allow create, update: if isAuthenticated() && 
+        hasRole('adjoint_berger') && 
+        belongsToFamily(request.resource.data.famille_id);
+      allow delete: if isAuthenticated() && 
+        hasRole('berger') && 
+        belongsToFamily(resource.data.famille_id);
+    }
+    
+    // PRÉSENCES
+    match /presences/{presenceId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && hasRole('mentor');
+      allow delete: if isAuthenticated() && hasRole('berger');
+    }
+    
+    // DOCUMENTS
+    match /documents/{documentId} {
+      allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
+      allow create, update, delete: if isAuthenticated() && 
+        hasRole('adjoint_berger') && 
+        belongsToFamily(request.resource.data.famille_id);
+    }
+    
+    // SUJETS DE PRIÈRE
+    match /sujets_priere/{sujetId} {
+      allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
+      allow create: if isAuthenticated() && 
+        belongsToFamily(request.resource.data.famille_id);
+      allow update, delete: if isAuthenticated() && (
+        resource.data.auteur_id == request.auth.uid || isAdmin()
+      );
+    }
+    
+    // TÉMOIGNAGES
+    match /temoignages/{temoignageId} {
+      allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
+      allow create: if isAuthenticated() && 
+        belongsToFamily(request.resource.data.famille_id);
+      allow update, delete: if isAuthenticated() && isAdmin();
+    }
+    
+    // NOTIFICATIONS
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
+      allow create: if isAuthenticated() && 
+        belongsToFamily(request.resource.data.famille_id);
+      allow update, delete: if isAuthenticated() && (
+        resource.data.auteur_id == request.auth.uid || isAdmin()
+      );
+    }
+  }
+}

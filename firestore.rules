@@ -25,9 +25,9 @@ service cloud.firestore {
       return getUserData().role == 'admin';
     }
     
-    // FAMILLES
+    // FAMILLES : lecture sans auth pour la page de connexion (recherche par nom)
     match /familles/{familleId} {
-      allow read: if isAuthenticated() && belongsToFamily(familleId);
+      allow read: if request.auth == null || (isAuthenticated() && belongsToFamily(familleId));
       allow create, update, delete: if isAuthenticated() && isAdmin();
     }
     

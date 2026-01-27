@@ -20,12 +20,23 @@ const Auth = {
       const familleDoc = familleQuery.docs[0];
       const familleId = familleDoc.id;
 
-      // Connexion Firebase Auth
-      const userCredential = await auth.signInWithEmailAndPassword(email, password);
-      const uid = userCredential.user.uid;
+      // Authentification Firebase
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const uid = userCredential.user.uid;
 
-      // Récupérer les données utilisateur
-      const userDoc = await db.collection('utilisateurs').doc(uid).get();
+        // IMPORTANT : Attendre que Firebase propage l'authentification
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Récupérer les données utilisateur avec la syntaxe v9+
+        const userDocRef = doc(db, 'utilisateurs', uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        if (!userDocSnap.exists()) {
+            await auth.signOut();
+            throw new Error('Utilisateur non trouvé dans la base de données');
+        }
+
+        const données_utilisateur = userDocSnap.data();
 
       if (!userDoc.exists) {
         await auth.signOut();

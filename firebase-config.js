@@ -1,6 +1,4 @@
-// Configuration Firebase - À REMPLACER par vos propres clés
-// Créez un projet sur https://console.firebase.google.com/
-
+// Configuration Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyCjbbkz_cXT9sd9D0J67k-T_q2NC1udIKE",
   authDomain: "crm-famille-eglise.firebaseapp.com",

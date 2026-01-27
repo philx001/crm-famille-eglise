@@ -15,16 +15,17 @@ const AppState = {
 };
 
 // Références Firebase (seront définies après chargement)
-let auth, db, storage;
+
 
 // Initialiser les références Firebase
-function initFirebase() {
-  if (window.firebaseServices) {
-    auth = window.firebaseServices.auth;
-    db = window.firebaseServices.db;
-    storage = window.firebaseServices.storage;
-  }
-}
+   function initFirebase() {
+     if (typeof auth === 'undefined' || typeof db === 'undefined') {
+       console.error('Firebase not initialized! Check firebase-config.js');
+       return false;
+     }
+     console.log('Firebase initialized successfully');
+     return true;
+   }
 
 // ============================================
 // UTILITAIRES

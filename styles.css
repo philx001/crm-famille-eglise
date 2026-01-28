@@ -411,6 +411,20 @@ a:hover {
   box-shadow: var(--shadow-md);
 }
 
+.stat-card.clickable {
+  cursor: pointer !important;
+}
+
+.stat-card.clickable * {
+  cursor: pointer !important;
+}
+
+.stat-card.clickable:hover {
+  background: var(--bg-primary);
+  border-color: var(--primary);
+  cursor: pointer !important;
+}
+
 .stat-icon {
   width: 50px;
   height: 50px;
@@ -466,9 +480,15 @@ a:hover {
   font-weight: 500;
   border-radius: var(--radius-sm);
   border: none;
-  cursor: pointer;
+  cursor: pointer !important;
   transition: all var(--transition-fast);
   text-decoration: none;
+}
+
+a.btn,
+a.btn-sm,
+a.btn-outline {
+  cursor: pointer !important;
 }
 
 .btn:disabled {
@@ -520,6 +540,7 @@ a:hover {
 
 .btn-outline:hover:not(:disabled) {
   background: var(--bg-tertiary);
+  cursor: pointer !important;
 }
 
 .btn-sm {
@@ -987,6 +1008,10 @@ select.form-control {
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--spacing-md);
+}
+
+.section-header a {
+  cursor: pointer !important;
 }
 
 .section-title {

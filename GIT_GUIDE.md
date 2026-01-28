@@ -27,6 +27,43 @@ Si la version s’affiche (ex. `git version 2.43.0`), vous pouvez utiliser `git 
 
 ---
 
+## 🔐 « Password authentication is not supported » — Utiliser un token GitHub
+
+Depuis août 2021, **GitHub n’accepte plus le mot de passe de votre compte** pour les opérations Git (push, pull). Il faut utiliser un **Personal Access Token (PAT)** à la place.
+
+### 1. Créer un token sur GitHub
+
+1. Connectez-vous à **https://github.com**
+2. Cliquez sur votre **photo de profil** (en haut à droite) → **Settings**
+3. Dans le menu de gauche, tout en bas : **Developer settings**
+4. Cliquez sur **Personal access tokens** → **Tokens (classic)**
+5. Cliquez sur **Generate new token** → **Generate new token (classic)**
+6. Donnez un **nom** au token (ex. : `CRM Famille - Cursor`)
+7. Choisissez une **durée** (ex. : 90 days ou No expiration)
+8. Cochez au minimum la permission **`repo`** (accès aux dépôts)
+9. Cliquez sur **Generate token**
+10. **Copiez le token immédiatement** (ex. : `ghp_xxxxxxxxxxxx`) — il ne sera plus affiché ensuite.
+
+### 2. Utiliser le token comme mot de passe
+
+Lorsque Git demande **Password**, collez **le token** (et non votre mot de passe GitHub).
+
+- **Username :** `philx001` (votre identifiant GitHub)
+- **Password :** le token (ex. : `ghp_xxxxxxxxxxxx`)
+
+### 3. (Optionnel) Enregistrer le token pour ne pas le ressaisir
+
+Sous Windows, Git peut utiliser le **Gestionnaire d’informations d’identification** pour mémoriser le token :
+
+- À la première demande de mot de passe, collez le token.
+- Cochez « Se souvenir » si proposé, ou utilisez :  
+  `git config --global credential.helper manager`  
+  pour que Windows enregistre les identifiants.
+
+**Important :** Ne partagez jamais votre token et ne le commitez pas dans le projet.
+
+---
+
 ## 🚀 Commandes de base pour mettre à jour GitHub
 
 ### 1. Configuration initiale (une seule fois)

@@ -67,17 +67,19 @@ const Auth = {
 
     } catch (error) {
       console.error('Erreur de connexion:', error);
-      let message = 'Erreur de connexion';
       
+      // Gérer les erreurs spécifiques à l'authentification
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        message = 'Email ou mot de passe incorrect';
+        Toast.error('Email ou mot de passe incorrect');
       } else if (error.code === 'auth/too-many-requests') {
-        message = 'Trop de tentatives. Réessayez plus tard.';
+        Toast.error('Trop de tentatives. Réessayez plus tard.');
+      } else if (error.code === 'auth/network-request-failed' || error.code === 'unavailable') {
+        ErrorHandler.handle(error, 'Connexion');
       } else if (error.message) {
-        message = error.message;
+        Toast.error(error.message);
+      } else {
+        ErrorHandler.handle(error, 'Connexion');
       }
-      
-      Toast.error(message);
     } finally {
       App.hideLoading();
     }

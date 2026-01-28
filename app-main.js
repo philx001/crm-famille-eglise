@@ -7,6 +7,7 @@ const App = {
   async init() {
     initFirebase();
     Toast.init();
+    this.setupErrorHandling();
     const isLoggedIn = await Auth.checkAuthState();
     if (isLoggedIn) {
       await this.loadAllData();
@@ -16,10 +17,40 @@ const App = {
     }
   },
 
+  setupErrorHandling() {
+    // Intercepter les erreurs Firebase globales
+    if (typeof auth !== 'undefined') {
+      auth.onAuthStateChanged((user) => {
+        if (!user && AppState.user) {
+          // Session expirée côté Firebase
+          ErrorHandler.showSessionError();
+        }
+      });
+    }
+
+    // Intercepter les erreurs réseau globales
+    window.addEventListener('online', () => {
+      Toast.success('Connexion rétablie');
+    });
+
+    window.addEventListener('offline', () => {
+      Toast.warning('Connexion Internet perdue');
+    });
+  },
+
   async loadAllData() {
-    App.showLoading();
-    await Promise.all([Membres.loadAll(), Programmes.loadAll()]);
-    App.hideLoading();
+    try {
+      App.showLoading();
+      await Promise.all([
+        ErrorHandler.wrap(Membres.loadAll(), 'Chargement membres'),
+        ErrorHandler.wrap(Programmes.loadAll(), 'Chargement programmes')
+      ]);
+    } catch (error) {
+      // Erreur déjà gérée par ErrorHandler.wrap
+      console.error('Erreur lors du chargement des données:', error);
+    } finally {
+      App.hideLoading();
+    }
   },
 
   showLoginPage() {
@@ -81,10 +112,24 @@ const App = {
 
     return `
       <div class="dashboard-grid">
-        <div class="stat-card"><div class="stat-icon primary"><i class="fas fa-users"></i></div><div class="stat-content"><div class="stat-value">${stats.total}</div><div class="stat-label">Membres actifs</div></div></div>
-        ${Permissions.hasRole('mentor') ? `<div class="stat-card"><div class="stat-icon success"><i class="fas fa-user-friends"></i></div><div class="stat-content"><div class="stat-value">${mesDisciples.length}</div><div class="stat-label">Mes disciples</div></div></div>` : ''}
-        <div class="stat-card"><div class="stat-icon warning"><i class="fas fa-calendar-alt"></i></div><div class="stat-content"><div class="stat-value">${AppState.programmes.length}</div><div class="stat-label">Programmes</div></div></div>
-        <div class="stat-card"><div class="stat-icon info"><i class="fas fa-birthday-cake"></i></div><div class="stat-content"><div class="stat-value">${stats.anniversairesAujourdhui.length}</div><div class="stat-label">Anniversaires</div></div></div>
+        <div class="stat-card clickable" onclick="App.navigate('membres')" title="Voir tous les membres" style="cursor: pointer;">
+          <div class="stat-icon primary" style="cursor: pointer;"><i class="fas fa-users"></i></div>
+          <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.total}</div><div class="stat-label" style="cursor: pointer;">Membres actifs</div></div>
+        </div>
+        ${Permissions.hasRole('mentor') ? `
+        <div class="stat-card clickable" onclick="App.navigate('mes-disciples')" title="Voir mes disciples" style="cursor: pointer;">
+          <div class="stat-icon success" style="cursor: pointer;"><i class="fas fa-user-friends"></i></div>
+          <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${mesDisciples.length}</div><div class="stat-label" style="cursor: pointer;">Mes disciples</div></div>
+        </div>
+        ` : ''}
+        <div class="stat-card clickable" onclick="App.navigate('programmes')" title="Voir tous les programmes" style="cursor: pointer;">
+          <div class="stat-icon warning" style="cursor: pointer;"><i class="fas fa-calendar-alt"></i></div>
+          <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${AppState.programmes.length}</div><div class="stat-label" style="cursor: pointer;">Programmes</div></div>
+        </div>
+        <div class="stat-card clickable" onclick="App.navigate('annuaire')" title="Voir l'annuaire" style="cursor: pointer;">
+          <div class="stat-icon info" style="cursor: pointer;"><i class="fas fa-birthday-cake"></i></div>
+          <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.anniversairesAujourdhui.length}</div><div class="stat-label" style="cursor: pointer;">Anniversaires</div></div>
+        </div>
       </div>
       ${stats.anniversairesAujourdhui.length > 0 ? `<div class="alert alert-success mb-3"><i class="fas fa-birthday-cake"></i><div class="alert-content"><div class="alert-title">🎂 Joyeux anniversaire !</div><p class="mb-0">${stats.anniversairesAujourdhui.map(m => m.prenom + ' ' + m.nom).join(', ')}</p></div></div>` : ''}
       <div class="dashboard-section">

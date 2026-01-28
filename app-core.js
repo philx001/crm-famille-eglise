@@ -246,3 +246,103 @@ const InactivityManager = {
     }
   }
 };
+
+// ============================================
+// GESTION GLOBALE DES ERREURS
+// ============================================
+
+const ErrorHandler = {
+  // Intercepter et traiter les erreurs Firebase/Network
+  handle(error, context = '') {
+    console.error(`[ErrorHandler${context ? ' - ' + context : ''}]`, error);
+
+    // Erreurs réseau
+    if (error.code === 'unavailable' || error.code === 'deadline-exceeded' || 
+        error.message?.includes('network') || error.message?.includes('Failed to fetch')) {
+      this.showNetworkError();
+      return;
+    }
+
+    // Session expirée / Non authentifié
+    if (error.code === 'unauthenticated' || error.code === 'permission-denied' ||
+        error.code === 'auth/user-token-expired' || error.code === 'auth/network-request-failed') {
+      this.showSessionError();
+      return;
+    }
+
+    // Erreur Firestore permission
+    if (error.code === 'permission-denied') {
+      Toast.error('Vous n\'avez pas la permission d\'effectuer cette action');
+      return;
+    }
+
+    // Erreur Firestore index manquant (normal lors du premier déploiement)
+    if (error.code === 'failed-precondition' && error.message?.includes('index')) {
+      // Ne pas afficher de toast pour les index manquants - c'est normal et les URLs sont dans la console
+      console.warn('Index Firestore manquant. Créez l\'index en suivant le lien dans l\'erreur ci-dessus.');
+      return;
+    }
+
+    // Erreur générique
+    const message = error.message || 'Une erreur est survenue';
+    Toast.error(message);
+  },
+
+  // Afficher une erreur réseau avec option de réessai
+  showNetworkError() {
+    const errorId = 'network-error-' + Date.now();
+    const errorHtml = `
+      <div class="alert alert-error" id="${errorId}" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 10000; max-width: 500px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        <i class="fas fa-wifi"></i>
+        <div class="alert-content">
+          <div class="alert-title">Problème de connexion</div>
+          <p>Impossible de se connecter au serveur. Vérifiez votre connexion Internet.</p>
+          <div style="margin-top: 12px; display: flex; gap: 8px;">
+            <button class="btn btn-sm btn-primary" onclick="ErrorHandler.retry()">Réessayer</button>
+            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('${errorId}').remove()">Fermer</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', errorHtml);
+  },
+
+  // Afficher une erreur de session avec option de reconnexion
+  showSessionError() {
+    const errorId = 'session-error-' + Date.now();
+    const errorHtml = `
+      <div class="alert alert-warning" id="${errorId}" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 10000; max-width: 500px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        <i class="fas fa-exclamation-triangle"></i>
+        <div class="alert-content">
+          <div class="alert-title">Session expirée</div>
+          <p>Votre session a expiré. Veuillez vous reconnecter.</p>
+          <div style="margin-top: 12px; display: flex; gap: 8px;">
+            <button class="btn btn-sm btn-primary" onclick="ErrorHandler.reconnect()">Se reconnecter</button>
+            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('${errorId}').remove()">Fermer</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', errorHtml);
+  },
+
+  // Réessayer la dernière action (recharger la page)
+  retry() {
+    window.location.reload();
+  },
+
+  // Reconnecter l'utilisateur
+  reconnect() {
+    Auth.logout();
+  },
+
+  // Wrapper pour les promesses Firebase avec gestion d'erreur automatique
+  async wrap(promise, context = '') {
+    try {
+      return await promise;
+    } catch (error) {
+      this.handle(error, context);
+      throw error; // Re-throw pour permettre le traitement spécifique si nécessaire
+    }
+  }
+};

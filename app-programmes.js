@@ -22,7 +22,30 @@ const Programmes = {
       return AppState.programmes;
     } catch (error) {
       console.error('Erreur chargement programmes:', error);
-      Toast.error('Erreur lors du chargement des programmes');
+      // Si l'index manque, essayer sans orderBy
+      if (error.code === 'failed-precondition') {
+        try {
+          const snapshot = await db.collection('programmes')
+            .where('famille_id', '==', familleId)
+            .get();
+
+          AppState.programmes = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })).sort((a, b) => {
+            const dateA = a.date_debut?.toDate ? a.date_debut.toDate() : new Date(a.date_debut || 0);
+            const dateB = b.date_debut?.toDate ? b.date_debut.toDate() : new Date(b.date_debut || 0);
+            return dateB - dateA; // Plus récent en premier
+          });
+
+          return AppState.programmes;
+        } catch (fallbackError) {
+          console.error('Erreur chargement programmes (fallback):', fallbackError);
+          ErrorHandler.handle(fallbackError, 'Chargement programmes');
+          return [];
+        }
+      }
+      ErrorHandler.handle(error, 'Chargement programmes');
       return [];
     }
   },
@@ -62,6 +85,24 @@ const Programmes = {
       .slice(0, limit);
   },
 
+  // Obtenir les programmes passés récents (pour rappel de pointage)
+  getRecentPast(days = 7) {
+    const now = new Date();
+    const cutoffDate = new Date(now.getTime() - (days * 24 * 60 * 60 * 1000));
+    
+    return AppState.programmes
+      .filter(p => {
+        if (!p.date_debut) return false;
+        const d = p.date_debut.toDate ? p.date_debut.toDate() : new Date(p.date_debut);
+        return d < now && d >= cutoffDate;
+      })
+      .sort((a, b) => {
+        const da = a.date_debut.toDate ? a.date_debut.toDate() : new Date(a.date_debut);
+        const db = b.date_debut.toDate ? b.date_debut.toDate() : new Date(b.date_debut);
+        return db - da; // Plus récent en premier
+      });
+  },
+
   // Créer un programme
   async create(data) {
     try {
@@ -69,23 +110,39 @@ const Programmes = {
         throw new Error('Permission refusée');
       }
 
-      const programme = {
-        ...data,
+      // Convertir les dates en Timestamp Firestore si ce sont des objets Date
+      const programmeData = {
+        nom: data.nom,
+        type: data.type,
+        date_debut: data.date_debut instanceof Date 
+          ? firebase.firestore.Timestamp.fromDate(data.date_debut)
+          : data.date_debut,
+        date_fin: data.date_fin instanceof Date 
+          ? firebase.firestore.Timestamp.fromDate(data.date_fin)
+          : (data.date_fin || null),
+        lieu: data.lieu,
+        recurrence: data.recurrence,
+        description: data.description,
         famille_id: AppState.famille.id,
         created_by: AppState.user.id,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
         updated_at: firebase.firestore.FieldValue.serverTimestamp()
       };
 
-      const docRef = await db.collection('programmes').add(programme);
-      const newProgramme = { id: docRef.id, ...programme };
+      const docRef = await db.collection('programmes').add(programmeData);
+      const newProgramme = { 
+        id: docRef.id, 
+        ...programmeData,
+        date_debut: programmeData.date_debut,
+        date_fin: programmeData.date_fin
+      };
       AppState.programmes.push(newProgramme);
 
       Toast.success('Programme créé avec succès');
       return newProgramme;
     } catch (error) {
       console.error('Erreur création programme:', error);
-      Toast.error('Erreur lors de la création');
+      ErrorHandler.handle(error, 'Création programme');
       throw error;
     }
   },
@@ -291,6 +348,60 @@ const Presences = {
   getStatutColor(statut) {
     const found = this.getStatuts().find(s => s.value === statut);
     return found ? found.color : '#9E9E9E';
+  },
+
+  // Vérifier si un programme est complètement pointé
+  async isProgrammeFullyPointed(programmeId) {
+    try {
+      // Obtenir les membres à pointer selon le rôle
+      let membresAttendus = [];
+      if (Permissions.hasRole('berger')) {
+        membresAttendus = AppState.membres.filter(m => m.statut_compte === 'actif');
+      } else if (Permissions.hasRole('mentor')) {
+        membresAttendus = Membres.getDisciples(AppState.user.id);
+      } else {
+        // Les disciples/nouveaux ne peuvent pas pointer
+        return true;
+      }
+
+      if (membresAttendus.length === 0) return true;
+
+      // Charger les présences du programme
+      const presences = await this.loadByProgramme(programmeId);
+      
+      // Vérifier si tous les membres attendus ont été pointés (statut différent de "non_renseigne")
+      const membresPointes = new Set(
+        presences
+          .filter(p => p.statut !== 'non_renseigne')
+          .map(p => p.disciple_id)
+      );
+
+      // Un programme est complètement pointé si tous les membres attendus ont un statut défini
+      return membresAttendus.every(m => membresPointes.has(m.id));
+    } catch (error) {
+      console.error('Erreur vérification pointage:', error);
+      return false;
+    }
+  },
+
+  // Obtenir les programmes passés récents non complètement pointés
+  async getUnpointedProgrammes(days = 7) {
+    try {
+      const programmesRecents = Programmes.getRecentPast(days);
+      const programmesNonPointes = [];
+
+      for (const programme of programmesRecents) {
+        const estCompletementPointé = await this.isProgrammeFullyPointed(programme.id);
+        if (!estCompletementPointé) {
+          programmesNonPointes.push(programme);
+        }
+      }
+
+      return programmesNonPointes.slice(0, 5); // Limiter à 5 programmes
+    } catch (error) {
+      console.error('Erreur récupération programmes non pointés:', error);
+      return [];
+    }
   }
 };
 

@@ -532,6 +532,15 @@ a.btn-outline {
   background: #D32F2F;
 }
 
+.btn-warning {
+  background: var(--warning);
+  color: white;
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: #F57C00;
+}
+
 .btn-outline {
   background: transparent;
   border: 1px solid var(--border-color);

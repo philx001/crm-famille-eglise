@@ -26,6 +26,29 @@ const Notifications = {
       return this.items;
     } catch (error) {
       console.error('Erreur chargement notifications:', error);
+      // Si l'index manque, essayer sans orderBy
+      if (error.code === 'failed-precondition') {
+        try {
+          const snapshot = await db.collection('notifications')
+            .where('famille_id', '==', familleId)
+            .limit(100)
+            .get();
+
+          this.items = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })).sort((a, b) => {
+            const dateA = a.created_at?.toDate ? a.created_at.toDate() : new Date(a.created_at || 0);
+            const dateB = b.created_at?.toDate ? b.created_at.toDate() : new Date(b.created_at || 0);
+            return dateB - dateA; // Plus récent en premier
+          });
+
+          return this.items;
+        } catch (fallbackError) {
+          console.error('Erreur chargement notifications (fallback):', fallbackError);
+          return [];
+        }
+      }
       return [];
     }
   },
@@ -43,11 +66,11 @@ const Notifications = {
       };
 
       const docRef = await db.collection('notifications').add(notification);
-      const newNotif = { id: docRef.id, ...notification, created_at: new Date() };
-      this.items.unshift(newNotif);
-
+      // Recharger immédiatement pour avoir les vraies données avec le timestamp serveur
+      await this.loadAll();
+      
       Toast.success('Notification publiée');
-      return newNotif;
+      return this.items.find(n => n.id === docRef.id) || { id: docRef.id, ...notification };
     } catch (error) {
       console.error('Erreur création notification:', error);
       Toast.error('Erreur lors de la publication');
@@ -345,11 +368,20 @@ const PagesNotifications = {
       await Notifications.create({ contenu, priorite });
       Modal.hide('modal-add-notif');
       
-      // Rafraîchir la liste
+      // Recharger depuis Firestore pour avoir les vraies données
+      await Notifications.loadAll();
+      
+      // Rafraîchir la liste avec le filtre actuel
+      const notifications = this.filterNotifications();
       document.getElementById('notif-list').innerHTML = 
-        Notifications.items.map(n => this.renderNotificationCard(n)).join('');
+        notifications.length > 0 
+          ? notifications.map(n => this.renderNotificationCard(n)).join('')
+          : `<div class="empty-state"><i class="fas fa-bell-slash"></i><h3>Aucune notification</h3><p>Il n'y a pas encore de notification dans cette famille.</p></div>`;
+      
+      // Réinitialiser le formulaire
+      document.getElementById('form-add-notif').reset();
     } catch (error) {
-      // Erreur déjà gérée
+      // Erreur déjà gérée par Notifications.create
     }
   },
 

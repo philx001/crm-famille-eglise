@@ -79,7 +79,7 @@ const App = {
     let pageContent = '', pageTitle = '';
 
     switch (AppState.currentPage) {
-      case 'dashboard': pageTitle = 'Tableau de bord'; pageContent = this.renderDashboardEnhanced(); break;
+      case 'dashboard': pageTitle = 'Tableau de bord'; pageContent = await this.renderDashboardEnhanced(); break;
       case 'membres': pageTitle = 'Membres'; pageContent = Pages.renderMembres(); break;
       case 'membres-add': pageTitle = 'Ajouter un membre'; pageContent = Pages.renderAddMembre(); break;
       case 'profil': pageTitle = 'Mon profil'; pageContent = Pages.renderProfil(); break;
@@ -104,11 +104,29 @@ const App = {
     document.getElementById('app').innerHTML = this.renderLayout(pageTitle, pageContent);
   },
 
-  renderDashboardEnhanced() {
+  async renderDashboardEnhanced() {
     const stats = Membres.getStats();
     const user = AppState.user;
     const mesDisciples = user.role !== 'disciple' && user.role !== 'nouveau' ? Membres.getDisciples(user.id) : [];
     const prochainsProgrammes = Programmes.getUpcoming(5);
+    
+    // Charger les programmes à pointer (seulement pour mentors et bergers)
+    let programmesAPointer = [];
+    if (Permissions.hasRole('mentor')) {
+      programmesAPointer = await Presences.getUnpointedProgrammes(7);
+    }
+
+    // Charger les dernières notifications importantes/urgentes/critiques
+    let dernieresNotifications = [];
+    try {
+      await Notifications.loadAll();
+      dernieresNotifications = Notifications.items
+        .filter(n => ['important', 'urgent', 'critique'].includes(n.priorite))
+        .slice(0, 5);
+    } catch (error) {
+      console.error('Erreur chargement notifications pour dashboard:', error);
+      // Continuer sans bloquer le dashboard
+    }
 
     return `
       <div class="dashboard-grid">
@@ -132,6 +150,8 @@ const App = {
         </div>
       </div>
       ${stats.anniversairesAujourdhui.length > 0 ? `<div class="alert alert-success mb-3"><i class="fas fa-birthday-cake"></i><div class="alert-content"><div class="alert-title">🎂 Joyeux anniversaire !</div><p class="mb-0">${stats.anniversairesAujourdhui.map(m => m.prenom + ' ' + m.nom).join(', ')}</p></div></div>` : ''}
+      ${programmesAPointer.length > 0 ? `<div class="alert alert-warning mb-3"><i class="fas fa-exclamation-triangle"></i><div class="alert-content"><div class="alert-title">⚠️ Programmes à pointer</div><p class="mb-2">${programmesAPointer.length} programme${programmesAPointer.length > 1 ? 's' : ''} récent${programmesAPointer.length > 1 ? 's' : ''} ${programmesAPointer.length > 1 ? 'n\'ont pas' : 'n\'a pas'} été complètement pointé${programmesAPointer.length > 1 ? 's' : ''}.</p><div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">${programmesAPointer.map(p => { const date = p.date_debut?.toDate ? p.date_debut.toDate() : new Date(p.date_debut); return `<a href="#" onclick="App.navigate('presences', {programmeId: '${p.id}'}); return false;" class="btn btn-sm btn-warning" style="cursor: pointer;">${Utils.escapeHtml(p.nom)} - ${Utils.formatDate(date)}</a>`; }).join('')}</div></div></div>` : ''}
+      ${dernieresNotifications.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-bell"></i> Dernières notifications</h3><a href="#" onclick="App.navigate('notifications'); return false;" class="btn btn-sm btn-outline" style="cursor: pointer;">Voir tout</a></div><div class="card"><div class="card-body" style="padding: 0;">${dernieresNotifications.map(n => { const priorite = Notifications.getPriorite(n.priorite); const date = n.created_at?.toDate ? n.created_at.toDate() : new Date(n.created_at); return `<div class="notification-card-mini" onclick="App.navigate('notifications'); return false;" style="cursor: pointer;"><div class="notif-priority" style="background: ${priorite.bgColor}; color: ${priorite.color};"><i class="fas ${priorite.icon}"></i></div><div class="notif-content"><div class="notif-text">${Utils.escapeHtml(n.contenu)}</div><div class="notif-meta"><span class="notif-author">${n.auteur_prenom || 'Anonyme'}</span><span class="notif-date">${Utils.formatRelativeDate(date)}</span></div></div></div>`; }).join('')}</div></div></div>` : ''}
       <div class="dashboard-section">
         <div class="section-header"><h3 class="section-title"><i class="fas fa-bolt"></i> Actions rapides</h3></div>
         <div class="quick-actions">
@@ -145,7 +165,26 @@ const App = {
       </div>
       ${prochainsProgrammes.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-calendar-check"></i> Prochains programmes</h3><a href="#" onclick="App.navigate('calendrier'); return false;" class="btn btn-sm btn-outline">Voir tout</a></div><div class="card"><div class="card-body" style="padding: 0;">${prochainsProgrammes.map(p => { const date = p.date_debut?.toDate ? p.date_debut.toDate() : new Date(p.date_debut); return `<div class="programme-card-mini" onclick="App.viewProgramme('${p.id}')"><div class="prog-date"><span class="prog-day">${date.getDate()}</span><span class="prog-month">${date.toLocaleString('fr-FR', { month: 'short' })}</span></div><div class="prog-info"><div class="prog-name">${Utils.escapeHtml(p.nom)}</div><div class="prog-type" style="color: ${Programmes.getTypeColor(p.type)}">${Programmes.getTypeLabel(p.type)}</div></div><div class="prog-time"><i class="fas fa-clock"></i> ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div></div>`; }).join('')}</div></div></div>` : ''}
       ${Permissions.hasRole('mentor') && mesDisciples.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-user-friends"></i> Mes disciples</h3><a href="#" onclick="App.navigate('mes-disciples'); return false;" class="btn btn-sm btn-outline">Voir tout</a></div><div class="card"><div class="card-body" style="padding: 0;">${mesDisciples.slice(0, 5).map(d => `<div class="member-card"><div class="member-avatar" style="background: ${d.sexe === 'F' ? '#E91E63' : 'var(--primary)'}">${Utils.getInitials(d.prenom, d.nom)}</div><div class="member-info"><div class="member-name">${Utils.escapeHtml(d.prenom)} ${Utils.escapeHtml(d.nom)}</div><div class="member-email">${Utils.escapeHtml(d.email)}</div></div><span class="badge badge-${d.role}">${Utils.getRoleLabel(d.role)}</span></div>`).join('')}</div></div></div>` : ''}
-      <style>.programme-card-mini{display:flex;align-items:center;gap:var(--spacing-md);padding:var(--spacing-md);border-bottom:1px solid var(--border-color);cursor:pointer;transition:background 0.2s}.programme-card-mini:hover{background:var(--bg-primary)}.programme-card-mini:last-child{border-bottom:none}.prog-date{text-align:center;min-width:50px;padding:var(--spacing-xs);background:var(--bg-primary);border-radius:var(--radius-sm)}.prog-day{display:block;font-size:1.2rem;font-weight:700;color:var(--primary)}.prog-month{font-size:0.7rem;text-transform:uppercase;color:var(--text-muted)}.prog-info{flex:1}.prog-name{font-weight:600;margin-bottom:2px}.prog-type{font-size:0.8rem}.prog-time{font-size:0.85rem;color:var(--text-muted)}</style>
+      <style>
+        .programme-card-mini{display:flex;align-items:center;gap:var(--spacing-md);padding:var(--spacing-md);border-bottom:1px solid var(--border-color);cursor:pointer;transition:background 0.2s}
+        .programme-card-mini:hover{background:var(--bg-primary)}
+        .programme-card-mini:last-child{border-bottom:none}
+        .prog-date{text-align:center;min-width:50px;padding:var(--spacing-xs);background:var(--bg-primary);border-radius:var(--radius-sm)}
+        .prog-day{display:block;font-size:1.2rem;font-weight:700;color:var(--primary)}
+        .prog-month{font-size:0.7rem;text-transform:uppercase;color:var(--text-muted)}
+        .prog-info{flex:1}
+        .prog-name{font-weight:600;margin-bottom:2px}
+        .prog-type{font-size:0.8rem}
+        .prog-time{font-size:0.85rem;color:var(--text-muted)}
+        .notification-card-mini{display:flex;align-items:flex-start;gap:var(--spacing-md);padding:var(--spacing-md);border-bottom:1px solid var(--border-color);transition:background 0.2s}
+        .notification-card-mini:hover{background:var(--bg-primary)}
+        .notification-card-mini:last-child{border-bottom:none}
+        .notif-priority{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.9rem;flex-shrink:0}
+        .notif-content{flex:1;min-width:0}
+        .notif-text{font-weight:500;margin-bottom:4px;line-height:1.4}
+        .notif-meta{display:flex;gap:var(--spacing-sm);font-size:0.75rem;color:var(--text-muted)}
+        .notif-author{font-weight:500}
+      </style>
     `;
   },
 
@@ -207,7 +246,40 @@ const App = {
 
   async submitEditProfil(event, membreId) { event.preventDefault(); const formations = []; document.querySelectorAll('[id^="formation-"]:checked').forEach(cb => formations.push(cb.value)); const data = { prenom: document.getElementById('edit-prenom').value.trim(), nom: document.getElementById('edit-nom').value.trim(), sexe: document.getElementById('edit-sexe').value || null, date_naissance: document.getElementById('edit-date-naissance').value ? new Date(document.getElementById('edit-date-naissance').value) : null, telephone: document.getElementById('edit-telephone').value.trim() || null, adresse_ville: document.getElementById('edit-ville').value.trim() || null, adresse_code_postal: document.getElementById('edit-cp').value.trim() || null, date_arrivee_icc: document.getElementById('edit-date-icc').value ? new Date(document.getElementById('edit-date-icc').value) : null, formations, ministere_service: document.getElementById('edit-ministere').value.trim() || null, baptise_immersion: document.getElementById('edit-baptise').value === 'true' ? true : document.getElementById('edit-baptise').value === 'false' ? false : null, profession: document.getElementById('edit-profession').value.trim() || null, statut_professionnel: document.getElementById('edit-statut-pro').value || null, passions_centres_interet: document.getElementById('edit-passions').value.trim() || null }; if (await Membres.update(membreId, data)) this.navigate('profil'); },
 
-  async submitProgramme(event, programmeId = null) { event.preventDefault(); const d = { nom: document.getElementById('prog-nom').value.trim(), type: document.getElementById('prog-type').value, date_debut: new Date(document.getElementById('prog-debut').value), date_fin: document.getElementById('prog-fin').value ? new Date(document.getElementById('prog-fin').value) : null, lieu: document.getElementById('prog-lieu').value.trim() || null, recurrence: document.getElementById('prog-recurrence').value, description: document.getElementById('prog-description').value.trim() || null }; try { if (programmeId) await Programmes.update(programmeId, d); else await Programmes.create(d); this.navigate('programmes'); } catch (e) {} },
+  async submitProgramme(event, programmeId = null) {
+    event.preventDefault();
+    try {
+      const dateDebutInput = document.getElementById('prog-debut').value;
+      const dateFinInput = document.getElementById('prog-fin').value;
+      
+      if (!dateDebutInput) {
+        Toast.error('La date de début est obligatoire');
+        return;
+      }
+
+      const d = {
+        nom: document.getElementById('prog-nom').value.trim(),
+        type: document.getElementById('prog-type').value,
+        date_debut: firebase.firestore.Timestamp.fromDate(new Date(dateDebutInput)),
+        date_fin: dateFinInput ? firebase.firestore.Timestamp.fromDate(new Date(dateFinInput)) : null,
+        lieu: document.getElementById('prog-lieu').value.trim() || null,
+        recurrence: document.getElementById('prog-recurrence').value,
+        description: document.getElementById('prog-description').value.trim() || null
+      };
+
+      if (programmeId) {
+        await Programmes.update(programmeId, d);
+      } else {
+        await Programmes.create(d);
+        // Recharger les programmes pour mettre à jour le dashboard
+        await Programmes.loadAll();
+      }
+      this.navigate('programmes');
+    } catch (error) {
+      console.error('Erreur soumission programme:', error);
+      ErrorHandler.handle(error, 'Création programme');
+    }
+  },
 
   showLoading() { AppState.isLoading = true; let l = document.getElementById('app-loader'); if (!l) { l = document.createElement('div'); l.id = 'app-loader'; l.innerHTML = '<div class="loading"><div class="spinner"></div></div>'; l.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;'; document.body.appendChild(l); } l.style.display = 'flex'; },
   hideLoading() { AppState.isLoading = false; const l = document.getElementById('app-loader'); if (l) l.style.display = 'none'; },

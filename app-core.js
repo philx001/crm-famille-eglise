@@ -263,16 +263,16 @@ const ErrorHandler = {
       return;
     }
 
-    // Session expirée / Non authentifié
-    if (error.code === 'unauthenticated' || error.code === 'permission-denied' ||
-        error.code === 'auth/user-token-expired' || error.code === 'auth/network-request-failed') {
+    // Session expirée / Non authentifié (VRAIE session expirée)
+    if (error.code === 'unauthenticated' || 
+        error.code === 'auth/user-token-expired') {
       this.showSessionError();
       return;
     }
 
-    // Erreur Firestore permission
+    // Erreur Firestore permission (différente de session expirée)
     if (error.code === 'permission-denied') {
-      Toast.error('Vous n\'avez pas la permission d\'effectuer cette action');
+      Toast.error('Vous n\'avez pas la permission d\'effectuer cette action. Vérifiez votre rôle dans Firestore.');
       return;
     }
 

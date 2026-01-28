@@ -1,0 +1,54 @@
+# Workflow GitHub Actions pour synchronisation automatique
+# Ce workflow peut être déclenché manuellement ou automatiquement
+
+name: Auto Sync
+
+on:
+  # Déclenchement manuel depuis l'interface GitHub
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'Message de commit'
+        required: true
+        default: 'Auto-sync from GitHub Actions'
+  
+  # Déclenchement automatique toutes les heures (optionnel)
+  schedule:
+    - cron: '0 * * * *'  # Toutes les heures
+  
+  # Déclenchement sur push (pour synchroniser avec d'autres sources)
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
+    - name: Configure Git
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+    
+    - name: Check for changes
+      id: changes
+      run: |
+        git diff --exit-code || echo "has_changes=true" >> $GITHUB_OUTPUT
+    
+    - name: Commit and push changes
+      if: steps.changes.outputs.has_changes == 'true'
+      run: |
+        git add .
+        git commit -m "${{ github.event.inputs.message || 'Auto-sync: $(date)' }}"
+        git push
+    
+    - name: No changes
+      if: steps.changes.outputs.has_changes != 'true'
+      run: echo "Aucune modification détectée"

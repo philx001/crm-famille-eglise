@@ -197,6 +197,7 @@ const PDFExport = {
   // Générer le rapport liste des membres (PDF via impression navigateur)
   generateMembersReport(membres, options = {}) {
     const famille = options.famille || '';
+    const reportTitle = options.title || 'Liste des membres';
     const escape = (v) => (typeof Utils !== 'undefined' && Utils.escapeHtml ? Utils.escapeHtml(String(v != null ? v : '')) : String(v != null ? v : '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
     const formatDate = (date) => {
       if (date == null) return '';
@@ -237,7 +238,7 @@ const PDFExport = {
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Liste des membres - ${escape(famille)}</title>
+  <title>${escape(reportTitle)} - ${escape(famille)}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10pt; line-height: 1.35; color: #333; padding: 15mm; }
@@ -258,7 +259,7 @@ const PDFExport = {
 <body>
   <button class="btn-print no-print" onclick="window.print()">Imprimer / Enregistrer en PDF</button>
   <div class="header">
-    <h1>Liste des membres</h1>
+    <h1>${escape(reportTitle)}</h1>
     <div class="subtitle">Famille ${escape(famille)}</div>
     <div class="date-generation">Généré le ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} — ${membres.length} membre(s)</div>
   </div>

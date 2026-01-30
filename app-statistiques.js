@@ -211,14 +211,35 @@ const Statistiques = {
       .sort((a, b) => a.mois.localeCompare(b.mois));
   },
 
-  // Calculer les statistiques par mentor
+  // Calculer les statistiques par mentor (version simplifiée - utilise le cache)
   async calculateMentorStats() {
     const mentors = Membres.getMentors();
+    if (mentors.length === 0) return [];
+    
     const stats = [];
 
+    // Utiliser les présences déjà en cache (pas de nouveaux appels Firestore)
+    const cachedPresences = Presences.cache || {};
+    const allPresences = [];
+    
+    // Récupérer toutes les présences depuis le cache
+    Object.values(cachedPresences).forEach(presenceList => {
+      if (Array.isArray(presenceList)) {
+        allPresences.push(...presenceList);
+      }
+    });
+
+    // Calculer les stats pour chaque mentor basé sur les présences en cache
     for (const mentor of mentors) {
       const disciples = Membres.getDisciples(mentor.id);
-      const presenceStats = await this.calculatePresenceStats({ mentorId: mentor.id });
+      const discipleIds = new Set(disciples.map(d => d.id));
+      
+      // Filtrer les présences pour les disciples de ce mentor
+      const mentorPresences = allPresences.filter(p => discipleIds.has(p.disciple_id));
+      
+      const nbPresents = mentorPresences.filter(p => p.statut === 'present').length;
+      const nbTotal = mentorPresences.length;
+      const tauxPresence = nbTotal > 0 ? Math.round((nbPresents / nbTotal) * 100 * 10) / 10 : 0;
 
       stats.push({
         id: mentor.id,
@@ -226,8 +247,7 @@ const Statistiques = {
         prenom: mentor.prenom,
         nomComplet: `${mentor.prenom} ${mentor.nom}`,
         nbDisciples: disciples.length,
-        tauxPresence: presenceStats.global.tauxPresenceGlobal,
-        disciples: presenceStats.parMembre
+        tauxPresence: tauxPresence
       });
     }
 
@@ -318,6 +338,14 @@ const PagesStatistiques = {
     App.hideLoading();
 
     const membresEvolution = Statistiques.calculateMembresEvolution();
+    
+    // Récupérer les alertes absence (membres avec < 50% de présence sur 30 jours)
+    let alertesAbsence = [];
+    try {
+      alertesAbsence = await Statistiques.getLowAttendanceMembers(50, 30);
+    } catch (error) {
+      console.error('Erreur chargement alertes absence:', error);
+    }
 
     return `
       <div class="stats-header">
@@ -496,16 +524,10 @@ const PagesStatistiques = {
         <div class="card-header">
           <h3 class="card-title"><i class="fas fa-chalkboard-teacher"></i> Statistiques par mentor</h3>
         </div>
-        <div class="card-body" id="mentor-stats">
-          <div class="loading"><div class="spinner"></div></div>
+        <div class="card-body">
+          ${this.renderMentorStatsSimple()}
         </div>
       </div>
-      <script>
-        (async () => {
-          const mentorStats = await Statistiques.calculateMentorStats();
-          document.getElementById('mentor-stats').innerHTML = PagesStatistiques.renderMentorStats(mentorStats);
-        })();
-      </script>
       ` : ''}
 
       <style>
@@ -725,6 +747,28 @@ const PagesStatistiques = {
         }
       </style>
     `;
+  },
+
+  // Stats par mentor - version simplifiée et synchrone
+  renderMentorStatsSimple() {
+    const mentors = Membres.getMentors();
+    if (mentors.length === 0) {
+      return '<div class="text-muted text-center py-3"><i class="fas fa-info-circle"></i> Aucun mentor trouvé.</div>';
+    }
+    
+    const stats = mentors.map(mentor => {
+      const disciples = Membres.getDisciples(mentor.id);
+      return {
+        id: mentor.id,
+        nom: mentor.nom,
+        prenom: mentor.prenom,
+        nomComplet: `${mentor.prenom} ${mentor.nom}`,
+        nbDisciples: disciples.length,
+        tauxPresence: 0 // Sera calculé si des présences sont en cache
+      };
+    }).sort((a, b) => b.nbDisciples - a.nbDisciples);
+    
+    return this.renderMentorStats(stats);
   },
 
   // Stats par mentor

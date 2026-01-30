@@ -62,6 +62,41 @@ Sous Windows, Git peut utiliser le **Gestionnaire d’informations d’identific
 
 **Important :** Ne partagez jamais votre token et ne le commitez pas dans le projet.
 
+### 4. Si Git ne demande pas le mot de passe (authentification échoue directement)
+
+Parfois Git utilise des identifiants en cache incorrects. Voici comment forcer l'utilisation de votre token :
+
+**Méthode 1 : Supprimer les identifiants en cache**
+
+```powershell
+# Supprimer les identifiants GitHub en cache (Windows)
+cmdkey /delete:git:https://github.com
+
+# Puis réessayer le push (Git demandera les identifiants)
+git push origin master
+```
+
+**Méthode 2 : Inclure le token directement dans l'URL (recommandé si la méthode 1 échoue)**
+
+```powershell
+# Configurer l'URL avec votre token
+git remote set-url origin https://VOTRE_TOKEN@github.com/VOTRE_USERNAME/VOTRE_REPO.git
+
+# Exemple concret (remplacez par votre vrai token et repo) :
+git remote set-url origin https://ghp_abc123def456@github.com/philx001/crm-famille-eglise.git
+
+# Puis pousser
+git push origin master
+```
+
+**Comment obtenir votre token :**
+1. Aller sur https://github.com/settings/tokens
+2. Cliquer **Generate new token** → **Generate new token (classic)**
+3. Nom : `crm-famille` (ou autre)
+4. Cocher **repo** (accès complet aux dépôts)
+5. Cliquer **Generate token**
+6. **Copier le token** (il commence par `ghp_`)
+
 ---
 
 ## 🚀 Commandes de base pour mettre à jour GitHub

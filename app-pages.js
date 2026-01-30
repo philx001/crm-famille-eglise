@@ -52,13 +52,18 @@ const Pages = {
 
   renderMembres() {
     let membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+    const isMesDisciples = AppState.currentPage === 'mes-disciples';
     
     if (!Permissions.canViewAllMembers()) {
-      membres = membres.filter(m => 
-        m.id === AppState.user.id || 
-        m.mentor_id === AppState.user.id
-      );
+      // Mentor : ne voit que ses disciples (pas lui-même)
+      membres = membres.filter(m => m.mentor_id === AppState.user.id);
+    } else if (isMesDisciples) {
+      // Admin/Berger sur la page "Mes disciples" : ne voit que ses disciples (pas lui-même)
+      membres = membres.filter(m => m.mentor_id === AppState.user.id);
     }
+
+    // Afficher les boutons d'export si admin/berger OU si mentor sur "mes-disciples"
+    const showExportButtons = Permissions.canViewAllMembers() || (isMesDisciples && Permissions.hasRole('mentor'));
 
     return `
       <div class="members-header">
@@ -77,7 +82,7 @@ const Pages = {
             <option value="berger">Bergers</option>
           </select>
         </div>
-        ${Permissions.canViewAllMembers() ? `
+        ${showExportButtons ? `
         <button type="button" class="btn btn-outline" onclick="App.exportMembresCSV()" title="Télécharger la liste en CSV">
           <i class="fas fa-file-download"></i> Exporter CSV
         </button>

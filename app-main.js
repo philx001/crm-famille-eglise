@@ -269,11 +269,22 @@ const App = {
   filterProgrammes() { const search = document.getElementById('search-programmes')?.value.toLowerCase() || ''; const typeFilter = document.getElementById('filter-type')?.value || ''; document.querySelectorAll('#programmes-list .programme-card').forEach(card => { const name = card.dataset.name || ''; const type = card.dataset.type || ''; card.style.display = name.includes(search) && (!typeFilter || type === typeFilter) ? '' : 'none'; }); },
 
   exportMembresCSV() {
-    if (!Permissions.canViewAllMembers()) {
+    const isMesDisciples = AppState.currentPage === 'mes-disciples';
+    const canExport = Permissions.canViewAllMembers() || (isMesDisciples && Permissions.hasRole('mentor'));
+    
+    if (!canExport) {
       Toast.error('Vous n\'avez pas la permission d\'exporter la liste des membres.');
       return;
     }
-    const membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+    
+    let membres;
+    if (isMesDisciples || !Permissions.canViewAllMembers()) {
+      // Mentor ou page "Mes disciples" : exporter uniquement ses disciples
+      membres = AppState.membres.filter(m => m.statut_compte === 'actif' && m.mentor_id === AppState.user.id);
+    } else {
+      // Admin/Berger sur page membres : exporter tous les membres
+      membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+    }
     if (membres.length === 0) {
       Toast.warning('Aucun membre à exporter.');
       return;
@@ -316,24 +327,40 @@ const App = {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `membres_${new Date().toISOString().slice(0, 10)}.csv`;
+    const fileName = isMesDisciples ? 'mes_disciples' : 'membres';
+    a.download = `${fileName}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
     Toast.success(`Export de ${membres.length} membre(s) réussi.`);
   },
 
   exportMembresPDF() {
-    if (!Permissions.canViewAllMembers()) {
+    const isMesDisciples = AppState.currentPage === 'mes-disciples';
+    const canExport = Permissions.canViewAllMembers() || (isMesDisciples && Permissions.hasRole('mentor'));
+    
+    if (!canExport) {
       Toast.error('Vous n\'avez pas la permission d\'exporter la liste des membres.');
       return;
     }
-    const membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+    
+    let membres;
+    if (isMesDisciples || !Permissions.canViewAllMembers()) {
+      // Mentor ou page "Mes disciples" : exporter uniquement ses disciples
+      membres = AppState.membres.filter(m => m.statut_compte === 'actif' && m.mentor_id === AppState.user.id);
+    } else {
+      // Admin/Berger sur page membres : exporter tous les membres
+      membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+    }
     if (membres.length === 0) {
       Toast.warning('Aucun membre à exporter.');
       return;
     }
     try {
-      PDFExport.generateMembersReport(membres, { famille: AppState.famille?.nom || '' });
+      const pdfOptions = { 
+        famille: AppState.famille?.nom || '',
+        title: isMesDisciples ? 'Mes disciples' : 'Liste des membres'
+      };
+      PDFExport.generateMembersReport(membres, pdfOptions);
       Toast.info('Fenêtre d\'impression ouverte. Utilisez "Imprimer / Enregistrer en PDF" pour sauvegarder.');
     } catch (e) {
       console.error('Erreur export PDF membres:', e);

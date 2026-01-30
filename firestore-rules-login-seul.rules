@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // RÈGLES MINIMALES POUR TESTER LA CONNEXION UNIQUEMENT
+    // À utiliser temporairement. Remplacer par firestore-rules-complet.rules après test.
+
+    // FAMILLES : lecture sans auth pour la page de login (recherche par nom)
+    match /familles/{familleId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // UTILISATEURS : lecture et mise à jour de son propre document (profil + derniere_connexion)
+    match /utilisateurs/{userId} {
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+      allow create, delete: if false;
+    }
+
+    // Bloquer tout le reste pendant le test
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

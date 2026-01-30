@@ -16,6 +16,11 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 const storage = firebase.storage();
 
+// Persistance de la session (rester connecté après actualisation)
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((err) => {
+  console.warn('Persistance Auth:', err.message);
+});
+
 // Configuration de la persistance locale
 db.enablePersistence().catch((err) => {
   if (err.code === 'failed-precondition') {

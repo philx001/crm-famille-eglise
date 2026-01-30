@@ -129,6 +129,47 @@ const Statistiques = {
     };
   },
 
+  // Membres avec faible taux de présence (alertes absence)
+  async getLowAttendanceMembers(seuilPourcent = 50, periodeJours = 30) {
+    const dateFin = new Date();
+    const dateDebut = new Date();
+    dateDebut.setDate(dateDebut.getDate() - periodeJours);
+
+    const result = await this.calculatePresenceStats({
+      dateDebut,
+      dateFin
+    });
+
+    if (!result.parMembre || result.parMembre.length === 0) {
+      return [];
+    }
+
+    // Dernier programme dans la période
+    let dernierProgrammeDate = null;
+    if (result.periode && AppState.programmes.length > 0) {
+      const progsInPeriod = AppState.programmes.filter(p => {
+        if (!p.date_debut) return false;
+        const d = p.date_debut.toDate ? p.date_debut.toDate() : new Date(p.date_debut);
+        return d >= dateDebut && d <= dateFin;
+      });
+      if (progsInPeriod.length > 0) {
+        const dates = progsInPeriod.map(p => {
+          const d = p.date_debut.toDate ? p.date_debut.toDate() : new Date(p.date_debut);
+          return d.getTime();
+        });
+        dernierProgrammeDate = new Date(Math.max(...dates));
+      }
+    }
+
+    return result.parMembre
+      .filter(m => m.nbTotal >= 1 && m.tauxPresence < seuilPourcent)
+      .map(m => ({
+        ...m,
+        dernierProgramme: dernierProgrammeDate
+      }))
+      .sort((a, b) => a.tauxPresence - b.tauxPresence);
+  },
+
   // Calculer l'évolution mensuelle
   calculateMonthlyEvolution(programmes, presences, membres) {
     const monthlyData = {};
@@ -357,6 +398,46 @@ const PagesStatistiques = {
           </div>
         </div>
       </div>
+
+      ${alertesAbsence.length > 0 ? `
+      <!-- Alertes absence : membres à recontacter -->
+      <div class="card mt-3">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-user-clock"></i> Membres à recontacter</h3>
+          <span class="badge badge-warning">${alertesAbsence.length} membre(s) &lt; 50 % présence (30 j)</span>
+        </div>
+        <div class="card-body" style="padding: 0;">
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Membre</th>
+                  <th>Mentor</th>
+                  <th class="text-center">Présences</th>
+                  <th class="text-center">Absences</th>
+                  <th class="text-center">Taux</th>
+                  <th>Dernier programme</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${alertesAbsence.map(a => `
+                  <tr>
+                    <td><strong>${Utils.escapeHtml(a.prenom)} ${Utils.escapeHtml(a.nom)}</strong></td>
+                    <td>${Utils.escapeHtml(a.mentor)}</td>
+                    <td class="text-center">${a.nbPresences}</td>
+                    <td class="text-center">${a.nbAbsences}</td>
+                    <td class="text-center"><span class="badge badge-danger">${a.tauxPresence} %</span></td>
+                    <td>${a.dernierProgramme ? Utils.formatDate(a.dernierProgramme) : '-'}</td>
+                    <td><button type="button" class="btn btn-sm btn-outline" onclick="App.viewMembre('${a.id}')" title="Voir le profil"><i class="fas fa-user"></i></button></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      ` : ''}
 
       <!-- Tableau détaillé par membre -->
       <div class="card mt-3">

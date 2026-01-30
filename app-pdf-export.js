@@ -8,7 +8,11 @@ const PDFExport = {
   async generatePresenceReport(stats, options = {}) {
     const content = this.buildPresenceHTML(stats, options);
     
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open('about:blank', '_blank');
+    if (!printWindow) {
+      throw new Error('Fenêtre bloquée. Autorisez les popups pour ce site.');
+    }
+    printWindow.document.open();
     printWindow.document.write(content);
     printWindow.document.close();
     printWindow.onload = () => {
@@ -188,5 +192,106 @@ const PDFExport = {
   </div>
 </body>
 </html>`;
+  },
+
+  // Générer le rapport liste des membres (PDF via impression navigateur)
+  generateMembersReport(membres, options = {}) {
+    const famille = options.famille || '';
+    const escape = (v) => (typeof Utils !== 'undefined' && Utils.escapeHtml ? Utils.escapeHtml(String(v != null ? v : '')) : String(v != null ? v : '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
+    const formatDate = (date) => {
+      if (date == null) return '';
+      try {
+        const d = date.toDate ? date.toDate() : new Date(date);
+        return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      } catch (_) { return ''; }
+    };
+    const getRoleLabel = (role) => (typeof Utils !== 'undefined' && Utils.getRoleLabel ? Utils.getRoleLabel(role) : role || '');
+    const rows = membres.map(m => {
+      let mentorName = '';
+      try {
+        const mentor = m.mentor_id && typeof Membres !== 'undefined' ? Membres.getById(m.mentor_id) : null;
+        mentorName = mentor ? `${mentor.prenom || ''} ${mentor.nom || ''}`.trim() : '';
+      } catch (_) {}
+      return `
+        <tr>
+          <td>${escape(m.prenom)}</td>
+          <td>${escape(m.nom)}</td>
+          <td>${escape(m.email)}</td>
+          <td>${escape(m.telephone)}</td>
+          <td>${escape(getRoleLabel(m.role))}</td>
+          <td>${escape(mentorName)}</td>
+          <td>${formatDate(m.date_arrivee_icc)}</td>
+          <td>${formatDate(m.date_naissance)}</td>
+          <td>${m.sexe === 'M' ? 'Homme' : m.sexe === 'F' ? 'Femme' : ''}</td>
+          <td>${escape(m.adresse_ville)}</td>
+          <td>${escape(m.adresse_code_postal)}</td>
+          <td>${escape(m.profession)}</td>
+          <td>${escape(m.statut_professionnel ? String(m.statut_professionnel).replace('_', ' ') : '')}</td>
+          <td>${escape(m.ministere_service)}</td>
+          <td>${m.baptise_immersion === true ? 'Oui' : m.baptise_immersion === false ? 'Non' : ''}</td>
+          <td>${escape(Array.isArray(m.formations) ? m.formations.join(', ') : '')}</td>
+        </tr>`;
+    }).join('');
+
+    const content = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Liste des membres - ${escape(famille)}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10pt; line-height: 1.35; color: #333; padding: 15mm; }
+    @media print { body { padding: 0; } .no-print { display: none; } }
+    .header { text-align: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #2D5A7B; }
+    .header h1 { color: #2D5A7B; font-size: 20pt; margin-bottom: 5px; }
+    .header .subtitle { font-size: 12pt; color: #666; }
+    .header .date-generation { font-size: 9pt; color: #888; margin-top: 8px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9pt; }
+    th, td { padding: 5px 6px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #f5f7fa; font-weight: 600; color: #555; text-transform: uppercase; font-size: 8pt; }
+    tr:nth-child(even) { background: #fafafa; }
+    .footer { margin-top: 20px; padding-top: 12px; border-top: 1px solid #ddd; text-align: center; font-size: 9pt; color: #888; }
+    .btn-print { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; background: #2D5A7B; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
+    .btn-print:hover { background: #1E3D5C; }
+  </style>
+</head>
+<body>
+  <button class="btn-print no-print" onclick="window.print()">Imprimer / Enregistrer en PDF</button>
+  <div class="header">
+    <h1>Liste des membres</h1>
+    <div class="subtitle">Famille ${escape(famille)}</div>
+    <div class="date-generation">Généré le ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} — ${membres.length} membre(s)</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Prénom</th><th>Nom</th><th>Email</th><th>Téléphone</th><th>Rôle</th><th>Mentor</th>
+        <th>Date arrivée ICC</th><th>Date de naissance</th><th>Sexe</th><th>Ville</th><th>Code postal</th>
+        <th>Profession</th><th>Statut pro</th><th>Ministère</th><th>Baptisé immersion</th><th>Formations</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="footer">
+    <p>CRM Famille - Liste générée automatiquement</p>
+  </div>
+</body>
+</html>`;
+
+    // Ouvrir une fenêtre vide (about:blank évite les comportements étranges)
+    const printWindow = window.open('about:blank', '_blank');
+    if (!printWindow) {
+      throw new Error('Fenêtre bloquée. Autorisez les popups pour ce site ou réessayez.');
+    }
+    printWindow.document.open();
+    printWindow.document.write(content);
+    printWindow.document.close();
+    // Attendre le chargement puis proposer l'impression
+    printWindow.onload = () => {
+      try {
+        setTimeout(() => printWindow.print(), 500);
+      } catch (_) {}
+    };
+    return true;
   }
 };

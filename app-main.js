@@ -8,6 +8,7 @@ const App = {
     initFirebase();
     Toast.init();
     this.setupErrorHandling();
+    // Attendre la vérification de session (spinner initial) pour garder la session après F5
     const isLoggedIn = await Auth.checkAuthState();
     if (isLoggedIn) {
       await this.loadAllData();
@@ -39,18 +40,28 @@ const App = {
   },
 
   async loadAllData() {
-    try {
-      App.showLoading();
-      await Promise.all([
-        ErrorHandler.wrap(Membres.loadAll(), 'Chargement membres'),
-        ErrorHandler.wrap(Programmes.loadAll(), 'Chargement programmes')
-      ]);
-    } catch (error) {
-      // Erreur déjà gérée par ErrorHandler.wrap
-      console.error('Erreur lors du chargement des données:', error);
-    } finally {
-      App.hideLoading();
-    }
+    const LOAD_TIMEOUT_MS = 25000; // 25 s max pour éviter spinner bloqué après F5
+    App.showLoading();
+    const loadPromise = (async () => {
+      try {
+        await Promise.all([
+          ErrorHandler.wrap(Membres.loadAll(), 'Chargement membres'),
+          ErrorHandler.wrap(Programmes.loadAll(), 'Chargement programmes')
+        ]);
+      } catch (error) {
+        console.error('Erreur lors du chargement des données:', error);
+      } finally {
+        App.hideLoading();
+      }
+    })();
+    const timeoutPromise = new Promise((resolve) => {
+      setTimeout(() => {
+        Toast.warning('Chargement lent. Affichage avec les données disponibles.');
+        App.hideLoading();
+        resolve();
+      }, LOAD_TIMEOUT_MS);
+    });
+    await Promise.race([loadPromise, timeoutPromise]);
   },
 
   showLoginPage() {
@@ -61,7 +72,17 @@ const App = {
       const email = document.getElementById('login-email').value;
       const password = document.getElementById('login-password').value;
       await Auth.login(email, password, famille);
-      if (AppState.user) await this.loadAllData();
+      if (AppState.user) {
+        try {
+          await this.loadAllData();
+        } catch (err) {
+          console.error('Chargement des données après connexion:', err);
+          if (err.code === 'permission-denied' || (err.message && err.message.includes('insufficient permissions'))) {
+            Toast.error('Connexion OK mais chargement des membres refusé. Vérifiez les règles Firestore pour la collection utilisateurs (requête par famille_id).');
+          }
+          this.navigate('dashboard');
+        }
+      }
     });
   },
 
@@ -84,6 +105,7 @@ const App = {
       case 'membres-add': pageTitle = 'Ajouter un membre'; pageContent = Pages.renderAddMembre(); break;
       case 'profil': pageTitle = 'Mon profil'; pageContent = Pages.renderProfil(); break;
       case 'profil-edit': pageTitle = 'Modifier le profil'; pageContent = Pages.renderProfilEdit(); break;
+      case 'mon-compte': pageTitle = 'Mon compte'; pageContent = Pages.renderMonCompte(); break;
       case 'annuaire': pageTitle = 'Annuaire'; pageContent = Pages.renderAnnuaire(); break;
       case 'mes-disciples': pageTitle = 'Mes disciples'; pageContent = Pages.renderMembres(); break;
       case 'calendrier': pageTitle = 'Calendrier'; pageContent = PagesCalendrier.renderCalendrier(); break;
@@ -128,6 +150,16 @@ const App = {
       // Continuer sans bloquer le dashboard
     }
 
+    // Alertes absence (bergers / stats) : membres avec taux de présence < 50 % sur les 30 derniers jours
+    let alertesAbsence = [];
+    if (Permissions.canViewStats()) {
+      try {
+        alertesAbsence = await Statistiques.getLowAttendanceMembers(50, 30);
+      } catch (error) {
+        console.error('Erreur chargement alertes absence:', error);
+      }
+    }
+
     return `
       <div class="dashboard-grid">
         <div class="stat-card clickable" onclick="App.navigate('membres')" title="Voir tous les membres" style="cursor: pointer;">
@@ -152,6 +184,7 @@ const App = {
       ${stats.anniversairesAujourdhui.length > 0 ? `<div class="alert alert-success mb-3"><i class="fas fa-birthday-cake"></i><div class="alert-content"><div class="alert-title">🎂 Joyeux anniversaire !</div><p class="mb-0">${stats.anniversairesAujourdhui.map(m => m.prenom + ' ' + m.nom).join(', ')}</p></div></div>` : ''}
       ${programmesAPointer.length > 0 ? `<div class="alert alert-warning mb-3"><i class="fas fa-exclamation-triangle"></i><div class="alert-content"><div class="alert-title">⚠️ Programmes à pointer</div><p class="mb-2">${programmesAPointer.length} programme${programmesAPointer.length > 1 ? 's' : ''} récent${programmesAPointer.length > 1 ? 's' : ''} ${programmesAPointer.length > 1 ? 'n\'ont pas' : 'n\'a pas'} été complètement pointé${programmesAPointer.length > 1 ? 's' : ''}.</p><div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">${programmesAPointer.map(p => { const date = p.date_debut?.toDate ? p.date_debut.toDate() : new Date(p.date_debut); return `<a href="#" onclick="App.navigate('presences', {programmeId: '${p.id}'}); return false;" class="btn btn-sm btn-warning" style="cursor: pointer;">${Utils.escapeHtml(p.nom)} - ${Utils.formatDate(date)}</a>`; }).join('')}</div></div></div>` : ''}
       ${dernieresNotifications.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-bell"></i> Dernières notifications</h3><a href="#" onclick="App.navigate('notifications'); return false;" class="btn btn-sm btn-outline" style="cursor: pointer;">Voir tout</a></div><div class="card"><div class="card-body" style="padding: 0;">${dernieresNotifications.map(n => { const priorite = Notifications.getPriorite(n.priorite); const date = n.created_at?.toDate ? n.created_at.toDate() : new Date(n.created_at); return `<div class="notification-card-mini" onclick="App.navigate('notifications'); return false;" style="cursor: pointer;"><div class="notif-priority" style="background: ${priorite.bgColor}; color: ${priorite.color};"><i class="fas ${priorite.icon}"></i></div><div class="notif-content"><div class="notif-text">${Utils.escapeHtml(n.contenu)}</div><div class="notif-meta"><span class="notif-author">${n.auteur_prenom || 'Anonyme'}</span><span class="notif-date">${Utils.formatRelativeDate(date)}</span></div></div></div>`; }).join('')}</div></div></div>` : ''}
+      ${alertesAbsence.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-user-clock"></i> Alertes absence</h3><a href="#" onclick="App.navigate('statistiques'); return false;" class="btn btn-sm btn-outline" style="cursor: pointer;">Voir les stats</a></div><div class="alert alert-warning mb-0"><div class="alert-content"><p class="mb-2">Membres avec moins de 50 % de présence sur les 30 derniers jours (à recontacter) :</p><ul class="mb-0" style="list-style: none; padding-left: 0;">${alertesAbsence.slice(0, 8).map(a => `<li style="padding: var(--spacing-xs) 0; border-bottom: 1px solid rgba(0,0,0,0.06);"><strong>${Utils.escapeHtml(a.prenom)} ${Utils.escapeHtml(a.nom)}</strong> — ${a.tauxPresence} % (${a.nbPresences}/${a.nbTotal} présences, ${a.nbAbsences} absence${a.nbAbsences > 1 ? 's' : ''})${a.dernierProgramme ? ` — Dernier programme : ${Utils.formatDate(a.dernierProgramme)}` : ''}</li>`).join('')}</ul>${alertesAbsence.length > 8 ? `<p class="mt-2 mb-0 text-muted">... et ${alertesAbsence.length - 8} autre(s). <a href="#" onclick="App.navigate('statistiques'); return false;">Voir les statistiques</a></p>` : ''}</div></div></div>` : ''}
       <div class="dashboard-section">
         <div class="section-header"><h3 class="section-title"><i class="fas fa-bolt"></i> Actions rapides</h3></div>
         <div class="quick-actions">
@@ -164,7 +197,7 @@ const App = {
         </div>
       </div>
       ${prochainsProgrammes.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-calendar-check"></i> Prochains programmes</h3><a href="#" onclick="App.navigate('calendrier'); return false;" class="btn btn-sm btn-outline">Voir tout</a></div><div class="card"><div class="card-body" style="padding: 0;">${prochainsProgrammes.map(p => { const date = p.date_debut?.toDate ? p.date_debut.toDate() : new Date(p.date_debut); return `<div class="programme-card-mini" onclick="App.viewProgramme('${p.id}')"><div class="prog-date"><span class="prog-day">${date.getDate()}</span><span class="prog-month">${date.toLocaleString('fr-FR', { month: 'short' })}</span></div><div class="prog-info"><div class="prog-name">${Utils.escapeHtml(p.nom)}</div><div class="prog-type" style="color: ${Programmes.getTypeColor(p.type)}">${Programmes.getTypeLabel(p.type)}</div></div><div class="prog-time"><i class="fas fa-clock"></i> ${date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</div></div>`; }).join('')}</div></div></div>` : ''}
-      ${Permissions.hasRole('mentor') && mesDisciples.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-user-friends"></i> Mes disciples</h3><a href="#" onclick="App.navigate('mes-disciples'); return false;" class="btn btn-sm btn-outline">Voir tout</a></div><div class="card"><div class="card-body" style="padding: 0;">${mesDisciples.slice(0, 5).map(d => `<div class="member-card"><div class="member-avatar" style="background: ${d.sexe === 'F' ? '#E91E63' : 'var(--primary)'}">${Utils.getInitials(d.prenom, d.nom)}</div><div class="member-info"><div class="member-name">${Utils.escapeHtml(d.prenom)} ${Utils.escapeHtml(d.nom)}</div><div class="member-email">${Utils.escapeHtml(d.email)}</div></div><span class="badge badge-${d.role}">${Utils.getRoleLabel(d.role)}</span></div>`).join('')}</div></div></div>` : ''}
+      ${Permissions.hasRole('mentor') && mesDisciples.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-user-friends"></i> Mes disciples</h3><a href="#" onclick="App.navigate('mes-disciples'); return false;" class="btn btn-sm btn-outline">Voir tout</a></div><div class="card"><div class="card-body" style="padding: 0;">${mesDisciples.slice(0, 5).map(d => { const avatarStyle = d.photo_url ? `background-image: url('${Utils.escapeHtml(d.photo_url)}'); background-size: cover; background-position: center;` : `background: ${d.sexe === 'F' ? '#E91E63' : 'var(--primary)'}`; return `<div class="member-card"><div class="member-avatar" style="${avatarStyle}">${!d.photo_url ? Utils.getInitials(d.prenom, d.nom) : ''}</div><div class="member-info"><div class="member-name">${Utils.escapeHtml(d.prenom)} ${Utils.escapeHtml(d.nom)}</div><div class="member-email">${Utils.escapeHtml(d.email)}</div></div><span class="badge badge-${d.role}">${Utils.getRoleLabel(d.role)}</span></div>`; }).join('')}</div></div></div>` : ''}
       <style>
         .programme-card-mini{display:flex;align-items:center;gap:var(--spacing-md);padding:var(--spacing-md);border-bottom:1px solid var(--border-color);cursor:pointer;transition:background 0.2s}
         .programme-card-mini:hover{background:var(--bg-primary)}
@@ -198,6 +231,7 @@ const App = {
             <div class="nav-section"><div class="nav-section-title">Principal</div>
               <div class="nav-item ${AppState.currentPage === 'dashboard' ? 'active' : ''}" onclick="App.navigate('dashboard')"><i class="fas fa-home"></i><span>Tableau de bord</span></div>
               <div class="nav-item ${AppState.currentPage === 'profil' ? 'active' : ''}" onclick="App.navigate('profil')"><i class="fas fa-user"></i><span>Mon profil</span></div>
+              <div class="nav-item ${AppState.currentPage === 'mon-compte' ? 'active' : ''}" onclick="App.navigate('mon-compte')"><i class="fas fa-user-cog"></i><span>Mon compte</span></div>
               <div class="nav-item ${AppState.currentPage === 'calendrier' ? 'active' : ''}" onclick="App.navigate('calendrier')"><i class="fas fa-calendar-alt"></i><span>Calendrier</span></div>
               <div class="nav-item ${AppState.currentPage === 'annuaire' ? 'active' : ''}" onclick="App.navigate('annuaire')"><i class="fas fa-address-book"></i><span>Annuaire</span></div>
             </div>
@@ -217,7 +251,7 @@ const App = {
             </div>` : ''}
           </nav>
           <div class="sidebar-user">
-            <div class="user-avatar">${Utils.getInitials(user.prenom, user.nom)}</div>
+            <div class="user-avatar" style="${user.photo_url ? `background-image: url('${Utils.escapeHtml(user.photo_url)}'); background-size: cover; background-position: center;` : ''}">${!user.photo_url ? Utils.getInitials(user.prenom, user.nom) : ''}</div>
             <div class="user-info"><div class="user-name">${Utils.escapeHtml(user.prenom)} ${Utils.escapeHtml(user.nom)}</div><div class="user-role">${Utils.getRoleLabel(user.role)}</div></div>
             <button class="btn-logout" onclick="Auth.logout()" title="Se déconnecter"><i class="fas fa-sign-out-alt"></i></button>
           </div>
@@ -234,15 +268,307 @@ const App = {
   filterAnnuaire() { const search = document.getElementById('search-annuaire')?.value.toLowerCase() || ''; document.querySelectorAll('#annuaire-list .member-card').forEach(card => { card.style.display = (card.dataset.name || '').includes(search) ? '' : 'none'; }); },
   filterProgrammes() { const search = document.getElementById('search-programmes')?.value.toLowerCase() || ''; const typeFilter = document.getElementById('filter-type')?.value || ''; document.querySelectorAll('#programmes-list .programme-card').forEach(card => { const name = card.dataset.name || ''; const type = card.dataset.type || ''; card.style.display = name.includes(search) && (!typeFilter || type === typeFilter) ? '' : 'none'; }); },
 
+  exportMembresCSV() {
+    if (!Permissions.canViewAllMembers()) {
+      Toast.error('Vous n\'avez pas la permission d\'exporter la liste des membres.');
+      return;
+    }
+    const membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+    if (membres.length === 0) {
+      Toast.warning('Aucun membre à exporter.');
+      return;
+    }
+    const sep = ';'; // séparateur pour Excel FR
+    const escapeCsv = (val) => {
+      if (val == null || val === '') return '';
+      const s = String(val).replace(/"/g, '""');
+      return /[;\r\n"]/.test(s) ? `"${s}"` : s;
+    };
+    const formatDate = (date) => {
+      if (!date) return '';
+      const d = date.toDate ? date.toDate() : new Date(date);
+      return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    };
+    const headers = ['Prénom', 'Nom', 'Email', 'Téléphone', 'Rôle', 'Mentor', 'Date arrivée ICC', 'Date de naissance', 'Sexe', 'Ville', 'Code postal', 'Profession', 'Statut pro', 'Ministère', 'Baptisé immersion', 'Formations'];
+    const rows = membres.map(m => {
+      const mentor = m.mentor_id ? Membres.getById(m.mentor_id) : null;
+      const mentorName = mentor ? `${mentor.prenom} ${mentor.nom}` : '';
+      return [
+        escapeCsv(m.prenom),
+        escapeCsv(m.nom),
+        escapeCsv(m.email),
+        escapeCsv(m.telephone),
+        escapeCsv(Utils.getRoleLabel(m.role)),
+        escapeCsv(mentorName),
+        escapeCsv(formatDate(m.date_arrivee_icc)),
+        escapeCsv(formatDate(m.date_naissance)),
+        escapeCsv(m.sexe === 'M' ? 'Homme' : m.sexe === 'F' ? 'Femme' : ''),
+        escapeCsv(m.adresse_ville),
+        escapeCsv(m.adresse_code_postal),
+        escapeCsv(m.profession),
+        escapeCsv(m.statut_professionnel ? Utils.capitalize(m.statut_professionnel.replace('_', ' ')) : ''),
+        escapeCsv(m.ministere_service),
+        escapeCsv(m.baptise_immersion === true ? 'Oui' : m.baptise_immersion === false ? 'Non' : ''),
+        escapeCsv(Array.isArray(m.formations) ? m.formations.join(', ') : '')
+      ].join(sep);
+    });
+    const csv = '\uFEFF' + headers.join(sep) + '\r\n' + rows.join('\r\n'); // BOM UTF-8 pour Excel
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `membres_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    Toast.success(`Export de ${membres.length} membre(s) réussi.`);
+  },
+
+  exportMembresPDF() {
+    if (!Permissions.canViewAllMembers()) {
+      Toast.error('Vous n\'avez pas la permission d\'exporter la liste des membres.');
+      return;
+    }
+    const membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+    if (membres.length === 0) {
+      Toast.warning('Aucun membre à exporter.');
+      return;
+    }
+    try {
+      PDFExport.generateMembersReport(membres, { famille: AppState.famille?.nom || '' });
+      Toast.info('Fenêtre d\'impression ouverte. Utilisez "Imprimer / Enregistrer en PDF" pour sauvegarder.');
+    } catch (e) {
+      console.error('Erreur export PDF membres:', e);
+      if (e.message && e.message.includes('Fenêtre bloquée')) {
+        Toast.error('Fenêtre bloquée. Autorisez les popups pour ce site (icône dans la barre d\'adresse) puis réessayez.');
+      } else {
+        Toast.error('Erreur lors de la génération du PDF.');
+      }
+    }
+  },
+
   viewMembre(id) { document.querySelector('.page-content').innerHTML = Pages.renderProfil(id); },
   editMembre(id) { document.querySelector('.page-content').innerHTML = Pages.renderProfilEdit(id); },
   viewProgramme(id) { this.navigate('programme-detail', { programmeId: id }); },
   editProgramme(id) { this.navigate('programmes-edit', { programmeId: id }); },
   viewHistoriqueMembre(id) { this.navigate('historique-membre', { membreId: id }); },
 
-  toggleMentorField() { const r = document.getElementById('membre-role'); const m = document.getElementById('mentor-group'); if (r && m) m.style.display = r.value === 'nouveau' ? 'none' : 'block'; },
+  toggleMentorField() {
+    const r = document.getElementById('membre-role');
+    const m = document.getElementById('mentor-group');
+    if (r && m) {
+      // Cacher le mentor pour 'nouveau' et les rôles mentor/adjoint/berger (qui n'ont pas besoin de mentor)
+      const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_berger', 'berger'];
+      m.style.display = rolesWithoutMentor.includes(r.value) ? 'none' : 'block';
+    }
+  },
 
-  async submitAddMembre(event) { event.preventDefault(); const d = { prenom: document.getElementById('membre-prenom').value.trim(), nom: document.getElementById('membre-nom').value.trim(), email: document.getElementById('membre-email').value.trim(), role: document.getElementById('membre-role').value, mentor_id: document.getElementById('membre-role').value === 'nouveau' ? null : document.getElementById('membre-mentor').value }; try { await Auth.createMembre(d); await Membres.loadAll(); this.navigate('membres'); } catch (e) {} },
+  async submitAddMembre(event) {
+    event.preventDefault();
+    const role = document.getElementById('membre-role').value;
+    const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_berger', 'berger'];
+    const d = {
+      prenom: document.getElementById('membre-prenom').value.trim(),
+      nom: document.getElementById('membre-nom').value.trim(),
+      email: document.getElementById('membre-email').value.trim(),
+      role: role,
+      mentor_id: rolesWithoutMentor.includes(role) ? null : document.getElementById('membre-mentor').value
+    };
+    try {
+      const result = await Auth.createMembre(d);
+      // Afficher le mot de passe temporaire dans une modale
+      if (result && result.tempPassword) {
+        this.showTempPasswordModal(d.prenom, d.email, result.tempPassword, result.adminDisconnected);
+      } else {
+        this.navigate('membres');
+      }
+    } catch (e) {}
+  },
+
+  showTempPasswordModal(prenom, email, tempPassword, adminDisconnected = false) {
+    const modalId = 'temp-password-modal';
+    const closeAction = adminDisconnected ? 'App.showLoginPage()' : "App.navigate('membres')";
+    const reconnectWarning = adminDisconnected ? `
+            <div class="alert alert-warning" style="margin-top: 12px;">
+              <i class="fas fa-sign-in-alt"></i>
+              <div>
+                <strong>Reconnexion requise :</strong> Pour des raisons techniques, vous allez être redirigé vers la page de connexion. Reconnectez-vous pour continuer.
+              </div>
+            </div>` : '';
+    const modalHtml = `
+      <div class="modal-overlay active" id="${modalId}">
+        <div class="modal" style="max-width: 500px;">
+          <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-key"></i> Membre créé avec succès</h3>
+            <button class="modal-close" onclick="document.getElementById('${modalId}').remove(); ${closeAction};">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p><strong>${Utils.escapeHtml(prenom)}</strong> a été ajouté.</p>
+            <div class="alert alert-info" style="margin-top: 16px;">
+              <i class="fas fa-info-circle"></i>
+              <div>
+                <strong>Mot de passe temporaire :</strong>
+                <div style="margin-top: 8px; padding: 12px; background: #f5f5f5; border-radius: 4px; font-family: monospace; font-size: 1.1em; user-select: all;">
+                  ${Utils.escapeHtml(tempPassword)}
+                </div>
+                <p style="margin-top: 12px; font-size: 0.9em; color: #666;">
+                  Communiquez ce mot de passe à <strong>${Utils.escapeHtml(email)}</strong> pour qu'il/elle puisse se connecter.<br>
+                  Il/Elle pourra le modifier dans « Mon compte ».
+                </p>
+              </div>
+            </div>
+            <div class="alert alert-success" style="margin-top: 12px;">
+              <i class="fas fa-envelope"></i>
+              <div>
+                <strong>Alternative :</strong> Un email de réinitialisation a été envoyé à ${Utils.escapeHtml(email)}. Le membre pourra aussi cliquer sur le lien pour définir son propre mot de passe.
+              </div>
+            </div>
+            ${reconnectWarning}
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove(); ${closeAction};">OK, compris</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  },
+
+  async submitChangePassword(event) {
+    event.preventDefault();
+    try {
+      const currentPassword = document.getElementById('current-password').value;
+      const newPassword = document.getElementById('new-password').value;
+      const confirmPassword = document.getElementById('confirm-password').value;
+
+      // Validation
+      if (newPassword.length < 6) {
+        Toast.error('Le nouveau mot de passe doit contenir au moins 6 caractères');
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        Toast.error('Les mots de passe ne correspondent pas');
+        return;
+      }
+
+      if (currentPassword === newPassword) {
+        Toast.error('Le nouveau mot de passe doit être différent de l\'ancien');
+        return;
+      }
+
+      App.showLoading();
+      await Auth.changePassword(currentPassword, newPassword);
+      
+      // Réinitialiser le formulaire
+      document.getElementById('form-change-password').reset();
+      
+      // Retourner au profil après succès
+      setTimeout(() => {
+        this.navigate('profil');
+      }, 1500);
+    } catch (error) {
+      ErrorHandler.handle(error, 'Changement de mot de passe');
+    } finally {
+      App.hideLoading();
+    }
+  },
+
+  async handlePhotoUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      App.showLoading();
+      const photoUrl = await Auth.uploadPhotoProfil(file);
+      
+      // Mettre à jour l'affichage de l'avatar dans la page
+      const avatarPreview = document.getElementById('avatar-profil-preview');
+      if (avatarPreview) {
+        avatarPreview.style.backgroundImage = `url('${photoUrl}')`;
+        avatarPreview.style.backgroundSize = 'cover';
+        avatarPreview.style.backgroundPosition = 'center';
+        avatarPreview.innerHTML = '';
+      }
+
+      // Mettre à jour le bouton
+      const uploadBtn = document.querySelector('button[onclick*="photo-profil-input"]');
+      if (uploadBtn) {
+        uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Changer la photo';
+      }
+
+      // Ajouter le bouton supprimer s'il n'existe pas
+      if (!document.querySelector('button[onclick="App.deletePhotoProfil()"]')) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'btn btn-outline';
+        deleteBtn.style.marginLeft = 'var(--spacing-sm)';
+        deleteBtn.onclick = () => App.deletePhotoProfil();
+        deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Supprimer';
+        uploadBtn.parentNode.appendChild(deleteBtn);
+      }
+
+      // Recharger les données utilisateur pour mettre à jour AppState
+      const userDoc = await db.collection('utilisateurs').doc(auth.currentUser.uid).get();
+      if (userDoc.exists) {
+        AppState.user = { id: userDoc.id, ...userDoc.data() };
+      }
+      
+      // Rafraîchir la sidebar si nécessaire
+      this.render();
+    } catch (error) {
+      ErrorHandler.handle(error, 'Upload photo de profil');
+    } finally {
+      App.hideLoading();
+      // Réinitialiser l'input pour permettre de sélectionner le même fichier à nouveau
+      event.target.value = '';
+    }
+  },
+
+  async deletePhotoProfil() {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer votre photo de profil ?')) {
+      return;
+    }
+
+    try {
+      App.showLoading();
+      await Auth.deletePhotoProfil();
+      
+      // Mettre à jour l'affichage
+      const avatarElement = document.getElementById('avatar-profil-preview');
+      if (avatarElement && AppState.user) {
+        avatarElement.style.backgroundImage = '';
+        avatarElement.style.backgroundSize = '';
+        avatarElement.style.backgroundPosition = '';
+        avatarElement.style.background = AppState.user.sexe === 'F' ? '#E91E63' : 'var(--primary)';
+        avatarElement.innerHTML = Utils.getInitials(AppState.user.prenom, AppState.user.nom);
+      }
+
+      // Mettre à jour le bouton
+      const uploadBtn = document.querySelector('button[onclick*="photo-profil-input"]');
+      if (uploadBtn) {
+        uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Ajouter une photo';
+      }
+
+      // Supprimer le bouton supprimer
+      const deleteBtn = document.querySelector('button[onclick="App.deletePhotoProfil()"]');
+      if (deleteBtn) {
+        deleteBtn.remove();
+      }
+
+      // Recharger les données utilisateur et la liste des membres
+      const userDoc = await db.collection('utilisateurs').doc(auth.currentUser.uid).get();
+      if (userDoc.exists) {
+        AppState.user = { id: userDoc.id, ...userDoc.data() };
+      }
+      await Membres.loadAll(); // pour que la liste Membres et l'annuaire affichent les initiales
+
+      // Rafraîchir l'affichage
+      this.render();
+    } catch (error) {
+      ErrorHandler.handle(error, 'Suppression photo de profil');
+    } finally {
+      App.hideLoading();
+    }
+  },
 
   async submitEditProfil(event, membreId) { event.preventDefault(); const formations = []; document.querySelectorAll('[id^="formation-"]:checked').forEach(cb => formations.push(cb.value)); const data = { prenom: document.getElementById('edit-prenom').value.trim(), nom: document.getElementById('edit-nom').value.trim(), sexe: document.getElementById('edit-sexe').value || null, date_naissance: document.getElementById('edit-date-naissance').value ? new Date(document.getElementById('edit-date-naissance').value) : null, telephone: document.getElementById('edit-telephone').value.trim() || null, adresse_ville: document.getElementById('edit-ville').value.trim() || null, adresse_code_postal: document.getElementById('edit-cp').value.trim() || null, date_arrivee_icc: document.getElementById('edit-date-icc').value ? new Date(document.getElementById('edit-date-icc').value) : null, formations, ministere_service: document.getElementById('edit-ministere').value.trim() || null, baptise_immersion: document.getElementById('edit-baptise').value === 'true' ? true : document.getElementById('edit-baptise').value === 'false' ? false : null, profession: document.getElementById('edit-profession').value.trim() || null, statut_professionnel: document.getElementById('edit-statut-pro').value || null, passions_centres_interet: document.getElementById('edit-passions').value.trim() || null }; if (await Membres.update(membreId, data)) this.navigate('profil'); },
 

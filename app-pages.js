@@ -77,6 +77,14 @@ const Pages = {
             <option value="berger">Bergers</option>
           </select>
         </div>
+        ${Permissions.canViewAllMembers() ? `
+        <button type="button" class="btn btn-outline" onclick="App.exportMembresCSV()" title="Télécharger la liste en CSV">
+          <i class="fas fa-file-download"></i> Exporter CSV
+        </button>
+        <button type="button" class="btn btn-outline" onclick="App.exportMembresPDF()" title="Ouvrir la liste pour impression ou enregistrement en PDF">
+          <i class="fas fa-file-pdf"></i> Exporter PDF
+        </button>
+        ` : ''}
         ${Permissions.canAddDisciple() ? `
         <button class="btn btn-primary" onclick="App.navigate('membres-add')">
           <i class="fas fa-user-plus"></i> Ajouter
@@ -100,25 +108,47 @@ const Pages = {
     `;
   },
 
+  getMentorLabelForMember(membre) {
+    if (!Permissions.canViewAllMembers()) return null;
+    const role = membre.role;
+    if (role === 'berger' || role === 'admin') return null;
+    if (role === 'nouveau') return 'Non Affecté';
+    const bergerOfFamily = AppState.membres.find(m => m.role === 'berger');
+    const mentor = membre.mentor_id ? Membres.getById(membre.mentor_id) : null;
+    if (role === 'disciple') {
+      return mentor ? `${mentor.prenom} ${mentor.nom}` : 'Non Affecté';
+    }
+    if (role === 'mentor' || role === 'adjoint_berger') {
+      if (!mentor) return bergerOfFamily ? `${bergerOfFamily.prenom} ${bergerOfFamily.nom}` : 'Non Affecté';
+      if (mentor.role === 'berger') return `${mentor.prenom} ${mentor.nom}`;
+      return `${mentor.prenom} ${mentor.nom}`;
+    }
+    return mentor ? `${mentor.prenom} ${mentor.nom}` : 'Non Affecté';
+  },
+
   renderMembreCard(membre) {
     const mentor = membre.mentor_id ? Membres.getById(membre.mentor_id) : null;
+    const mentorLabel = this.getMentorLabelForMember(membre);
     const isBirthday = Utils.isBirthday(membre.date_naissance);
-    
+    const avatarStyle = membre.photo_url
+      ? `background-image: url('${Utils.escapeHtml(membre.photo_url)}'); background-size: cover; background-position: center;`
+      : `background: ${membre.sexe === 'F' ? '#E91E63' : 'var(--primary)'}`;
+
     return `
       <div class="member-card" data-id="${membre.id}" data-role="${membre.role}" 
            data-name="${(membre.prenom + ' ' + membre.nom).toLowerCase()}">
-        <div class="member-avatar" style="background: ${membre.sexe === 'F' ? '#E91E63' : 'var(--primary)'}">
-          ${Utils.getInitials(membre.prenom, membre.nom)}
+        <div class="member-avatar" style="${avatarStyle}">
+          ${!membre.photo_url ? Utils.getInitials(membre.prenom, membre.nom) : ''}
         </div>
         <div class="member-info">
           <div class="member-name">
             ${isBirthday ? '🎂 ' : ''}${Utils.escapeHtml(membre.prenom)} ${Utils.escapeHtml(membre.nom)}
           </div>
           <div class="member-email">${Utils.escapeHtml(membre.email)}</div>
-          ${mentor ? `<div class="text-muted" style="font-size: 0.8rem;">Mentor: ${Utils.escapeHtml(mentor.prenom)}</div>` : ''}
         </div>
         <div class="member-meta">
           <span class="badge badge-${membre.role}">${Utils.getRoleLabel(membre.role)}</span>
+          ${mentorLabel !== null ? `<span class="member-mentor-badge" style="font-size: 0.75rem; color: var(--text-muted); margin-left: 8px; white-space: nowrap;" title="Mentor">${Utils.escapeHtml(mentorLabel)}</span>` : ''}
         </div>
         <div class="member-actions">
           <button class="btn btn-icon btn-secondary" onclick="App.viewMembre('${membre.id}')" title="Voir">
@@ -137,6 +167,7 @@ const Pages = {
   renderAddMembre() {
     const mentors = Membres.getMentors();
     const canAddNouveau = Permissions.canAddNouveau();
+    const isAdminOrBerger = Permissions.hasRole('berger') || Permissions.isAdmin();
 
     return `
       <div class="card" style="max-width: 600px; margin: 0 auto;">
@@ -165,18 +196,24 @@ const Pages = {
               <select class="form-control" id="membre-role" required onchange="App.toggleMentorField()">
                 <option value="disciple">Disciple</option>
                 ${canAddNouveau ? '<option value="nouveau">Nouveau (sans mentor)</option>' : ''}
+                ${isAdminOrBerger ? `
+                  <option value="mentor">Mentor</option>
+                  <option value="adjoint_berger">Adjoint Berger</option>
+                  <option value="berger">Berger</option>
+                ` : ''}
               </select>
             </div>
             
             <div class="form-group" id="mentor-group">
-              <label class="form-label required">Mentor</label>
-              <select class="form-control" id="membre-mentor" required>
-                <option value="${AppState.user.id}">Moi-même (${AppState.user.prenom})</option>
-                ${Permissions.hasRole('berger') ? mentors
+              <label class="form-label">Mentor</label>
+              <select class="form-control" id="membre-mentor">
+                <option value="${AppState.user.id}">Moi-même (${Utils.escapeHtml(AppState.user.prenom)})</option>
+                ${isAdminOrBerger ? mentors
                   .filter(m => m.id !== AppState.user.id)
                   .map(m => `<option value="${m.id}">${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)}</option>`)
                   .join('') : ''}
               </select>
+              <span class="form-hint">Optionnel pour les rôles Mentor et supérieurs</span>
             </div>
             
             <div class="d-flex gap-2" style="justify-content: flex-end;">
@@ -200,19 +237,26 @@ const Pages = {
       <div class="card" style="max-width: 800px; margin: 0 auto;">
         <div class="card-header">
           <div class="d-flex align-center gap-2">
-            <div class="member-avatar" style="width: 60px; height: 60px; font-size: 1.5rem; background: ${membre.sexe === 'F' ? '#E91E63' : 'var(--primary)'}">
-              ${Utils.getInitials(membre.prenom, membre.nom)}
+            <div class="member-avatar" style="width: 60px; height: 60px; font-size: 1.5rem; ${membre.photo_url ? `background-image: url('${Utils.escapeHtml(membre.photo_url)}'); background-size: cover; background-position: center;` : `background: ${membre.sexe === 'F' ? '#E91E63' : 'var(--primary)'}`}">
+              ${!membre.photo_url ? Utils.getInitials(membre.prenom, membre.nom) : ''}
             </div>
             <div>
               <h3 class="card-title mb-0">${Utils.escapeHtml(membre.prenom)} ${Utils.escapeHtml(membre.nom)}</h3>
               <span class="badge badge-${membre.role}">${Utils.getRoleLabel(membre.role)}</span>
             </div>
           </div>
-          ${canEdit ? `
-          <button class="btn btn-primary" onclick="App.editMembre('${membre.id}')">
-            <i class="fas fa-edit"></i> Modifier
-          </button>
-          ` : ''}
+          <div class="d-flex gap-2">
+            ${canEdit ? `
+            <button class="btn btn-primary" onclick="App.editMembre('${membre.id}')">
+              <i class="fas fa-edit"></i> Modifier
+            </button>
+            ` : ''}
+            ${membre.id === AppState.user.id ? `
+            <button type="button" class="btn btn-outline" onclick="App.navigate('mon-compte'); return false;">
+              <i class="fas fa-user-cog"></i> Mon compte
+            </button>
+            ` : ''}
+          </div>
         </div>
         <div class="card-body">
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--spacing-lg);">
@@ -383,6 +427,88 @@ const Pages = {
     `;
   },
 
+  renderMonCompte() {
+    const membre = AppState.user;
+    if (!membre) return '<div class="alert alert-danger">Utilisateur non connecté</div>';
+
+    const photoUrl = membre.photo_url || null;
+    const avatarStyle = photoUrl 
+      ? `background-image: url('${photoUrl}'); background-size: cover; background-position: center;`
+      : `background: ${membre.sexe === 'F' ? '#E91E63' : 'var(--primary)'};`;
+
+    return `
+      <div class="card" style="max-width: 600px; margin: 0 auto;">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-user-cog"></i> Mon compte</h3>
+        </div>
+        <div class="card-body">
+          <div style="margin-bottom: var(--spacing-xl);">
+            <h4 class="mb-3">Photo de profil</h4>
+            <div style="display: flex; align-items: center; gap: var(--spacing-lg); margin-bottom: var(--spacing-lg);">
+            <div class="member-avatar" id="avatar-profil-preview" style="width: 100px; height: 100px; font-size: 2.5rem; ${avatarStyle}">
+              ${!photoUrl ? Utils.getInitials(membre.prenom, membre.nom) : ''}
+            </div>
+              <div style="flex: 1;">
+                <input type="file" id="photo-profil-input" accept="image/*" style="display: none;" onchange="App.handlePhotoUpload(event)">
+                <button type="button" class="btn btn-primary" onclick="document.getElementById('photo-profil-input').click()">
+                  <i class="fas fa-upload"></i> ${photoUrl ? 'Changer la photo' : 'Ajouter une photo'}
+                </button>
+                ${photoUrl ? `
+                <button type="button" class="btn btn-outline" onclick="App.deletePhotoProfil()" style="margin-left: var(--spacing-sm);">
+                  <i class="fas fa-trash"></i> Supprimer
+                </button>
+                ` : ''}
+                <p class="text-muted" style="margin-top: var(--spacing-sm); font-size: 0.85rem;">
+                  Formats acceptés: JPG, PNG, GIF, WebP uniquement (max 5MB). Les PDF et autres documents ne sont pas acceptés.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <hr style="margin: var(--spacing-lg) 0;">
+
+          <div style="margin-bottom: var(--spacing-xl);">
+            <h4 class="mb-2">Informations de connexion</h4>
+            <p><strong>Email:</strong> ${Utils.escapeHtml(membre.email)}</p>
+            <p><strong>Nom:</strong> ${Utils.escapeHtml(membre.prenom)} ${Utils.escapeHtml(membre.nom)}</p>
+            <p><strong>Rôle:</strong> <span class="badge badge-${membre.role}">${Utils.getRoleLabel(membre.role)}</span></p>
+          </div>
+
+          <hr style="margin: var(--spacing-lg) 0;">
+
+          <h4 class="mb-3">Changer mon mot de passe</h4>
+          <form id="form-change-password" onsubmit="App.submitChangePassword(event)">
+            <div class="form-group">
+              <label class="form-label required">Mot de passe actuel</label>
+              <input type="password" class="form-control" id="current-password" required 
+                     placeholder="Entrez votre mot de passe actuel" autocomplete="current-password">
+            </div>
+            
+            <div class="form-group">
+              <label class="form-label required">Nouveau mot de passe</label>
+              <input type="password" class="form-control" id="new-password" required 
+                     placeholder="Minimum 6 caractères" autocomplete="new-password" minlength="6">
+              <small class="form-text text-muted">Le mot de passe doit contenir au moins 6 caractères.</small>
+            </div>
+            
+            <div class="form-group">
+              <label class="form-label required">Confirmer le nouveau mot de passe</label>
+              <input type="password" class="form-control" id="confirm-password" required 
+                     placeholder="Répétez le nouveau mot de passe" autocomplete="new-password" minlength="6">
+            </div>
+            
+            <div class="d-flex gap-2" style="justify-content: flex-end; margin-top: var(--spacing-lg);">
+              <button type="button" class="btn btn-secondary" onclick="App.navigate('profil')">Annuler</button>
+              <button type="submit" class="btn btn-primary">
+                <i class="fas fa-key"></i> Changer le mot de passe
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  },
+
   renderAnnuaire() {
     const membres = AppState.membres
       .filter(m => m.statut_compte === 'actif')
@@ -410,11 +536,14 @@ const Pages = {
                 }
               }
               
+              const avatarStyleAnnuaire = m.photo_url
+                ? `background-image: url('${Utils.escapeHtml(m.photo_url)}'); background-size: cover; background-position: center; position: relative;`
+                : `background: ${m.sexe === 'F' ? '#E91E63' : 'var(--primary)'}; position: relative;`;
               return `
                 <div class="member-card" data-name="${(m.prenom + ' ' + m.nom).toLowerCase()}">
                   <div class="member-avatar ${isBirthday ? 'birthday-glow' : ''}" 
-                       style="background: ${m.sexe === 'F' ? '#E91E63' : 'var(--primary)'}; position: relative;">
-                    ${Utils.getInitials(m.prenom, m.nom)}
+                       style="${avatarStyleAnnuaire}">
+                    ${!m.photo_url ? Utils.getInitials(m.prenom, m.nom) : ''}
                     ${isBirthday ? '<span class="birthday-badge">🎂</span>' : ''}
                   </div>
                   <div class="member-info" style="flex: 2;">

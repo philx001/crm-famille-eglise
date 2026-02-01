@@ -51,9 +51,17 @@ const PagesPresences = {
             ${dateDebut.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
-        <button class="btn btn-secondary" onclick="App.navigate('programmes')">
-          <i class="fas fa-arrow-left"></i> Retour
-        </button>
+        <div class="presences-actions">
+          <button class="btn btn-outline" onclick="PagesPresences.exportPresencesCSV()" title="Exporter en CSV">
+            <i class="fas fa-file-csv"></i> CSV
+          </button>
+          <button class="btn btn-outline" onclick="PagesPresences.exportPresencesPDF()" title="Exporter en PDF">
+            <i class="fas fa-file-pdf"></i> PDF
+          </button>
+          <button class="btn btn-secondary" onclick="App.navigate('programmes')">
+            <i class="fas fa-arrow-left"></i> Retour
+          </button>
+        </div>
       </div>
 
       <div class="card">
@@ -92,6 +100,11 @@ const PagesPresences = {
         }
         .presences-header h2 {
           margin-bottom: var(--spacing-xs);
+        }
+        .presences-actions {
+          display: flex;
+          gap: var(--spacing-sm);
+          flex-wrap: wrap;
         }
         .presence-summary {
           display: flex;
@@ -292,6 +305,73 @@ const PagesPresences = {
     if (success) {
       // Recharger les présences
       await Presences.loadByProgramme(this.currentProgrammeId);
+    }
+  },
+
+  // Export des présences en CSV
+  exportPresencesCSV() {
+    const programme = Programmes.getById(this.currentProgrammeId);
+    if (!programme || this.presencesData.length === 0) {
+      Toast.warning('Aucune donnée à exporter.');
+      return;
+    }
+
+    const dateDebut = programme.date_debut?.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);
+    const dateStr = Utils.formatDate(dateDebut);
+    
+    const sep = ';';
+    const escapeCsv = (val) => {
+      if (val == null || val === '') return '';
+      const s = String(val).replace(/"/g, '""');
+      return /[;\r\n"]/.test(s) ? `"${s}"` : s;
+    };
+    
+    const getStatutLabel = (statut) => {
+      const labels = { present: 'Présent', absent: 'Absent', excuse: 'Excusé', non_renseigne: 'Non renseigné' };
+      return labels[statut] || statut;
+    };
+
+    const headers = ['Prénom', 'Nom', 'Rôle', 'Statut', 'Commentaire'];
+    const rows = this.presencesData.map(p => [
+      escapeCsv(p.membre.prenom),
+      escapeCsv(p.membre.nom),
+      escapeCsv(Utils.getRoleLabel(p.membre.role)),
+      escapeCsv(getStatutLabel(p.statut)),
+      escapeCsv(p.commentaire)
+    ].join(sep));
+
+    const csv = '\uFEFF' + headers.join(sep) + '\r\n' + rows.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const fileName = `presences_${programme.nom.replace(/[^a-zA-Z0-9]/g, '_')}_${dateDebut.toISOString().slice(0, 10)}.csv`;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    Toast.success(`Export de ${this.presencesData.length} présence(s) réussi.`);
+  },
+
+  // Export des présences en PDF
+  exportPresencesPDF() {
+    const programme = Programmes.getById(this.currentProgrammeId);
+    if (!programme || this.presencesData.length === 0) {
+      Toast.warning('Aucune donnée à exporter.');
+      return;
+    }
+
+    try {
+      PDFExport.generateProgrammePresenceReport(this.presencesData, {
+        programme: programme,
+        famille: AppState.famille?.nom || ''
+      });
+      Toast.info('Fenêtre d\'impression ouverte. Utilisez "Imprimer / Enregistrer en PDF" pour sauvegarder.');
+    } catch (e) {
+      console.error('Erreur export PDF présences:', e);
+      if (e.message && e.message.includes('bloquée')) {
+        Toast.error('Fenêtre bloquée. Autorisez les popups pour ce site puis réessayez.');
+      } else {
+        Toast.error('Erreur lors de la génération du PDF.');
+      }
     }
   },
 

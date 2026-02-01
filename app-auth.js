@@ -458,6 +458,32 @@ const Permissions = {
     return this.hasRole('adjoint_berger');
   },
 
+  // Nouvelles Âmes
+  canViewNouvellesAmes() {
+    return this.hasRole('mentor');
+  },
+
+  canManageNouvellesAmes() {
+    return this.hasRole('mentor');
+  },
+
+  canConvertNouvelleAme() {
+    return this.hasRole('adjoint_berger');
+  },
+
+  canDeleteNouvelleAme() {
+    return this.hasRole('berger');
+  },
+
+  // Évangélisation
+  canViewEvangelisation() {
+    return this.hasRole('mentor');
+  },
+
+  canManageEvangelisation() {
+    return this.hasRole('adjoint_berger');
+  },
+
   canEditMember(membreId) {
     if (!AppState.user) return false;
     if (membreId === AppState.user.id) return true;

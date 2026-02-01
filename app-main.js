@@ -120,6 +120,10 @@ const App = {
       case 'sujets-priere': pageTitle = 'Sujets de prière'; pageContent = await PagesPriere.render(); break;
       case 'temoignages': pageTitle = 'Témoignages'; pageContent = await PagesTemoignages.render(); break;
       case 'documents': pageTitle = 'Documents'; pageContent = await PagesDocuments.render(); break;
+      case 'nouvelles-ames': pageTitle = 'Nouvelles âmes'; pageContent = await PagesNouvellesAmes.render(); break;
+      case 'nouvelles-ames-add': pageTitle = 'Ajouter une nouvelle âme'; pageContent = PagesNouvellesAmes.renderAdd(); break;
+      case 'nouvelle-ame-detail': pageTitle = 'Détail nouvelle âme'; pageContent = await PagesNouvellesAmes.renderDetail(this.currentParams.id); break;
+      case 'nouvelle-ame-suivi': pageTitle = 'Ajouter un suivi'; pageContent = PagesNouvellesAmes.renderAddSuivi(this.currentParams.id); break;
       default: pageTitle = 'Page non trouvée'; pageContent = '<div class="alert alert-warning">Cette page n\'existe pas.</div>';
     }
 
@@ -245,6 +249,7 @@ const App = {
               <div class="nav-item ${AppState.currentPage === 'mes-disciples' ? 'active' : ''}" onclick="App.navigate('mes-disciples')"><i class="fas fa-user-friends"></i><span>Mes disciples</span></div>
               <div class="nav-item ${AppState.currentPage === 'programmes' ? 'active' : ''}" onclick="App.navigate('programmes')"><i class="fas fa-clipboard-list"></i><span>Programmes</span></div>
               <div class="nav-item ${AppState.currentPage === 'statistiques' ? 'active' : ''}" onclick="App.navigate('statistiques')"><i class="fas fa-chart-bar"></i><span>Statistiques</span></div>
+              <div class="nav-item ${AppState.currentPage === 'nouvelles-ames' || AppState.currentPage === 'nouvelles-ames-add' || AppState.currentPage === 'nouvelle-ame-detail' || AppState.currentPage === 'nouvelle-ame-suivi' ? 'active' : ''}" onclick="App.navigate('nouvelles-ames')"><i class="fas fa-seedling"></i><span>Nouvelles âmes</span></div>
             </div>` : ''}
             ${Permissions.canViewAllMembers() ? `<div class="nav-section"><div class="nav-section-title">Administration</div>
               <div class="nav-item ${AppState.currentPage === 'membres' ? 'active' : ''}" onclick="App.navigate('membres')"><i class="fas fa-users"></i><span>Tous les membres</span></div>

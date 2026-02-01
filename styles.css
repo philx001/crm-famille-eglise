@@ -1262,3 +1262,27 @@ select.form-control {
 
 .hidden { display: none !important; }
 .visible { display: block !important; }
+
+/* ============================================
+   NOUVELLES ÂMES - STYLES
+   ============================================ */
+
+/* Badges statut nouvelles âmes */
+.badge-na-nouveau { background: rgba(33, 150, 243, 0.15); color: #1976D2; }
+.badge-na-en_suivi { background: rgba(255, 152, 0, 0.15); color: #F57C00; }
+.badge-na-integre { background: rgba(76, 175, 80, 0.15); color: #388E3C; }
+.badge-na-inactif { background: rgba(158, 158, 158, 0.15); color: #616161; }
+.badge-na-perdu { background: rgba(244, 67, 54, 0.15); color: #D32F2F; }
+
+/* Form row pour les formulaires */
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-md);
+}
+
+@media (max-width: 600px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}

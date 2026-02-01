@@ -294,5 +294,142 @@ const PDFExport = {
       } catch (_) {}
     };
     return true;
+  },
+
+  // Générer le rapport de présences pour un programme spécifique
+  generateProgrammePresenceReport(presencesData, options = {}) {
+    const { programme, famille } = options;
+    const escape = (v) => String(v != null ? v : '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    
+    const dateDebut = programme?.date_debut?.toDate ? programme.date_debut.toDate() : new Date(programme?.date_debut || Date.now());
+    const dateStr = dateDebut.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const heureStr = dateDebut.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    
+    const getStatutLabel = (statut) => {
+      const labels = { present: 'Présent', absent: 'Absent', excuse: 'Excusé', non_renseigne: 'Non renseigné' };
+      return labels[statut] || statut;
+    };
+    const getStatutBadge = (statut) => {
+      const badges = {
+        present: 'badge-success',
+        absent: 'badge-danger',
+        excuse: 'badge-warning',
+        non_renseigne: 'badge-secondary'
+      };
+      return badges[statut] || 'badge-secondary';
+    };
+
+    // Calculer les stats
+    const counts = { present: 0, absent: 0, excuse: 0, non_renseigne: 0 };
+    presencesData.forEach(p => { counts[p.statut]++; });
+    const total = presencesData.length;
+    const taux = total > 0 ? Math.round((counts.present / total) * 100) : 0;
+
+    const rows = presencesData.map(p => `
+      <tr>
+        <td>${escape(p.membre.prenom)} ${escape(p.membre.nom)}</td>
+        <td>${escape(Utils.getRoleLabel(p.membre.role))}</td>
+        <td class="text-center"><span class="badge ${getStatutBadge(p.statut)}">${getStatutLabel(p.statut)}</span></td>
+        <td>${escape(p.commentaire)}</td>
+      </tr>
+    `).join('');
+
+    const content = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Présences - ${escape(programme?.nom || 'Programme')}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333; padding: 15mm; }
+    @media print { body { padding: 0; } .no-print { display: none; } }
+    .header { text-align: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #2D5A7B; }
+    .header h1 { color: #2D5A7B; font-size: 20pt; margin-bottom: 5px; }
+    .header .subtitle { font-size: 12pt; color: #666; }
+    .header .date { font-size: 11pt; color: #888; margin-top: 8px; }
+    .header .date-generation { font-size: 9pt; color: #aaa; margin-top: 5px; }
+    .stats-summary { display: flex; justify-content: center; gap: 30px; margin-bottom: 20px; padding: 15px; background: #f5f7fa; border-radius: 8px; }
+    .stat-box { text-align: center; padding: 10px 20px; }
+    .stat-value { font-size: 22pt; font-weight: bold; }
+    .stat-value.success { color: #4CAF50; }
+    .stat-value.danger { color: #F44336; }
+    .stat-value.warning { color: #FF9800; }
+    .stat-value.primary { color: #2D5A7B; }
+    .stat-label { font-size: 9pt; color: #666; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 10pt; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #f5f7fa; font-weight: 600; color: #555; text-transform: uppercase; font-size: 9pt; }
+    tr:nth-child(even) { background: #fafafa; }
+    .text-center { text-align: center; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 9pt; font-weight: 500; }
+    .badge-success { background: #E8F5E9; color: #2E7D32; }
+    .badge-danger { background: #FFEBEE; color: #C62828; }
+    .badge-warning { background: #FFF3E0; color: #E65100; }
+    .badge-secondary { background: #ECEFF1; color: #546E7A; }
+    .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; font-size: 9pt; color: #888; }
+    .btn-print { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; background: #2D5A7B; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
+    .btn-print:hover { background: #1E3D5C; }
+  </style>
+</head>
+<body>
+  <button class="btn-print no-print" onclick="window.print()">Imprimer / PDF</button>
+  
+  <div class="header">
+    <h1>${escape(programme?.nom || 'Programme')}</h1>
+    <div class="subtitle">Famille ${escape(famille)}</div>
+    <div class="date">${dateStr} à ${heureStr}</div>
+    <div class="date-generation">Généré le ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+  </div>
+  
+  <div class="stats-summary">
+    <div class="stat-box">
+      <div class="stat-value success">${counts.present}</div>
+      <div class="stat-label">Présents</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value danger">${counts.absent}</div>
+      <div class="stat-label">Absents</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value warning">${counts.excuse}</div>
+      <div class="stat-label">Excusés</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value primary">${taux}%</div>
+      <div class="stat-label">Taux</div>
+    </div>
+  </div>
+  
+  <table>
+    <thead>
+      <tr>
+        <th>Membre</th>
+        <th>Rôle</th>
+        <th class="text-center">Statut</th>
+        <th>Commentaire</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+    </tbody>
+  </table>
+  
+  <div class="footer">
+    <p>CRM Famille - ${escape(famille)} - ${total} membre(s)</p>
+  </div>
+</body>
+</html>`;
+
+    const printWindow = window.open('about:blank', '_blank');
+    if (!printWindow) {
+      throw new Error('Fenêtre bloquée. Autorisez les popups pour ce site.');
+    }
+    printWindow.document.open();
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.onload = () => {
+      setTimeout(() => printWindow.print(), 500);
+    };
+    return true;
   }
 };

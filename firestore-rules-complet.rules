@@ -109,5 +109,33 @@ service cloud.firestore {
         resource.data.auteur_id == request.auth.uid || isAdmin()
       );
     }
+
+    // ========================================
+    // NOUVELLES ÂMES
+    // ========================================
+    match /nouvelles_ames/{nouvelleAmeId} {
+      // Tout utilisateur authentifié peut lire/créer/modifier
+      // Le filtrage par famille se fait côté client
+      allow read, create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    // SUIVIS DES NOUVELLES ÂMES
+    match /suivis_ames/{suiviId} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
+    // SESSIONS D'ÉVANGÉLISATION
+    match /sessions_evangelisation/{sessionId} {
+      allow read: if isAuthenticated() && hasRole('mentor');
+      allow create, update: if isAuthenticated() && hasRole('adjoint_berger');
+      allow delete: if isAuthenticated() && hasRole('berger');
+    }
+
+    // SECTEURS D'ÉVANGÉLISATION
+    match /secteurs_evangelisation/{secteurId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated() && hasRole('adjoint_berger');
+    }
   }
 }

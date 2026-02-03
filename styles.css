@@ -628,6 +628,30 @@ a.btn-outline {
   border-color: var(--danger);
 }
 
+.password-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.password-input-wrap .form-control {
+  padding-right: 2.75rem;
+}
+.password-toggle-btn {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.password-toggle-btn:hover {
+  color: var(--text-primary);
+}
+
 .form-error {
   font-size: 0.8rem;
   color: var(--danger);
@@ -1181,9 +1205,45 @@ select.form-control {
    RESPONSIVE
    ============================================ */
 
+/* Bouton menu mobile (caché sur desktop) */
+.mobile-menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 1.25rem;
+}
+.mobile-menu-toggle:hover {
+  background: var(--border-color);
+}
+
+/* Overlay quand le menu est ouvert sur mobile */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 999;
+  transition: opacity 0.2s;
+}
+.sidebar-overlay.active {
+  display: block;
+}
+
 @media (max-width: 1024px) {
   .sidebar {
     transform: translateX(-100%);
+    transition: transform 0.25s ease-out;
   }
   
   .sidebar.open {
@@ -1195,7 +1255,12 @@ select.form-control {
   }
   
   .mobile-menu-toggle {
-    display: block;
+    display: flex;
+    margin-right: var(--spacing-sm);
+  }
+  
+  .header-search {
+    display: none !important;
   }
 }
 

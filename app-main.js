@@ -121,7 +121,24 @@ const App = {
     AppState.currentPage = page;
     this.currentParams = params;
     this.updateHash(page, params);
+    this.closeSidebar();
     this.render();
+  },
+
+  toggleSidebar() {
+    const sidebar = document.getElementById('app-sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (!sidebar || !overlay) return;
+    const isOpen = sidebar.classList.toggle('open');
+    overlay.classList.toggle('active', isOpen);
+    overlay.setAttribute('aria-hidden', !isOpen);
+  },
+
+  closeSidebar() {
+    const sidebar = document.getElementById('app-sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (sidebar) sidebar.classList.remove('open');
+    if (overlay) { overlay.classList.remove('active'); overlay.setAttribute('aria-hidden', 'true'); }
   },
 
   navigateFromHash() {
@@ -599,7 +616,7 @@ const App = {
     const user = AppState.user, famille = AppState.famille;
     return `
       <div class="app-container">
-        <aside class="sidebar">
+        <aside class="sidebar" id="app-sidebar">
           <div class="sidebar-header"><div class="sidebar-logo">✝️</div><div><div class="sidebar-title">CRM Famille</div><div class="sidebar-subtitle">${Utils.escapeHtml(famille?.nom || '')}</div></div></div>
           <nav class="sidebar-nav">
             ${App.getRaccourcisNav()}
@@ -635,11 +652,17 @@ const App = {
             <button class="btn-logout" onclick="Auth.logout()" title="Se déconnecter"><i class="fas fa-sign-out-alt"></i></button>
           </div>
         </aside>
+        <div class="sidebar-overlay" id="sidebar-overlay" onclick="App.toggleSidebar()" aria-hidden="true"></div>
         <main class="main-content">
           <header class="main-header">
-            <div class="header-left"><h1 class="page-title">${pageTitle}</h1></div>
+            <div class="header-left">
+              <button type="button" class="mobile-menu-toggle" onclick="App.toggleSidebar()" aria-label="Ouvrir le menu">
+                <i class="fas fa-bars"></i>
+              </button>
+              <h1 class="page-title">${pageTitle}</h1>
+            </div>
             <div class="header-right">
-              <div class="global-search" style="position: relative;">
+              <div class="global-search header-search" style="position: relative;">
                 <input type="text" class="form-control" id="global-search-input" placeholder="Rechercher membre, nouvelle âme..." 
                        style="width: 220px; padding-left: 36px;" 
                        oninput="App.globalSearchDebounce()" onfocus="App.globalSearchShow()" onblur="setTimeout(() => App.globalSearchHide(), 150)">
@@ -1269,6 +1292,20 @@ const App = {
 
   showLoading() { AppState.isLoading = true; let l = document.getElementById('app-loader'); if (!l) { l = document.createElement('div'); l.id = 'app-loader'; l.innerHTML = '<div class="loading"><div class="spinner"></div></div>'; l.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;'; document.body.appendChild(l); } l.style.display = 'flex'; },
   hideLoading() { AppState.isLoading = false; const l = document.getElementById('app-loader'); if (l) l.style.display = 'none'; },
+  toggleLoginPasswordVisibility(btn) {
+    const wrap = btn.closest('.password-input-wrap');
+    const input = wrap ? wrap.querySelector('input') : null;
+    if (!input) return;
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    const icon = btn.querySelector('i');
+    if (icon) {
+      icon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
+    }
+    btn.setAttribute('aria-label', isPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+    btn.setAttribute('title', isPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+  },
+
   showForgotPassword() { const e = prompt('Entrez votre adresse email :'); if (e && Utils.isValidEmail(e)) Auth.resetPassword(e); else if (e) Toast.error('Email invalide'); }
 };
 

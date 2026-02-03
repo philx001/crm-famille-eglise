@@ -175,10 +175,10 @@ const NouvellesAmes = {
     }
   },
 
-  // Supprimer une nouvelle âme (berger uniquement)
+  // Supprimer une nouvelle âme (superviseur uniquement)
   async delete(id) {
     try {
-      if (!Permissions.hasRole('berger')) {
+      if (!Permissions.hasRole('superviseur')) {
         Toast.error('Permission refusée');
         return false;
       }
@@ -314,7 +314,7 @@ const NouvellesAmes = {
   // Convertir une nouvelle âme en membre
   async convertToMembre(id) {
     try {
-      if (!Permissions.hasRole('adjoint_berger')) {
+      if (!Permissions.hasRole('adjoint_superviseur')) {
         Toast.error('Permission refusée');
         return false;
       }
@@ -1218,7 +1218,7 @@ const PagesNouvellesAmes = {
           <button class="btn btn-primary" onclick="App.navigate('nouvelle-ame-suivi', {id: '${id}'})">
             <i class="fas fa-plus"></i> Ajouter un suivi
           </button>
-          ${Permissions.hasRole('adjoint_berger') && na.statut !== 'integre' ? `
+          ${Permissions.hasRole('adjoint_superviseur') && na.statut !== 'integre' ? `
           <button class="btn btn-success" onclick="PagesNouvellesAmes.convertirEnMembre('${id}')">
             <i class="fas fa-user-check"></i> Convertir en membre
           </button>

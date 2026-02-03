@@ -85,7 +85,7 @@ const Notifications = {
       if (!notif) throw new Error('Notification non trouvée');
 
       const canEdit = notif.auteur_id === AppState.user.id ||
-        Permissions.hasRole('adjoint_berger') ||
+        Permissions.hasRole('adjoint_superviseur') ||
         Permissions.isAdmin();
       if (!canEdit) throw new Error('Permission refusée');
 
@@ -116,7 +116,7 @@ const Notifications = {
       if (!notif) throw new Error('Notification non trouvée');
 
       const canDelete = notif.auteur_id === AppState.user.id ||
-        Permissions.hasRole('adjoint_berger') ||
+        Permissions.hasRole('adjoint_superviseur') ||
         Permissions.isAdmin();
       if (!canDelete) throw new Error('Permission refusée');
 
@@ -377,7 +377,7 @@ const PagesNotifications = {
     const priorite = Notifications.getPriorite(notif.priorite);
     const date = notif.created_at?.toDate ? notif.created_at.toDate() : new Date(notif.created_at);
     const canEdit = notif.auteur_id === AppState.user.id ||
-      Permissions.hasRole('adjoint_berger') ||
+      Permissions.hasRole('adjoint_superviseur') ||
       Permissions.isAdmin();
     const updatedDate = notif.updated_at ? (notif.updated_at.toDate ? notif.updated_at.toDate() : new Date(notif.updated_at)) : null;
 

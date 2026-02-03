@@ -362,40 +362,40 @@ const App = {
     }
   },
 
-  showAddBergerModalFromButton(btn) {
+  showAddSuperviseurModalFromButton(btn) {
     const familleId = btn.dataset.familleId;
     const familleNom = btn.dataset.familleNom || '';
     if (!familleId) return;
-    this.showAddBergerModal(familleId, familleNom);
+    this.showAddSuperviseurModal(familleId, familleNom);
   },
 
-  showAddBergerModal(familleId, familleNom) {
-    const modalId = 'modal-add-berger-famille';
+  showAddSuperviseurModal(familleId, familleNom) {
+    const modalId = 'modal-add-superviseur-famille';
     const html = `
       <div class="modal-overlay active" id="${modalId}">
         <div class="modal">
           <div class="modal-header">
-            <h3 class="modal-title"><i class="fas fa-user-plus"></i> Ajouter un berger</h3>
+            <h3 class="modal-title"><i class="fas fa-user-plus"></i> Ajouter un superviseur</h3>
             <button class="modal-close" onclick="document.getElementById('${modalId}').remove();">&times;</button>
           </div>
           <div class="modal-body">
-            <div class="alert alert-info mb-3">Famille : <strong>${Utils.escapeHtml(familleNom)}</strong>. Ce berger pourra ensuite ajouter mentors et disciples depuis la fenêtre de connexion.</div>
+            <div class="alert alert-info mb-3">Famille : <strong>${Utils.escapeHtml(familleNom)}</strong>. Ce superviseur pourra ensuite ajouter mentors et disciples depuis la fenêtre de connexion.</div>
             <div class="form-group">
               <label class="form-label required">Prénom</label>
-              <input type="text" class="form-control" id="berger-prenom" required>
+              <input type="text" class="form-control" id="superviseur-prenom" required>
             </div>
             <div class="form-group">
               <label class="form-label required">Nom</label>
-              <input type="text" class="form-control" id="berger-nom" required>
+              <input type="text" class="form-control" id="superviseur-nom" required>
             </div>
             <div class="form-group">
               <label class="form-label required">Email</label>
-              <input type="email" class="form-control" id="berger-email" required>
+              <input type="email" class="form-control" id="superviseur-email" required>
             </div>
           </div>
           <div class="modal-footer">
             <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove();">Annuler</button>
-            <button class="btn btn-primary" onclick="App.submitAddBergerForFamily('${familleId}')"><i class="fas fa-save"></i> Créer le berger</button>
+            <button class="btn btn-primary" onclick="App.submitAddSuperviseurForFamily('${familleId}')"><i class="fas fa-save"></i> Créer le superviseur</button>
           </div>
         </div>
       </div>
@@ -403,14 +403,14 @@ const App = {
     document.body.insertAdjacentHTML('beforeend', html);
   },
 
-  async submitAddBergerForFamily(familleId) {
-    const prenom = document.getElementById('berger-prenom')?.value?.trim();
-    const nom = document.getElementById('berger-nom')?.value?.trim();
-    const email = document.getElementById('berger-email')?.value?.trim();
+  async submitAddSuperviseurForFamily(familleId) {
+    const prenom = document.getElementById('superviseur-prenom')?.value?.trim();
+    const nom = document.getElementById('superviseur-nom')?.value?.trim();
+    const email = document.getElementById('superviseur-email')?.value?.trim();
     if (!prenom || !nom || !email) { Toast.warning('Remplissez tous les champs'); return; }
     try {
-      await Auth.createMembreForFamily(familleId, { prenom, nom, email, role: 'berger' });
-      document.getElementById('modal-add-berger-famille')?.remove();
+      await Auth.createMembreForFamily(familleId, { prenom, nom, email, role: 'superviseur' });
+      document.getElementById('modal-add-superviseur-famille')?.remove();
     } catch (e) {
       Toast.error(e.message || 'Erreur');
     }
@@ -422,7 +422,7 @@ const App = {
     const mesDisciples = user.role !== 'disciple' && user.role !== 'nouveau' ? Membres.getDisciples(user.id) : [];
     const prochainsProgrammes = Programmes.getUpcoming(5);
     
-    // Charger les programmes à pointer (seulement pour mentors et bergers)
+    // Charger les programmes à pointer (seulement pour mentors et superviseurs)
     let programmesAPointer = [];
     if (Permissions.hasRole('mentor')) {
       programmesAPointer = await Presences.getUnpointedProgrammes(7);
@@ -440,7 +440,7 @@ const App = {
       // Continuer sans bloquer le dashboard
     }
 
-    // Alertes absence (bergers / stats) : membres avec taux de présence < 50 % sur les 30 derniers jours
+    // Alertes absence (superviseurs / stats) : membres avec taux de présence < 50 % sur les 30 derniers jours
     let alertesAbsence = [];
     if (Permissions.canViewStats()) {
       try {
@@ -513,7 +513,7 @@ const App = {
         ` : ''}
       </div>
       ${stats.anniversairesAujourdhui.length > 0 ? `<div class="alert alert-success mb-3"><i class="fas fa-birthday-cake"></i><div class="alert-content"><div class="alert-title">🎂 Joyeux anniversaire !</div><p class="mb-0">${stats.anniversairesAujourdhui.map(m => m.prenom + ' ' + m.nom).join(', ')}</p></div></div>` : ''}
-      ${repartitionMentors && repartitionMentors.totalFamille > 0 ? (Permissions.hasRole('berger') || Permissions.isAdmin() ? `
+      ${repartitionMentors && repartitionMentors.totalFamille > 0 ? (Permissions.hasRole('superviseur') || Permissions.isAdmin() ? `
       <div class="dashboard-section">
         <div class="section-header">
           <h3 class="section-title"><i class="fas fa-users-cog"></i> Répartition des membres par mentor</h3>
@@ -557,7 +557,7 @@ const App = {
       ${dernieresNotifications.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-bell"></i> Dernières notifications</h3><a href="#" onclick="App.navigate('notifications'); return false;" class="btn btn-sm btn-outline" style="cursor: pointer;">Voir tout</a></div><div class="card"><div class="card-body" style="padding: 0;">${dernieresNotifications.map(n => { const priorite = Notifications.getPriorite(n.priorite); const date = n.created_at?.toDate ? n.created_at.toDate() : new Date(n.created_at); return `<div class="notification-card-mini" onclick="App.navigate('notifications'); return false;" style="cursor: pointer;"><div class="notif-priority" style="background: ${priorite.bgColor}; color: ${priorite.color};"><i class="fas ${priorite.icon}"></i></div><div class="notif-content"><div class="notif-text">${Utils.escapeHtml(n.contenu)}</div><div class="notif-meta"><span class="notif-author">${n.auteur_prenom || 'Anonyme'}</span><span class="notif-date">${Utils.formatRelativeDate(date)}</span></div></div></div>`; }).join('')}</div></div></div>` : ''}
       ${alertesAbsence.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-user-clock"></i> Alertes absence</h3><a href="#" onclick="App.navigate('statistiques'); return false;" class="btn btn-sm btn-outline" style="cursor: pointer;">Voir les stats</a></div><div class="alert alert-warning mb-0"><div class="alert-content"><p class="mb-2">Membres avec moins de 50 % de présence sur les 30 derniers jours (à recontacter) :</p><ul class="mb-0" style="list-style: none; padding-left: 0;">${alertesAbsence.slice(0, 8).map(a => `<li style="padding: var(--spacing-xs) 0; border-bottom: 1px solid rgba(0,0,0,0.06);"><strong>${Utils.escapeHtml(a.prenom)} ${Utils.escapeHtml(a.nom)}</strong> — ${a.tauxPresence} % (${a.nbPresences}/${a.nbTotal} présences, ${a.nbAbsences} absence${a.nbAbsences > 1 ? 's' : ''})${a.dernierProgramme ? ` — Dernier programme : ${Utils.formatDate(a.dernierProgramme)}` : ''}</li>`).join('')}</ul>${alertesAbsence.length > 8 ? `<p class="mt-2 mb-0 text-muted">... et ${alertesAbsence.length - 8} autre(s). <a href="#" onclick="App.navigate('statistiques'); return false;">Voir les statistiques</a></p>` : ''}</div></div></div>` : ''}
       ${amesARelancer.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-seedling"></i> Nouvelles âmes à relancer</h3><a href="#" onclick="App.navigate('nouvelles-ames'); return false;" class="btn btn-sm btn-outline" style="cursor: pointer;">Voir tout</a></div><div class="alert alert-info mb-0"><div class="alert-content"><p class="mb-2"><strong>${amesARelancer.length}</strong> nouvelle(s) âme(s) sans contact depuis plus de 7 jours :</p><ul class="mb-0" style="list-style: none; padding-left: 0;">${amesARelancer.map(na => { const lastContact = na.date_dernier_contact?.toDate ? na.date_dernier_contact.toDate() : new Date(na.date_dernier_contact || na.created_at); const daysAgo = Math.floor((new Date() - lastContact) / (1000 * 60 * 60 * 24)); return `<li style="padding: var(--spacing-xs) 0; border-bottom: 1px solid rgba(0,0,0,0.06); display: flex; justify-content: space-between; align-items: center;"><span><strong>${Utils.escapeHtml(na.prenom)} ${Utils.escapeHtml(na.nom)}</strong> — dernier contact il y a ${daysAgo} jour${daysAgo > 1 ? 's' : ''}</span><a href="#" onclick="App.navigate('nouvelle-ame-detail', {id: '${na.id}'}); return false;" class="btn btn-sm btn-primary" style="padding: 4px 8px;"><i class="fas fa-phone"></i> Relancer</a></li>`; }).join('')}</ul></div></div></div>` : ''}
-      ${Permissions.hasRole('berger') ? App.renderObjectifsKPI(statsNouvellesAmes, statsEvangelisation, stats) : ''}
+      ${Permissions.hasRole('superviseur') ? App.renderObjectifsKPI(statsNouvellesAmes, statsEvangelisation, stats) : ''}
       <div class="dashboard-section">
         <div class="section-header"><h3 class="section-title"><i class="fas fa-bolt"></i> Actions rapides</h3></div>
         <div class="quick-actions">
@@ -743,7 +743,38 @@ const App = {
   },
 
   filterMembres() { const search = document.getElementById('search-membres')?.value.toLowerCase() || ''; const roleFilter = document.getElementById('filter-role')?.value || ''; const mentorFilter = document.getElementById('filter-mentor')?.value || ''; document.querySelectorAll('#membres-list .member-card').forEach(card => { const name = card.dataset.name || ''; const role = card.dataset.role || ''; const mentorId = card.dataset.mentorId || ''; const matchMentor = !mentorFilter || (mentorFilter === 'none' ? mentorId === '' : mentorId === mentorFilter); card.style.display = name.includes(search) && (!roleFilter || role === roleFilter) && matchMentor ? '' : 'none'; }); },
-  filterAnnuaire() { const search = document.getElementById('search-annuaire')?.value.toLowerCase() || ''; const moisValue = document.getElementById('filter-annuaire-mois')?.value || ''; document.querySelectorAll('#annuaire-list .member-card').forEach(card => { const name = card.dataset.name || ''; const birthMonth = card.dataset.birthMonth || ''; const matchSearch = name.includes(search); const matchMois = !moisValue || birthMonth === moisValue; card.style.display = matchSearch && matchMois ? '' : 'none'; }); },
+  filterAnnuaire() {
+    const search = document.getElementById('search-annuaire')?.value.toLowerCase() || '';
+    const moisValue = document.getElementById('filter-annuaire-mois')?.value || '';
+    const poleValue = document.getElementById('filter-annuaire-pole')?.value || '';
+    document.querySelectorAll('#annuaire-list .member-card').forEach(card => {
+      const name = card.dataset.name || '';
+      const birthMonth = card.dataset.birthMonth || '';
+      const poles = (card.dataset.poles || '').split(',').map(p => p.trim()).filter(Boolean);
+      const matchSearch = name.includes(search);
+      const matchMois = !moisValue || birthMonth === moisValue;
+      const matchPole = !poleValue ? true : (poleValue === 'aucun' ? (poles.length === 0 || (poles.length === 1 && poles[0] === 'aucun')) : poles.includes(poleValue));
+      card.style.display = matchSearch && matchMois && matchPole ? '' : 'none';
+    });
+  },
+
+  togglePoleInterne(checkbox) {
+    const isAucun = checkbox.dataset.poleAucun === 'true';
+    const group = document.querySelectorAll('.pole-check input[type="checkbox"]');
+    if (isAucun && checkbox.checked) {
+      group.forEach(cb => { if (cb !== checkbox) cb.checked = false; });
+    } else if (checkbox.checked && !isAucun) {
+      document.querySelectorAll('.pole-check input[value="aucun"]').forEach(cb => { cb.checked = false; });
+      const checkedPoles = Array.from(group).filter(cb => cb.checked && cb.value !== 'aucun');
+      if (checkedPoles.length > 2) {
+        const first = checkedPoles.find(cb => cb !== checkbox);
+        if (first) first.checked = false;
+      }
+    }
+    const checkedCount = Array.from(group).filter(cb => cb.checked && cb.value !== 'aucun').length;
+    const hint = document.getElementById('pole-interne-hint');
+    if (hint) hint.textContent = checkedCount > 0 ? `${checkedCount}/2 pôle(s) sélectionné(s)` : (document.querySelector('.pole-check input[value="aucun"]:checked') ? 'Aucun pôle' : '');
+  },
   filterProgrammes() { const search = document.getElementById('search-programmes')?.value.toLowerCase() || ''; const typeFilter = document.getElementById('filter-type')?.value || ''; document.querySelectorAll('#programmes-list .programme-card').forEach(card => { const name = card.dataset.name || ''; const type = card.dataset.type || ''; card.style.display = name.includes(search) && (!typeFilter || type === typeFilter) ? '' : 'none'; }); },
 
   exportMembresCSV() {
@@ -760,7 +791,7 @@ const App = {
       // Mentor ou page "Mes disciples" : exporter uniquement ses disciples
       membres = AppState.membres.filter(m => m.statut_compte === 'actif' && m.mentor_id === AppState.user.id);
     } else {
-      // Admin/Berger sur page membres : exporter tous les membres
+      // Admin/Superviseur sur page membres : exporter tous les membres
       membres = AppState.membres.filter(m => m.statut_compte === 'actif');
     }
     if (membres.length === 0) {
@@ -813,7 +844,7 @@ const App = {
   },
 
   async exportGlobal() {
-    if (!Permissions.hasRole('berger')) { Toast.error('Réservé aux bergers'); return; }
+    if (!Permissions.hasRole('superviseur')) { Toast.error('Réservé aux superviseurs'); return; }
     try {
       let naCache = [];
       if (typeof NouvellesAmes !== 'undefined') {
@@ -871,7 +902,7 @@ const App = {
       // Mentor ou page "Mes disciples" : exporter uniquement ses disciples
       membres = AppState.membres.filter(m => m.statut_compte === 'actif' && m.mentor_id === AppState.user.id);
     } else {
-      // Admin/Berger sur page membres : exporter tous les membres
+      // Admin/Superviseur sur page membres : exporter tous les membres
       membres = AppState.membres.filter(m => m.statut_compte === 'actif');
     }
     if (membres.length === 0) {
@@ -901,6 +932,27 @@ const App = {
       setTimeout(() => NotesSuivi.loadAndRender('membre', id), 50);
     }
   },
+
+  async reassignMentor(membreId, newMentorId) {
+    if (!newMentorId) return;
+    const membre = Membres.getById(membreId);
+    if (!membre || !Permissions.canReassignMentor(membre)) {
+      Toast.error('Vous ne pouvez pas réaffecter ce membre.');
+      return;
+    }
+    const mentorId = newMentorId === 'none' ? null : newMentorId;
+    if (membre.mentor_id === mentorId || (membre.mentor_id == null && mentorId == null)) return;
+    try {
+      const ok = await Membres.update(membreId, { mentor_id: mentorId });
+      if (ok) {
+        Toast.success('Mentor mis à jour.');
+        this.navigate(AppState.currentPage);
+      }
+    } catch (e) {
+      Toast.error(e.message || 'Erreur lors de la réaffectation.');
+    }
+  },
+
   editMembre(id) { document.querySelector('.page-content').innerHTML = Pages.renderProfilEdit(id); },
   viewProgramme(id) { this.navigate('programme-detail', { programmeId: id }); },
   editProgramme(id) { this.navigate('programmes-edit', { programmeId: id }); },
@@ -910,8 +962,8 @@ const App = {
     const r = document.getElementById('membre-role');
     const m = document.getElementById('mentor-group');
     if (r && m) {
-      // Cacher le mentor pour 'nouveau' et les rôles mentor/adjoint/berger (qui n'ont pas besoin de mentor)
-      const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_berger', 'berger'];
+      // Cacher le mentor pour 'nouveau' et les rôles mentor/adjoint/superviseur (qui n'ont pas besoin de mentor)
+      const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_superviseur', 'superviseur'];
       m.style.display = rolesWithoutMentor.includes(r.value) ? 'none' : 'block';
     }
   },
@@ -919,7 +971,7 @@ const App = {
   async submitAddMembre(event) {
     event.preventDefault();
     const role = document.getElementById('membre-role').value;
-    const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_berger', 'berger'];
+    const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_superviseur', 'superviseur'];
     const d = {
       prenom: document.getElementById('membre-prenom').value.trim(),
       nom: document.getElementById('membre-nom').value.trim(),
@@ -1125,7 +1177,40 @@ const App = {
     }
   },
 
-  async submitEditProfil(event, membreId) { event.preventDefault(); const formations = []; document.querySelectorAll('[id^="formation-"]:checked').forEach(cb => formations.push(cb.value)); const data = { prenom: document.getElementById('edit-prenom').value.trim(), nom: document.getElementById('edit-nom').value.trim(), sexe: document.getElementById('edit-sexe').value || null, date_naissance: document.getElementById('edit-date-naissance').value ? new Date(document.getElementById('edit-date-naissance').value) : null, telephone: document.getElementById('edit-telephone').value.trim() || null, adresse_ville: document.getElementById('edit-ville').value.trim() || null, adresse_code_postal: document.getElementById('edit-cp').value.trim() || null, date_arrivee_icc: document.getElementById('edit-date-icc').value ? new Date(document.getElementById('edit-date-icc').value) : null, formations, ministere_service: document.getElementById('edit-ministere').value.trim() || null, baptise_immersion: document.getElementById('edit-baptise').value === 'true' ? true : document.getElementById('edit-baptise').value === 'false' ? false : null, date_bapteme: document.getElementById('edit-date-bapteme')?.value ? new Date(document.getElementById('edit-date-bapteme').value) : null, profession: document.getElementById('edit-profession').value.trim() || null, statut_professionnel: document.getElementById('edit-statut-pro').value || null, passions_centres_interet: document.getElementById('edit-passions').value.trim() || null }; if (await Membres.update(membreId, data)) this.navigate('profil'); },
+  async submitEditProfil(event, membreId) {
+    event.preventDefault();
+    const formations = [];
+    document.querySelectorAll('[id^="formation-"]:checked').forEach(cb => formations.push(cb.value));
+    const poleCheckboxes = document.querySelectorAll('.pole-check input[type="checkbox"]:checked');
+    let pole_interne = [];
+    const hasAucun = Array.from(poleCheckboxes).some(cb => cb.value === 'aucun');
+    if (hasAucun) pole_interne = [];
+    else pole_interne = Array.from(poleCheckboxes).map(cb => cb.value).filter(v => v !== 'aucun').slice(0, 2);
+    if (poleCheckboxes.length === 0) {
+      Toast.warning('Le pôle interne d\'appartenance est obligatoire. Choisissez « Aucun » ou jusqu\'à 2 pôles.');
+      return;
+    }
+    const data = {
+      prenom: document.getElementById('edit-prenom').value.trim(),
+      nom: document.getElementById('edit-nom').value.trim(),
+      sexe: document.getElementById('edit-sexe').value || null,
+      date_naissance: document.getElementById('edit-date-naissance').value ? new Date(document.getElementById('edit-date-naissance').value) : null,
+      indicatif_telephone: document.getElementById('edit-indicatif-telephone')?.value?.trim() || null,
+      telephone: document.getElementById('edit-telephone').value.trim() || null,
+      adresse_ville: document.getElementById('edit-ville').value.trim() || null,
+      adresse_code_postal: document.getElementById('edit-cp').value.trim() || null,
+      date_arrivee_icc: document.getElementById('edit-date-icc').value ? new Date(document.getElementById('edit-date-icc').value) : null,
+      formations,
+      ministere_service: document.getElementById('edit-ministere').value.trim() || null,
+      baptise_immersion: document.getElementById('edit-baptise').value === 'true' ? true : document.getElementById('edit-baptise').value === 'false' ? false : null,
+      date_bapteme: document.getElementById('edit-date-bapteme')?.value ? new Date(document.getElementById('edit-date-bapteme').value) : null,
+      pole_interne,
+      profession: document.getElementById('edit-profession').value.trim() || null,
+      statut_professionnel: document.getElementById('edit-statut-pro').value || null,
+      passions_centres_interet: document.getElementById('edit-passions').value.trim() || null
+    };
+    if (await Membres.update(membreId, data)) this.navigate('profil');
+  },
 
   async submitProgramme(event, programmeId = null) {
     event.preventDefault();

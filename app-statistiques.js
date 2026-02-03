@@ -259,7 +259,7 @@ const Statistiques = {
     const actifs = AppState.membres.filter(m => m.statut_compte === 'actif');
     const totalFamille = actifs.length;
     const mentorsPourRepartition = actifs.filter(m =>
-      ['mentor', 'adjoint_berger', 'berger'].includes(m.role)
+      ['mentor', 'adjoint_superviseur', 'superviseur'].includes(m.role)
     );
     const parMentor = mentorsPourRepartition.map(m => {
       const nbDansGroupe = Membres.getDisciples(m.id).length;
@@ -562,8 +562,8 @@ const PagesStatistiques = {
         </div>
       </div>
 
-      ${(Permissions.hasRole('berger') || Permissions.isAdmin()) ? `
-      <!-- Répartition des membres par mentor (berger + admin uniquement) -->
+      ${(Permissions.hasRole('superviseur') || Permissions.isAdmin()) ? `
+      <!-- Répartition des membres par mentor (superviseur + admin uniquement) -->
       <div class="card mt-3">
         <div class="card-header">
           <h3 class="card-title"><i class="fas fa-users-cog"></i> Répartition des membres par mentor</h3>
@@ -575,7 +575,7 @@ const PagesStatistiques = {
       </div>
       ` : ''}
 
-      ${Permissions.hasRole('mentor') && !Permissions.hasRole('berger') && !Permissions.isAdmin() ? `
+      ${Permissions.hasRole('mentor') && !Permissions.hasRole('superviseur') && !Permissions.isAdmin() ? `
       <!-- Votre groupe (mentor uniquement : proportion de son groupe sur la famille) -->
       <div class="card mt-3">
         <div class="card-header">
@@ -587,7 +587,7 @@ const PagesStatistiques = {
       </div>
       ` : ''}
 
-      ${Permissions.hasRole('berger') ? `
+      ${Permissions.hasRole('superviseur') ? `
       <!-- Statistiques par mentor -->
       <div class="card mt-3">
         <div class="card-header">
@@ -823,7 +823,7 @@ const PagesStatistiques = {
     return Statistiques.getRepartitionMentorsData();
   },
 
-  // Section "Répartition des membres par mentor" (visible berger + admin uniquement)
+  // Section "Répartition des membres par mentor" (visible superviseur + admin uniquement)
   renderRepartitionMentorsSection() {
     const { totalFamille, parMentor } = this.getRepartitionMentorsData();
     if (parMentor.length === 0) {
@@ -887,7 +887,7 @@ const PagesStatistiques = {
     `;
   },
 
-  // Section "Votre groupe" (visible mentor uniquement, pas berger ni admin)
+  // Section "Votre groupe" (visible mentor uniquement, pas superviseur ni admin)
   renderMonGroupeSection() {
     const { totalFamille, parMentor } = this.getRepartitionMentorsData();
     const monEntree = parMentor.find(m => m.mentorId === AppState.user.id);

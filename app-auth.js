@@ -78,7 +78,7 @@ const Auth = {
         }
         if (userData.statut_compte !== 'actif') {
           await auth.signOut();
-          throw new Error('Votre compte est inactif. Contactez votre Berger.');
+          throw new Error('Votre compte est inactif. Contactez votre superviseur.');
         }
         try {
           await db.collection('utilisateurs').doc(uid).update({
@@ -228,6 +228,7 @@ const Auth = {
         date_naissance: null,
         adresse_ville: null,
         adresse_code_postal: null,
+        indicatif_telephone: null,
         telephone: null,
         date_arrivee_icc: null,
         formations: [],
@@ -326,12 +327,13 @@ const Auth = {
         prenom: (membreData.prenom || '').trim(),
         famille_id: familleId,
         mentor_id: null,
-        role: membreData.role || 'berger',
+        role: membreData.role || 'superviseur',
         statut_compte: 'actif',
         sexe: null,
         date_naissance: null,
         adresse_ville: null,
         adresse_code_postal: null,
+        indicatif_telephone: null,
         telephone: null,
         date_arrivee_icc: null,
         formations: [],
@@ -360,7 +362,7 @@ const Auth = {
       localStorage.removeItem('crm_famille_id');
       localStorage.setItem('crm_famille_nom', familleNom);
       App.showLoginPage();
-      Toast.success(`${newMembre.prenom} a été ajouté comme berger de la famille. Reconnectez-vous.`);
+      Toast.success(`${newMembre.prenom} a été ajouté comme superviseur de la famille. Reconnectez-vous.`);
       console.log('Mot de passe temporaire:', tempPassword);
       return { id: uid, tempPassword, adminDisconnected: true, ...newMembre };
     } catch (error) {
@@ -540,7 +542,7 @@ const Permissions = {
   },
 
   canViewAllMembers() {
-    return this.hasRole('berger');
+    return this.hasRole('superviseur');
   },
 
   canAddDisciple() {
@@ -548,12 +550,12 @@ const Permissions = {
   },
 
   canAddNouveau() {
-    return this.hasRole('berger');
+    return this.hasRole('superviseur');
   },
 
   canMarkPresence(discipleId) {
     if (!AppState.user) return false;
-    if (this.hasRole('berger')) return true;
+    if (this.hasRole('superviseur')) return true;
     
     const disciple = AppState.membres.find(m => m.id === discipleId);
     return disciple && disciple.mentor_id === AppState.user.id;
@@ -568,11 +570,11 @@ const Permissions = {
   },
 
   canManagePrograms() {
-    return this.hasRole('adjoint_berger');
+    return this.hasRole('adjoint_superviseur');
   },
 
   canManageDocuments() {
-    return this.hasRole('adjoint_berger');
+    return this.hasRole('adjoint_superviseur');
   },
 
   // Nouvelles Âmes
@@ -585,11 +587,11 @@ const Permissions = {
   },
 
   canConvertNouvelleAme() {
-    return this.hasRole('adjoint_berger');
+    return this.hasRole('adjoint_superviseur');
   },
 
   canDeleteNouvelleAme() {
-    return this.hasRole('berger');
+    return this.hasRole('superviseur');
   },
 
   // Évangélisation
@@ -598,13 +600,23 @@ const Permissions = {
   },
 
   canManageEvangelisation() {
-    return this.hasRole('adjoint_berger');
+    return this.hasRole('adjoint_superviseur');
   },
 
   canEditMember(membreId) {
     if (!AppState.user) return false;
     if (membreId === AppState.user.id) return true;
-    if (this.hasRole('berger')) return true;
+    if (this.hasRole('superviseur')) return true;
+    return false;
+  },
+
+  /** Peut réaffecter ce membre (disciple, nouveau, mentor, adjoint) à un autre mentor (page Mes disciples ou Membres) */
+  canReassignMentor(membre) {
+    if (!AppState.user || !membre) return false;
+    const rolesAvecMentor = ['disciple', 'nouveau', 'mentor', 'adjoint_superviseur'];
+    if (!rolesAvecMentor.includes(membre.role)) return false;
+    if (this.hasRole('superviseur') || this.isAdmin()) return true;
+    if (this.hasRole('mentor') && membre.mentor_id === AppState.user.id) return true;
     return false;
   },
 
@@ -679,7 +691,7 @@ const Membres = {
 
   async delete(id) {
     try {
-      if (!Permissions.hasRole('berger')) {
+      if (!Permissions.hasRole('superviseur')) {
         throw new Error('Permission refusée');
       }
 
@@ -700,8 +712,16 @@ const Membres = {
 
   getMentors() {
     return AppState.membres.filter(m => 
-      ['mentor', 'berger', 'admin'].includes(m.role) && 
+      ['mentor', 'superviseur', 'admin'].includes(m.role) && 
       m.statut_compte === 'actif'
+    );
+  },
+
+  /** Liste des membres pouvant être choisis comme mentor (pour réaffectation disciple/nouveau) */
+  getPossibleMentorsForReassign() {
+    return AppState.membres.filter(m =>
+      m.statut_compte === 'actif' &&
+      ['mentor', 'adjoint_superviseur', 'superviseur', 'admin'].includes(m.role)
     );
   },
 
@@ -713,8 +733,8 @@ const Membres = {
         disciples: actifs.filter(m => m.role === 'disciple').length,
         nouveaux: actifs.filter(m => m.role === 'nouveau').length,
         mentors: actifs.filter(m => m.role === 'mentor').length,
-        adjoints: actifs.filter(m => m.role === 'adjoint_berger').length,
-        bergers: actifs.filter(m => m.role === 'berger').length,
+        adjoints: actifs.filter(m => m.role === 'adjoint_superviseur').length,
+        superviseurs: actifs.filter(m => m.role === 'superviseur').length,
       },
       anniversairesAujourdhui: actifs.filter(m => Utils.isBirthday(m.date_naissance))
     };

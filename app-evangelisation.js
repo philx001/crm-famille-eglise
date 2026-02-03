@@ -68,7 +68,7 @@ const Secteurs = {
   // Créer un secteur
   async create(data) {
     try {
-      if (!Permissions.hasRole('adjoint_berger')) {
+      if (!Permissions.hasRole('adjoint_superviseur')) {
         Toast.error('Permission refusée');
         return null;
       }
@@ -100,7 +100,7 @@ const Secteurs = {
   // Modifier un secteur
   async update(id, data) {
     try {
-      if (!Permissions.hasRole('adjoint_berger')) {
+      if (!Permissions.hasRole('adjoint_superviseur')) {
         Toast.error('Permission refusée');
         return false;
       }
@@ -127,7 +127,7 @@ const Secteurs = {
   // Supprimer un secteur
   async delete(id) {
     try {
-      if (!Permissions.hasRole('adjoint_berger')) {
+      if (!Permissions.hasRole('adjoint_superviseur')) {
         Toast.error('Permission refusée');
         return false;
       }
@@ -220,7 +220,7 @@ const SessionsEvangelisation = {
   // Créer une session
   async create(data) {
     try {
-      if (!Permissions.hasRole('adjoint_berger')) {
+      if (!Permissions.hasRole('adjoint_superviseur')) {
         Toast.error('Permission refusée');
         return null;
       }
@@ -262,7 +262,7 @@ const SessionsEvangelisation = {
   // Modifier une session
   async update(id, data) {
     try {
-      if (!Permissions.hasRole('adjoint_berger')) {
+      if (!Permissions.hasRole('adjoint_superviseur')) {
         Toast.error('Permission refusée');
         return false;
       }
@@ -718,7 +718,7 @@ const PagesEvangelisation = {
           <button class="btn btn-outline" onclick="App.navigate('evangelisation-stats')">
             <i class="fas fa-chart-bar"></i> Statistiques
           </button>
-          ${Permissions.hasRole('adjoint_berger') ? `
+          ${Permissions.hasRole('adjoint_superviseur') ? `
           <button class="btn btn-outline" onclick="App.navigate('evangelisation-planning')">
             <i class="fas fa-calendar-alt"></i> Planning
           </button>
@@ -744,7 +744,7 @@ const PagesEvangelisation = {
       ` : `
       <div class="alert alert-info mb-3">
         <i class="fas fa-info-circle"></i>
-        <div>Aucune session d'évangélisation planifiée. ${Permissions.hasRole('adjoint_berger') ? 'Créez-en une !' : ''}</div>
+        <div>Aucune session d'évangélisation planifiée. ${Permissions.hasRole('adjoint_superviseur') ? 'Créez-en une !' : ''}</div>
       </div>
       `}
       
@@ -1285,7 +1285,7 @@ const PagesEvangelisation = {
               <i class="fas fa-flag-checkered"></i> Terminer la session
             </button>
             ` : ''}
-            ${session.statut === 'terminee' && Permissions.hasRole('adjoint_berger') ? `
+            ${session.statut === 'terminee' && Permissions.hasRole('adjoint_superviseur') ? `
             <button type="button" class="btn btn-outline" onclick="PagesEvangelisation.showEditNotesBilanModal('${id}')" style="margin-top: var(--spacing-md);">
               <i class="fas fa-edit"></i> Modifier notes et bilan
             </button>

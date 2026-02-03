@@ -12,7 +12,7 @@ service cloud.firestore {
 
     function hasRole(role) {
       let userData = getUserData();
-      let roles = ['disciple', 'nouveau', 'mentor', 'adjoint_berger', 'berger', 'admin'];
+      let roles = ['disciple', 'nouveau', 'mentor', 'adjoint_superviseur', 'superviseur', 'admin'];
       return roles.indexOf(userData.role) >= roles.indexOf(role);
     }
 
@@ -36,7 +36,7 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (
         request.auth.uid == userId ||
         isAdmin() ||
-        (hasRole('berger') && resource.data.famille_id == getUserData().famille_id) ||
+        (hasRole('superviseur') && resource.data.famille_id == getUserData().famille_id) ||
         (hasRole('mentor') && resource.data.mentor_id == request.auth.uid) ||
         (resource.data.famille_id == getUserData().famille_id)
       );
@@ -45,12 +45,12 @@ service cloud.firestore {
 
       allow update: if isAuthenticated() && (
         request.auth.uid == userId ||
-        (hasRole('berger') && resource.data.famille_id == getUserData().famille_id) ||
+        (hasRole('superviseur') && resource.data.famille_id == getUserData().famille_id) ||
         isAdmin()
       );
 
       allow delete: if isAuthenticated() && (
-        (hasRole('berger') && resource.data.famille_id == getUserData().famille_id) ||
+        (hasRole('superviseur') && resource.data.famille_id == getUserData().famille_id) ||
         isAdmin()
       );
     }
@@ -61,7 +61,7 @@ service cloud.firestore {
       allow create, update: if isAuthenticated() &&
         belongsToFamily(request.resource.data.famille_id);
       allow delete: if isAuthenticated() &&
-        (hasRole('berger') || isAdmin()) &&
+        (hasRole('superviseur') || isAdmin()) &&
         belongsToFamily(resource.data.famille_id);
     }
 
@@ -69,7 +69,7 @@ service cloud.firestore {
     match /presences/{presenceId} {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated();
-      allow delete: if isAuthenticated() && (hasRole('berger') || isAdmin());
+      allow delete: if isAuthenticated() && (hasRole('superviseur') || isAdmin());
     }
 
     // DOCUMENTS (fichiers partagés)
@@ -78,7 +78,7 @@ service cloud.firestore {
       allow create: if isAuthenticated() && belongsToFamily(request.resource.data.famille_id);
       allow update, delete: if isAuthenticated() && belongsToFamily(resource.data.famille_id) && (
         resource.data.uploaded_by == request.auth.uid
-        || hasRole('adjoint_berger')
+        || hasRole('adjoint_superviseur')
       );
     }
 
@@ -102,13 +102,13 @@ service cloud.firestore {
       );
     }
 
-    // NOTIFICATIONS (auteur, adjoint_berger+, ou admin peut modifier/supprimer)
+    // NOTIFICATIONS (auteur, adjoint_superviseur+, ou admin peut modifier/supprimer)
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
       allow create: if isAuthenticated() &&
         belongsToFamily(request.resource.data.famille_id);
       allow update, delete: if isAuthenticated() && belongsToFamily(resource.data.famille_id) && (
-        resource.data.auteur_id == request.auth.uid || hasRole('adjoint_berger') || isAdmin()
+        resource.data.auteur_id == request.auth.uid || hasRole('adjoint_superviseur') || isAdmin()
       );
     }
 

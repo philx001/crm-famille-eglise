@@ -176,7 +176,7 @@ const Programmes = {
   // Supprimer un programme
   async delete(id) {
     try {
-      if (!Permissions.hasRole('berger')) {
+      if (!Permissions.hasRole('superviseur')) {
         throw new Error('Permission refusée');
       }
 
@@ -373,7 +373,7 @@ const Presences = {
     try {
       // Obtenir les membres à pointer selon le rôle
       let membresAttendus = [];
-      if (Permissions.hasRole('berger')) {
+      if (Permissions.hasRole('superviseur')) {
         membresAttendus = AppState.membres.filter(m => m.statut_compte === 'actif');
       } else if (Permissions.hasRole('mentor')) {
         membresAttendus = Membres.getDisciples(AppState.user.id);

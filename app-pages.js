@@ -59,11 +59,11 @@ const Pages = {
       // Mentor : ne voit que ses disciples (pas lui-même)
       membres = membres.filter(m => m.mentor_id === AppState.user.id);
     } else if (isMesDisciples) {
-      // Admin/Berger sur la page "Mes disciples" : ne voit que ses disciples (pas lui-même)
+      // Admin/Superviseur sur la page "Mes disciples" : ne voit que ses disciples (pas lui-même)
       membres = membres.filter(m => m.mentor_id === AppState.user.id);
     }
 
-    // Afficher les boutons d'export si admin/berger OU si mentor sur "mes-disciples"
+    // Afficher les boutons d'export si admin/superviseur OU si mentor sur "mes-disciples"
     const showExportButtons = Permissions.canViewAllMembers() || (isMesDisciples && Permissions.hasRole('mentor'));
 
     const statsSection = isMesDisciples && membres.length > 0 ? `
@@ -95,14 +95,14 @@ const Pages = {
             <option value="disciple">Disciples</option>
             <option value="nouveau">Nouveaux</option>
             <option value="mentor">Mentors</option>
-            <option value="adjoint_berger">Adjoints</option>
-            <option value="berger">Bergers</option>
+            <option value="adjoint_superviseur">Adjoints</option>
+            <option value="superviseur">Superviseurs</option>
           </select>
           ${Permissions.canViewAllMembers() && !isMesDisciples ? `
           <select class="form-control" id="filter-mentor" onchange="App.filterMembres()" style="width: auto;">
             <option value="">Tous les mentors</option>
             <option value="none">Non affecté</option>
-            ${(AppState.membres || []).filter(m => m.statut_compte === 'actif' && ['mentor', 'adjoint_berger', 'berger'].includes(m.role)).map(m => `<option value="${m.id}">${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)}</option>`).join('')}
+            ${(AppState.membres || []).filter(m => m.statut_compte === 'actif' && ['mentor', 'adjoint_superviseur', 'superviseur'].includes(m.role)).map(m => `<option value="${m.id}">${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)}</option>`).join('')}
           </select>
           ` : ''}
         </div>
@@ -140,16 +140,16 @@ const Pages = {
   getMentorLabelForMember(membre) {
     if (!Permissions.canViewAllMembers()) return null;
     const role = membre.role;
-    if (role === 'berger' || role === 'admin') return null;
+    if (role === 'superviseur' || role === 'admin') return null;
     if (role === 'nouveau') return 'Non Affecté';
-    const bergerOfFamily = AppState.membres.find(m => m.role === 'berger');
+    const superviseurOfFamily = AppState.membres.find(m => m.role === 'superviseur');
     const mentor = membre.mentor_id ? Membres.getById(membre.mentor_id) : null;
     if (role === 'disciple') {
       return mentor ? `${mentor.prenom} ${mentor.nom}` : 'Non Affecté';
     }
-    if (role === 'mentor' || role === 'adjoint_berger') {
-      if (!mentor) return bergerOfFamily ? `${bergerOfFamily.prenom} ${bergerOfFamily.nom}` : 'Non Affecté';
-      if (mentor.role === 'berger') return `${mentor.prenom} ${mentor.nom}`;
+    if (role === 'mentor' || role === 'adjoint_superviseur') {
+      if (!mentor) return superviseurOfFamily ? `${superviseurOfFamily.prenom} ${superviseurOfFamily.nom}` : 'Non Affecté';
+      if (mentor.role === 'superviseur') return `${mentor.prenom} ${mentor.nom}`;
       return `${mentor.prenom} ${mentor.nom}`;
     }
     return mentor ? `${mentor.prenom} ${mentor.nom}` : 'Non Affecté';
@@ -159,9 +159,25 @@ const Pages = {
     const mentor = membre.mentor_id ? Membres.getById(membre.mentor_id) : null;
     const mentorLabel = this.getMentorLabelForMember(membre);
     const isBirthday = Utils.isBirthday(membre.date_naissance);
+    const canReassign = Permissions.canReassignMentor(membre);
+    const possibleMentors = canReassign ? Membres.getPossibleMentorsForReassign() : [];
     const avatarStyle = membre.photo_url
       ? `background-image: url('${Utils.escapeHtml(membre.photo_url)}'); background-size: cover; background-position: center;`
       : `background: ${membre.sexe === 'F' ? '#E91E63' : 'var(--primary)'}`;
+
+    const reassignSelect = canReassign && possibleMentors.length > 0 ? `
+      <div class="member-reassign" style="margin-top: 6px;">
+        <label class="text-muted" style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Réaffecter à</label>
+        <select class="form-control form-control-sm" style="max-width: 180px; font-size: 0.8rem;" 
+                onchange="App.reassignMentor('${membre.id}', this.value)" title="Changer de mentor">
+          <option value="">— Choisir —</option>
+          <option value="none" ${!membre.mentor_id ? 'selected' : ''}>Non affecté</option>
+          ${possibleMentors.filter(m => m.id !== membre.id).map(m => `
+          <option value="${m.id}" ${membre.mentor_id === m.id ? 'selected' : ''}>${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)} (${Utils.getRoleLabel(m.role)})</option>
+          `).join('')}
+        </select>
+      </div>
+    ` : '';
 
     return `
       <div class="member-card" data-id="${membre.id}" data-role="${membre.role}" 
@@ -174,6 +190,7 @@ const Pages = {
             ${isBirthday ? '🎂 ' : ''}${Utils.escapeHtml(membre.prenom)} ${Utils.escapeHtml(membre.nom)}
           </div>
           <div class="member-email">${Utils.escapeHtml(membre.email)}</div>
+          ${reassignSelect}
         </div>
         <div class="member-meta">
           <span class="badge badge-${membre.role}">${Utils.getRoleLabel(membre.role)}</span>
@@ -196,7 +213,7 @@ const Pages = {
   renderAddMembre() {
     const mentors = Membres.getMentors();
     const canAddNouveau = Permissions.canAddNouveau();
-    const isAdminOrBerger = Permissions.hasRole('berger') || Permissions.isAdmin();
+    const isAdminOrSuperviseur = Permissions.hasRole('superviseur') || Permissions.isAdmin();
 
     return `
       <div class="card" style="max-width: 600px; margin: 0 auto;">
@@ -225,10 +242,10 @@ const Pages = {
               <select class="form-control" id="membre-role" required onchange="App.toggleMentorField()">
                 <option value="disciple">Disciple</option>
                 ${canAddNouveau ? '<option value="nouveau">Nouveau (sans mentor)</option>' : ''}
-                ${isAdminOrBerger ? `
+                ${isAdminOrSuperviseur ? `
                   <option value="mentor">Mentor</option>
-                  <option value="adjoint_berger">Adjoint Berger</option>
-                  <option value="berger">Berger</option>
+                  <option value="adjoint_superviseur">Adjoint superviseur</option>
+                  <option value="superviseur">Superviseur</option>
                 ` : ''}
               </select>
             </div>
@@ -237,7 +254,7 @@ const Pages = {
               <label class="form-label">Mentor</label>
               <select class="form-control" id="membre-mentor">
                 <option value="${AppState.user.id}">Moi-même (${Utils.escapeHtml(AppState.user.prenom)})</option>
-                ${isAdminOrBerger ? mentors
+                ${isAdminOrSuperviseur ? mentors
                   .filter(m => m.id !== AppState.user.id)
                   .map(m => `<option value="${m.id}">${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)}</option>`)
                   .join('') : ''}
@@ -312,6 +329,7 @@ const Pages = {
             
             <div>
               <h4 class="mb-2">Annuaire</h4>
+              <p><strong>Pôle(s) interne(s):</strong> ${Utils.getPolesLabel(membre.pole_interne) || '-'}</p>
               <p><strong>Profession:</strong> ${membre.profession || '-'}</p>
               <p><strong>Statut:</strong> ${membre.statut_professionnel ? Utils.capitalize(membre.statut_professionnel.replace('_', ' ')) : '-'}</p>
               <p><strong>Centres d'intérêt:</strong> ${membre.passions_centres_interet || '-'}</p>
@@ -395,7 +413,13 @@ const Pages = {
               </div>
               <div class="form-group">
                 <label class="form-label">Téléphone</label>
-                <input type="tel" class="form-control" id="edit-telephone" value="${membre.telephone || ''}">
+                <div style="display: flex; gap: var(--spacing-sm); align-items: flex-start;">
+                  <select class="form-control" id="edit-indicatif-telephone" title="Indicatif pays" style="max-width: 220px;">
+                    ${Utils.INDICATIFS_PAYS.map(ind => `<option value="${Utils.escapeHtml(ind.value)}" ${(membre.indicatif_telephone || '+33') === ind.value ? 'selected' : ''}>${Utils.escapeHtml(ind.label)}</option>`).join('')}
+                  </select>
+                  <input type="tel" class="form-control" id="edit-telephone" placeholder="6 12 34 56 78" value="${Utils.escapeHtml(membre.telephone || '')}" style="flex: 1;">
+                </div>
+                <span class="form-hint">Ex. France : 6 12 34 56 78 (sans le 0 initial)</span>
               </div>
             </div>
             
@@ -446,6 +470,28 @@ const Pages = {
             <div class="form-group" id="edit-date-bapteme-group" style="display: ${membre.baptise_immersion === true ? 'block' : 'none'};">
               <label class="form-label">Date du baptême</label>
               <input type="date" class="form-control" id="edit-date-bapteme" min="${minDate}" max="${today}" value="${getDateValue(membre.date_bapteme)}">
+            </div>
+            
+            <hr style="margin: var(--spacing-lg) 0;">
+            <h4 class="mb-2">Pôle(s) interne(s) d'appartenance</h4>
+            <p class="text-muted mb-2" style="font-size: 0.9rem;">Choisissez au maximum 2 pôles (obligatoire). Cochez « Aucun » si vous n'appartenez à aucun pôle.</p>
+            <div class="form-group" id="pole-interne-group">
+              <div style="display: flex; flex-wrap: wrap; gap: var(--spacing-md);">
+                ${Utils.POLE_OPTIONS.map(opt => {
+                  const isAucun = opt.value === 'aucun';
+                  const membrePoles = membre.pole_interne || [];
+                  const checked = isAucun ? (membrePoles.length === 0 || (membrePoles.length === 1 && membrePoles[0] === 'aucun')) : membrePoles.includes(opt.value);
+                  const id = 'pole-' + opt.value.replace(/_/g, '-');
+                  return `
+                  <label class="form-check pole-check" style="margin-bottom: 0;" data-pole-value="${Utils.escapeHtml(opt.value)}">
+                    <input type="checkbox" id="${id}" value="${Utils.escapeHtml(opt.value)}" ${checked ? 'checked' : ''}
+                           onchange="App.togglePoleInterne(this)"
+                           data-pole-aucun="${isAucun}">
+                    <span>${Utils.escapeHtml(opt.label)}</span>
+                  </label>`;
+                }).join('')}
+              </div>
+              <span class="form-hint" id="pole-interne-hint">${(function(){ const p = membre.pole_interne || []; const n = p.filter(x => x !== 'aucun').length; return n === 0 ? 'Aucun pôle' : n + '/2 pôle(s) sélectionné(s)'; })()}</span>
             </div>
             
             <hr style="margin: var(--spacing-lg) 0;">
@@ -551,7 +597,7 @@ const Pages = {
             </div>
           </div>
 
-          ${Permissions.hasRole('berger') ? `
+          ${Permissions.hasRole('superviseur') ? `
           <hr style="margin: var(--spacing-lg) 0;">
           <h4 class="mb-2">Sauvegarde des données</h4>
           <p class="text-muted mb-2" style="font-size: 0.9rem;">Exporter l'ensemble des données (membres, programmes, nouvelles âmes, sujets de prière) en JSON pour archivage.</p>
@@ -601,6 +647,7 @@ const Pages = {
       .sort((a, b) => a.nom.localeCompare(b.nom));
     const moisLabels = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
+    const poleOptionsForFilter = [{ value: '', label: 'Tous les pôles' }, ...Utils.POLE_OPTIONS.filter(o => o.value !== 'aucun'), { value: 'aucun', label: 'Aucun' }];
     return `
       <div class="members-header">
         <div class="search-box">
@@ -608,6 +655,12 @@ const Pages = {
           <input type="text" class="form-control" id="search-annuaire" 
                  placeholder="Rechercher..." onkeyup="App.filterAnnuaire()">
         </div>
+        <label style="display: flex; align-items: center; gap: 8px; white-space: nowrap;">
+          <i class="fas fa-layer-group"></i>
+          <select class="form-control" id="filter-annuaire-pole" onchange="App.filterAnnuaire()" title="Filtrer par pôle">
+            ${poleOptionsForFilter.map(o => `<option value="${o.value}">${Utils.escapeHtml(o.label)}</option>`).join('')}
+          </select>
+        </label>
         <label style="display: flex; align-items: center; gap: 8px; white-space: nowrap;">
           <i class="fas fa-birthday-cake"></i>
           <select class="form-control" id="filter-annuaire-mois" onchange="App.filterAnnuaire()" title="Filtrer par mois d'anniversaire">
@@ -631,12 +684,14 @@ const Pages = {
                   birthMonth = String(d.getMonth() + 1).padStart(2, '0');
                 }
               }
-              
+              const polesArr = m.pole_interne && Array.isArray(m.pole_interne) ? m.pole_interne.filter(p => p !== 'aucun') : [];
+              const dataPoles = polesArr.length > 0 ? polesArr.join(',') : 'aucun';
+              const polesLabel = Utils.getPolesLabel(m.pole_interne);
               const avatarStyleAnnuaire = m.photo_url
                 ? `background-image: url('${Utils.escapeHtml(m.photo_url)}'); background-size: cover; background-position: center; position: relative;`
                 : `background: ${m.sexe === 'F' ? '#E91E63' : 'var(--primary)'}; position: relative;`;
               return `
-                <div class="member-card" data-name="${(m.prenom + ' ' + m.nom).toLowerCase()}" data-birth-month="${birthMonth}">
+                <div class="member-card" data-name="${(m.prenom + ' ' + m.nom).toLowerCase()}" data-birth-month="${birthMonth}" data-poles="${Utils.escapeHtml(dataPoles)}">
                   <div class="member-avatar ${isBirthday ? 'birthday-glow' : ''}" 
                        style="${avatarStyleAnnuaire}">
                     ${!m.photo_url ? Utils.getInitials(m.prenom, m.nom) : ''}
@@ -647,21 +702,27 @@ const Pages = {
                       ${isBirthday ? '🎂 ' : ''}${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)}
                     </div>
                     <div class="text-muted" style="font-size: 0.85rem;">
+                      <i class="fas fa-layer-group"></i> ${Utils.escapeHtml(polesLabel)}
+                    </div>
+                    <div class="text-muted" style="font-size: 0.85rem;">
                       <i class="fas fa-calendar-alt"></i> ${birthDisplay}
                     </div>
                     <div class="text-muted" style="font-size: 0.8rem; margin-top: 2px;">
                       ${(m.adresse_ville || m.adresse_code_postal) ? `<i class="fas fa-map-marker-alt"></i> ${[m.adresse_ville, m.adresse_code_postal].filter(Boolean).join(' ')}` : ''}
                     </div>
+                    <div class="text-muted" style="font-size: 0.85rem; margin-top: 2px;">
+                      <i class="fas fa-phone"></i> ${Utils.escapeHtml(Utils.formatTelephoneDisplay(m))}
+                    </div>
                   </div>
                   <div style="flex: 1;">
-                    <div style="font-size: 0.9rem;">${m.profession || '-'}</div>
+                    <div style="font-size: 0.9rem;">${Utils.escapeHtml(m.profession || '-')}</div>
                     <div class="text-muted" style="font-size: 0.8rem;">
                       ${m.statut_professionnel ? (m.statut_professionnel === 'entrepreneur_autoentrepreneur' ? 'Entrepreneur / Autoentrepreneur' : Utils.capitalize(m.statut_professionnel.replace('_', ' '))) : ''}
                     </div>
                   </div>
                   <div style="flex: 1.5;">
                     <div class="text-muted" style="font-size: 0.85rem;">
-                      <i class="fas fa-heart"></i> ${m.passions_centres_interet || '-'}
+                      <i class="fas fa-heart"></i> ${Utils.escapeHtml(m.passions_centres_interet || '-')}
                     </div>
                   </div>
                 </div>
@@ -730,7 +791,7 @@ const Pages = {
         </div>
       </div>
       
-      ${Permissions.hasRole('berger') ? `
+      ${Permissions.hasRole('superviseur') ? `
       <div class="card mt-3">
         <div class="card-header">
           <h3 class="card-title"><i class="fas fa-chart-pie"></i> Répartition par mentor</h3>
@@ -786,7 +847,7 @@ const Pages = {
           </button>
         </div>
         <div class="card-body">
-          <p class="text-muted mb-3">Les familles ont des données et membres totalement séparés. Créez une famille puis ajoutez son premier berger pour qu'il puisse inviter mentors et disciples.</p>
+          <p class="text-muted mb-3">Les familles ont des données et membres totalement séparés. Créez une famille puis ajoutez son premier superviseur pour qu'il puisse inviter mentors et disciples.</p>
           <div class="table-container">
             <table class="table">
               <thead>
@@ -802,8 +863,8 @@ const Pages = {
                     <td><strong>${Utils.escapeHtml(f.nom_affichage || f.nom || f.id)}</strong></td>
                     <td><span class="badge badge-${f.statut === 'actif' ? 'success' : 'secondary'}">${f.statut || 'actif'}</span></td>
                     <td>
-                      <button type="button" class="btn btn-sm btn-outline" data-famille-id="${f.id}" data-famille-nom="${Utils.escapeHtml(f.nom_affichage || f.nom || '')}" onclick="App.showAddBergerModalFromButton(this)">
-                        <i class="fas fa-user-plus"></i> Ajouter un berger
+                      <button type="button" class="btn btn-sm btn-outline" data-famille-id="${f.id}" data-famille-nom="${Utils.escapeHtml(f.nom_affichage || f.nom || '')}" onclick="App.showAddSuperviseurModalFromButton(this)">
+                        <i class="fas fa-user-plus"></i> Ajouter un superviseur
                       </button>
                     </td>
                   </tr>

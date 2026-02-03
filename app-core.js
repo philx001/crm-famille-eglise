@@ -93,8 +93,8 @@ const Utils = {
       'disciple': 'Disciple',
       'nouveau': 'Nouveau',
       'mentor': 'Mentor',
-      'adjoint_berger': 'Adjoint Berger',
-      'berger': 'Berger',
+      'adjoint_superviseur': 'Adjoint superviseur',
+      'superviseur': 'Superviseur',
       'admin': 'Administrateur'
     };
     return labels[role] || role;
@@ -105,11 +105,74 @@ const Utils = {
       'disciple': 1,
       'nouveau': 1,
       'mentor': 2,
-      'adjoint_berger': 3,
-      'berger': 4,
+      'adjoint_superviseur': 3,
+      'superviseur': 4,
       'admin': 5
     };
     return levels[role] || 0;
+  },
+
+  // Pôles internes d'appartenance (max 2 par membre)
+  POLE_OPTIONS: [
+    { value: 'comfrat', label: 'Pôle Comfrat' },
+    { value: 'coordination_generale', label: 'Pôle Coordination Générale' },
+    { value: 'communication', label: 'Pôle Communication' },
+    { value: 'statistiques', label: 'Pôle Statistiques' },
+    { value: 'projets', label: 'Pôle Projets' },
+    { value: 'spirituel', label: 'Pôle Spirituel' },
+    { value: 'evenementiel', label: 'Pôle Evènementiel' },
+    { value: 'evangelisation', label: 'Pôle Evangélisation' },
+    { value: 'aucun', label: 'Aucun' }
+  ],
+
+  getPoleLabel(value) {
+    const opt = Utils.POLE_OPTIONS.find(o => o.value === value);
+    return opt ? opt.label : value;
+  },
+
+  getPolesLabel(poleInterne) {
+    if (!poleInterne || !Array.isArray(poleInterne) || poleInterne.length === 0 || (poleInterne.length === 1 && poleInterne[0] === 'aucun')) return 'Aucun';
+    return poleInterne.filter(p => p !== 'aucun').map(p => Utils.getPoleLabel(p)).join(', ');
+  },
+
+  // Indicatifs téléphoniques (pays)
+  INDICATIFS_PAYS: [
+    { value: '+33', label: 'France (+33)' },
+    { value: '+32', label: 'Belgique (+32)' },
+    { value: '+41', label: 'Suisse (+41)' },
+    { value: '+1', label: 'Canada / USA (+1)' },
+    { value: '+221', label: 'Sénégal (+221)' },
+    { value: '+223', label: 'Mali (+223)' },
+    { value: '+224', label: 'Guinée (+224)' },
+    { value: '+225', label: 'Côte d\'Ivoire (+225)' },
+    { value: '+226', label: 'Burkina Faso (+226)' },
+    { value: '+227', label: 'Niger (+227)' },
+    { value: '+228', label: 'Togo (+228)' },
+    { value: '+229', label: 'Bénin (+229)' },
+    { value: '+212', label: 'Maroc (+212)' },
+    { value: '+213', label: 'Algérie (+213)' },
+    { value: '+216', label: 'Tunisie (+216)' },
+    { value: '+237', label: 'Cameroun (+237)' },
+    { value: '+242', label: 'Congo (+242)' },
+    { value: '+243', label: 'RD Congo (+243)' },
+    { value: '+261', label: 'Madagascar (+261)' },
+    { value: '+262', label: 'La Réunion (+262)' },
+    { value: '+44', label: 'Royaume-Uni (+44)' },
+    { value: '+49', label: 'Allemagne (+49)' },
+    { value: '+39', label: 'Italie (+39)' },
+    { value: '+34', label: 'Espagne (+34)' },
+    { value: '+351', label: 'Portugal (+351)' },
+    { value: '+90', label: 'Turquie (+90)' },
+    { value: '', label: 'Autre (numéro complet ci‑dessous)' }
+  ],
+
+  formatTelephoneDisplay(membre) {
+    const indicatif = membre.indicatif_telephone || '';
+    const num = membre.telephone ? String(membre.telephone).trim() : '';
+    if (!num) return '-';
+    if (indicatif) return indicatif + ' ' + num;
+    if (num.startsWith('+')) return num;
+    return '+33 ' + num;
   }
 };
 

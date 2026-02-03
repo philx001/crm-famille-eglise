@@ -735,8 +735,8 @@ select.form-control {
 .badge-disciple { background: #E3F2FD; color: #1565C0; }
 .badge-nouveau { background: #F3E5F5; color: #7B1FA2; }
 .badge-mentor { background: #E8F5E9; color: #2E7D32; }
-.badge-adjoint_berger { background: #FFF3E0; color: #E65100; }
-.badge-berger { background: #FFF8E1; color: #F57F17; }
+.badge-adjoint_superviseur { background: #FFF3E0; color: #E65100; }
+.badge-superviseur { background: #FFF8E1; color: #F57F17; }
 .badge-admin { background: #FCE4EC; color: #C2185B; }
 
 /* Alerts */

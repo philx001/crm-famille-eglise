@@ -20,8 +20,8 @@ const PagesPresences = {
     
     // Obtenir les membres à pointer
     let membres = [];
-    if (Permissions.hasRole('berger')) {
-      // Le berger voit tous les membres
+    if (Permissions.hasRole('superviseur')) {
+      // Le superviseur voit tous les membres
       membres = AppState.membres.filter(m => m.statut_compte === 'actif');
     } else {
       // Le mentor voit ses disciples

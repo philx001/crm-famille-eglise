@@ -18,8 +18,8 @@ const Documents = {
   getVisibilites() {
     return [
       { value: 'tous', label: 'Visible par tous', icon: 'fa-globe', description: 'Tous les membres de la famille' },
-      { value: 'mentors_berger', label: 'Mentors et Berger', icon: 'fa-user-shield', description: 'Mentors, adjoints et berger uniquement' },
-      { value: 'berger_seul', label: 'Berger uniquement', icon: 'fa-lock', description: 'Accès réservé au berger' }
+      { value: 'mentors_superviseur', label: 'Mentors et Superviseur', icon: 'fa-user-shield', description: 'Mentors, adjoints et superviseur uniquement' },
+      { value: 'superviseur_seul', label: 'Superviseur uniquement', icon: 'fa-lock', description: 'Accès réservé au superviseur' }
     ];
   },
 
@@ -47,8 +47,8 @@ const Documents = {
 
   canView(doc) {
     if (doc.visibilite === 'tous') return true;
-    if (doc.visibilite === 'mentors_berger' && Permissions.hasRole('mentor')) return true;
-    if (doc.visibilite === 'berger_seul' && Permissions.hasRole('berger')) return true;
+    if (doc.visibilite === 'mentors_superviseur' && Permissions.hasRole('mentor')) return true;
+    if (doc.visibilite === 'superviseur_seul' && Permissions.hasRole('superviseur')) return true;
     return false;
   },
 

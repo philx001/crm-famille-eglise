@@ -84,6 +84,14 @@ const Auth = {
           await db.collection('utilisateurs').doc(uid).update({
             derniere_connexion: firebase.firestore.FieldValue.serverTimestamp()
           });
+          await db.collection('logs_connexion').add({
+            user_id: uid,
+            email: userData.email || '',
+            prenom: userData.prenom || '',
+            nom: userData.nom || '',
+            famille_id: familleId,
+            date: firebase.firestore.FieldValue.serverTimestamp()
+          });
         } catch (e) {
           console.error('Erreur Firestore (mise à jour derniere_connexion):', e);
           throw e;
@@ -700,6 +708,11 @@ const Membres = {
         updated_at: firebase.firestore.FieldValue.serverTimestamp()
       });
 
+      if (typeof AuditLog !== 'undefined') {
+        const m = AppState.membres.find(mem => mem.id === id);
+        AuditLog.recordModification(AppState.user.id, AppState.user.email, AppState.user.prenom, AppState.user.nom, 'desactivation_membre', 'utilisateurs', id, m ? `${m.prenom} ${m.nom}` : null);
+      }
+
       AppState.membres = AppState.membres.filter(m => m.id !== id);
       Toast.success('Membre désactivé');
       return true;
@@ -738,5 +751,26 @@ const Membres = {
       },
       anniversairesAujourdhui: actifs.filter(m => Utils.isBirthday(m.date_naissance))
     };
+  }
+};
+
+// Journal d'activité (logs) — écriture côté client, lecture admin uniquement
+const AuditLog = {
+  async recordModification(userId, userEmail, userPrenom, userNom, action, collectionName, documentId, details) {
+    try {
+      await db.collection('logs_modification').add({
+        user_id: userId,
+        user_email: userEmail || '',
+        user_prenom: userPrenom || '',
+        user_nom: userNom || '',
+        action,
+        collection: collectionName,
+        document_id: documentId || null,
+        details: details || null,
+        date: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (e) {
+      console.warn('AuditLog.recordModification:', e);
+    }
   }
 };

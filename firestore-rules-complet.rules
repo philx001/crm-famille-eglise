@@ -150,5 +150,17 @@ service cloud.firestore {
     match /notes_suivi/{noteId} {
       allow read, create, update, delete: if isAuthenticated();
     }
+
+    // LOGS (admin uniquement en lecture)
+    match /logs_connexion/{logId} {
+      allow create: if isAuthenticated();
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+    match /logs_modification/{logId} {
+      allow create: if isAuthenticated();
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
   }
 }

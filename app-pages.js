@@ -354,6 +354,10 @@ const Pages = {
           Inscrit le ${Utils.formatDate(membre.created_at, 'full')}
           ${membre.derniere_connexion ? ` • Dernière connexion: ${Utils.formatRelativeDate(membre.derniere_connexion)}` : ''}
         </div>
+        <div class="rgpd-notice" style="margin-top: var(--spacing-lg); padding: var(--spacing-md); background: var(--bg-tertiary, #f5f5f5); border-radius: var(--radius-md); font-size: 0.8rem; color: var(--text-muted);">
+          <strong>Données personnelles (RGPD)</strong><br>
+          Les informations de ce profil sont strictement réservées à un usage interne et demeurent confidentielles. Chaque membre dispose d'un droit d'accès, de modification et de suppression de ses propres données personnelles.
+        </div>
       </div>
     `;
   },
@@ -384,6 +388,30 @@ const Pages = {
         </div>
         <div class="card-body">
           <form id="form-edit-profil" onsubmit="App.submitEditProfil(event, '${membre.id}')">
+            ${Permissions.canEditMember(membre.id) && membre.id !== AppState.user.id && (Permissions.hasRole('superviseur') || Permissions.isAdmin()) ? `
+            <h4 class="mb-2">Rôle et affectation</h4>
+            <div class="form-group">
+              <label class="form-label required">Rôle</label>
+              <select class="form-control" id="edit-role" onchange="App.toggleMentorFieldEdit()">
+                <option value="disciple" ${membre.role === 'disciple' ? 'selected' : ''}>Disciple</option>
+                <option value="nouveau" ${membre.role === 'nouveau' ? 'selected' : ''}>Nouveau (sans mentor)</option>
+                <option value="mentor" ${membre.role === 'mentor' ? 'selected' : ''}>Mentor</option>
+                <option value="adjoint_superviseur" ${membre.role === 'adjoint_superviseur' ? 'selected' : ''}>Adjoint superviseur</option>
+                <option value="superviseur" ${membre.role === 'superviseur' ? 'selected' : ''}>Superviseur</option>
+                ${Permissions.isAdmin() ? `<option value="admin" ${membre.role === 'admin' ? 'selected' : ''}>Administrateur</option>` : ''}
+              </select>
+            </div>
+            <div class="form-group" id="edit-mentor-group" style="display: ${['nouveau', 'mentor', 'adjoint_superviseur', 'superviseur', 'admin'].includes(membre.role) ? 'none' : 'block'};">
+              <label class="form-label">Mentor</label>
+              <select class="form-control" id="edit-mentor">
+                <option value="">Non affecté</option>
+                ${(Membres.getPossibleMentorsForReassign() || []).filter(m => m.id !== membre.id).map(m => `
+                <option value="${m.id}" ${membre.mentor_id === m.id ? 'selected' : ''}>${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)} (${Utils.getRoleLabel(m.role)})</option>
+                `).join('')}
+              </select>
+            </div>
+            <hr style="margin: var(--spacing-lg) 0;">
+            ` : ''}
             <h4 class="mb-2">Informations personnelles</h4>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);">
@@ -517,6 +545,18 @@ const Pages = {
             <div class="form-group">
               <label class="form-label">Passions / Centres d'intérêt</label>
               <textarea class="form-control" id="edit-passions" rows="3">${membre.passions_centres_interet || ''}</textarea>
+            </div>
+            
+            <hr style="margin: var(--spacing-lg) 0;">
+            <div class="rgpd-notice" style="padding: var(--spacing-md); background: var(--bg-tertiary, #f5f5f5); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-muted); margin-bottom: var(--spacing-md);">
+              <strong>Données personnelles (RGPD)</strong><br>
+              Les informations de ce profil sont strictement réservées à un usage interne et demeurent confidentielles. Chaque membre dispose d'un droit d'accès, de modification et de suppression de ses propres données personnelles.
+            </div>
+            <div class="form-group">
+              <label class="form-check" style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="edit-rgpd-accept" required class="form-control" style="width: auto; margin-top: 3px;">
+                <span>J'ai pris connaissance des informations RGPD ci-dessus et j'accepte que mes données soient traitées dans ce cadre.</span>
+              </label>
             </div>
             
             <div class="d-flex gap-2" style="justify-content: flex-end; margin-top: var(--spacing-lg);">
@@ -874,6 +914,80 @@ const Pages = {
           </div>
         </div>
       </div>
+    `;
+  },
+
+  async renderLogs() {
+    if (!Permissions.isAdmin()) return '<div class="alert alert-danger">Accès réservé à l\'administrateur.</div>';
+    let connexions = [];
+    let modifications = [];
+    try {
+      const [snapConnexions, snapModifications] = await Promise.all([
+        db.collection('logs_connexion').orderBy('date', 'desc').limit(80).get(),
+        db.collection('logs_modification').orderBy('date', 'desc').limit(80).get()
+      ]);
+      connexions = snapConnexions.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      modifications = snapModifications.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+      console.error('Erreur chargement logs:', e);
+      return '<div class="alert alert-danger">Impossible de charger le journal d\'activité. Vérifiez les règles Firestore (lecture réservée à l\'admin).</div>';
+    }
+    const formatLogDate = (d) => {
+      if (!d) return '-';
+      const t = d.toDate ? d.toDate() : new Date(d);
+      return isNaN(t.getTime()) ? '-' : t.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
+    return `
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-sign-in-alt"></i> Connexions</h3>
+        </div>
+        <div class="card-body" style="padding: 0;">
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr><th>Date</th><th>Membre</th><th>Email</th><th>Famille</th></tr>
+              </thead>
+              <tbody>
+                ${connexions.length === 0 ? '<tr><td colspan="4" class="text-center text-muted">Aucune connexion enregistrée.</td></tr>' : connexions.map(l => `
+                  <tr>
+                    <td>${formatLogDate(l.date)}</td>
+                    <td>${Utils.escapeHtml((l.prenom || '') + ' ' + (l.nom || ''))}</td>
+                    <td>${Utils.escapeHtml(l.email || '')}</td>
+                    <td><code>${Utils.escapeHtml(l.famille_id || '')}</code></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-edit"></i> Modifications</h3>
+        </div>
+        <div class="card-body" style="padding: 0;">
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr><th>Date</th><th>Par</th><th>Action</th><th>Document</th><th>Détails</th></tr>
+              </thead>
+              <tbody>
+                ${modifications.length === 0 ? '<tr><td colspan="5" class="text-center text-muted">Aucune modification enregistrée.</td></tr>' : modifications.map(l => `
+                  <tr>
+                    <td>${formatLogDate(l.date)}</td>
+                    <td>${Utils.escapeHtml((l.user_prenom || '') + ' ' + (l.user_nom || ''))} <span class="text-muted">${Utils.escapeHtml(l.user_email || '')}</span></td>
+                    <td>${Utils.escapeHtml(l.action || '')}</td>
+                    <td>${Utils.escapeHtml(l.collection || '')} / ${Utils.escapeHtml(l.document_id || '')}</td>
+                    <td>${l.details ? Utils.escapeHtml(String(l.details)) : '-'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <p class="text-muted mt-2" style="font-size: 0.85rem;">Dernières 80 entrées par type. Les données sont strictement réservées à l'administrateur.</p>
     `;
   }
 };

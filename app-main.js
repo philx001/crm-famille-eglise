@@ -178,6 +178,7 @@ const App = {
       case 'evangelisation-detail': pageTitle = 'Détail session'; pageContent = await PagesEvangelisation.renderDetail(this.currentParams.id); break;
       case 'secteurs': pageTitle = 'Secteurs'; pageContent = await PagesEvangelisation.renderSecteurs(); break;
       case 'admin-familles': pageTitle = 'Gestion des familles'; pageContent = await Pages.renderAdminFamilles(); break;
+      case 'logs': pageTitle = 'Journal d\'activité'; pageContent = await Pages.renderLogs(); break;
       default: pageTitle = 'Page non trouvée'; pageContent = '<div class="alert alert-warning">Cette page n\'existe pas.</div>';
     }
 
@@ -624,7 +625,8 @@ const App = {
             </div>` : ''}
             ${Permissions.canViewAllMembers() ? `<div class="nav-section"><div class="nav-section-title">Administration</div>
               <div class="nav-item ${AppState.currentPage === 'membres' ? 'active' : ''}" onclick="App.navigate('membres')"><i class="fas fa-users"></i><span>Tous les membres</span></div>
-              ${Permissions.isAdmin() ? `<div class="nav-item ${AppState.currentPage === 'admin-familles' ? 'active' : ''}" onclick="App.navigate('admin-familles')"><i class="fas fa-church"></i><span>Familles</span></div>` : ''}
+              ${Permissions.isAdmin() ? `<div class="nav-item ${AppState.currentPage === 'admin-familles' ? 'active' : ''}" onclick="App.navigate('admin-familles')"><i class="fas fa-church"></i><span>Familles</span></div>
+              <div class="nav-item ${AppState.currentPage === 'logs' ? 'active' : ''}" onclick="App.navigate('logs')"><i class="fas fa-history"></i><span>Journal d'activité</span></div>` : ''}
             </div>` : ''}
           </nav>
           <div class="sidebar-user">
@@ -968,6 +970,15 @@ const App = {
     }
   },
 
+  toggleMentorFieldEdit() {
+    const r = document.getElementById('edit-role');
+    const m = document.getElementById('edit-mentor-group');
+    if (r && m) {
+      const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_superviseur', 'superviseur', 'admin'];
+      m.style.display = rolesWithoutMentor.includes(r.value) ? 'none' : 'block';
+    }
+  },
+
   async submitAddMembre(event) {
     event.preventDefault();
     const role = document.getElementById('membre-role').value;
@@ -1179,6 +1190,11 @@ const App = {
 
   async submitEditProfil(event, membreId) {
     event.preventDefault();
+    const rgpdAccept = document.getElementById('edit-rgpd-accept');
+    if (!rgpdAccept?.checked) {
+      Toast.warning('Veuillez accepter les informations RGPD (case obligatoire).');
+      return;
+    }
     const formations = [];
     document.querySelectorAll('[id^="formation-"]:checked').forEach(cb => formations.push(cb.value));
     const poleCheckboxes = document.querySelectorAll('.pole-check input[type="checkbox"]:checked');
@@ -1209,6 +1225,10 @@ const App = {
       statut_professionnel: document.getElementById('edit-statut-pro').value || null,
       passions_centres_interet: document.getElementById('edit-passions').value.trim() || null
     };
+    if (editRoleEl) {
+      data.role = editRoleEl.value;
+      data.mentor_id = (rolesWithoutMentor.includes(editRoleEl.value) || !editMentorEl?.value) ? null : editMentorEl.value;
+    }
     if (await Membres.update(membreId, data)) this.navigate('profil');
   },
 

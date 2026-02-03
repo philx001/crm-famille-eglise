@@ -224,6 +224,18 @@ const NouvellesAmes = {
         (na.telephone && na.telephone.includes(search))
       );
     }
+    if (filters.date_premier_contact_debut || filters.date_premier_contact_fin) {
+      result = result.filter(na => {
+        const d = na.date_premier_contact ? (na.date_premier_contact.toDate ? na.date_premier_contact.toDate() : new Date(na.date_premier_contact)) : null;
+        if (!d || isNaN(d.getTime())) return false;
+        const dayStart = (date) => { const x = new Date(date); x.setHours(0, 0, 0, 0); return x.getTime(); };
+        const dayEnd = (date) => { const x = new Date(date); x.setHours(23, 59, 59, 999); return x.getTime(); };
+        const t = d.getTime();
+        if (filters.date_premier_contact_debut && t < dayStart(filters.date_premier_contact_debut)) return false;
+        if (filters.date_premier_contact_fin && t > dayEnd(filters.date_premier_contact_fin)) return false;
+        return true;
+      });
+    }
     
     return result;
   },
@@ -271,6 +283,32 @@ const NouvellesAmes = {
     });
     
     return stats;
+  },
+
+  // Évolution mensuelle (6 derniers mois)
+  getEvolutionMensuelle(mois = 6) {
+    const all = NouvellesAmesData.cache;
+    const now = new Date();
+    const result = [];
+    for (let i = mois - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      const count = all.filter(na => {
+        const created = na.created_at?.toDate ? na.created_at.toDate() : new Date(na.created_at);
+        return created >= d && created < next;
+      }).length;
+      const integres = all.filter(na => {
+        const created = na.created_at?.toDate ? na.created_at.toDate() : new Date(na.created_at);
+        const integDate = na.date_integration?.toDate ? na.date_integration.toDate() : na.date_integration;
+        return integDate && created >= d && created < next && na.statut === 'integre';
+      }).length;
+      result.push({
+        label: d.toLocaleString('fr-FR', { month: 'short', year: '2-digit' }),
+        total: count,
+        integres
+      });
+    }
+    return result;
   },
 
   // Convertir une nouvelle âme en membre
@@ -496,6 +534,157 @@ const SuivisAmes = {
 };
 
 // ============================================
+// INSCRIPTIONS AUX PROGRAMMES D'EXHORTATION
+// ============================================
+
+const InscriptionsProgrammes = {
+  // Inscrire une nouvelle âme à un programme
+  async inscrire(nouvelleAmeId, programmeId) {
+    try {
+      const na = NouvellesAmes.getById(nouvelleAmeId);
+      const programme = Programmes.getById(programmeId);
+      
+      if (!na || !programme) {
+        Toast.error('Données non trouvées');
+        return false;
+      }
+      
+      // Récupérer les inscriptions existantes
+      const inscriptions = na.programmes_inscrits || [];
+      
+      // Vérifier si déjà inscrit
+      if (inscriptions.some(i => i.programme_id === programmeId)) {
+        Toast.warning('Déjà inscrit(e) à ce programme');
+        return false;
+      }
+      
+      // Ajouter l'inscription
+      const newInscription = {
+        programme_id: programmeId,
+        programme_nom: programme.nom,
+        programme_type: programme.type,
+        date_inscription: new Date().toISOString(),
+        inscrit_par_id: AppState.user.id,
+        inscrit_par_nom: `${AppState.user.prenom} ${AppState.user.nom}`,
+        statut: 'inscrit', // inscrit, en_cours, termine, abandonne
+        date_debut: null,
+        date_fin: null,
+        notes: null
+      };
+      
+      inscriptions.push(newInscription);
+      
+      await NouvellesAmes.update(nouvelleAmeId, {
+        programmes_inscrits: inscriptions
+      }, true);
+      
+      Toast.success(`Inscrit(e) au programme "${programme.nom}"`);
+      return true;
+    } catch (error) {
+      console.error('Erreur inscription programme:', error);
+      Toast.error('Erreur lors de l\'inscription');
+      return false;
+    }
+  },
+
+  // Mettre à jour le statut d'une inscription
+  async updateStatut(nouvelleAmeId, programmeId, nouveauStatut, notes = null) {
+    try {
+      const na = NouvellesAmes.getById(nouvelleAmeId);
+      if (!na) return false;
+      
+      const inscriptions = na.programmes_inscrits || [];
+      const index = inscriptions.findIndex(i => i.programme_id === programmeId);
+      
+      if (index === -1) {
+        Toast.error('Inscription non trouvée');
+        return false;
+      }
+      
+      inscriptions[index].statut = nouveauStatut;
+      if (notes) inscriptions[index].notes = notes;
+      
+      if (nouveauStatut === 'en_cours' && !inscriptions[index].date_debut) {
+        inscriptions[index].date_debut = new Date().toISOString();
+      }
+      if (nouveauStatut === 'termine' || nouveauStatut === 'abandonne') {
+        inscriptions[index].date_fin = new Date().toISOString();
+      }
+      
+      await NouvellesAmes.update(nouvelleAmeId, {
+        programmes_inscrits: inscriptions
+      }, true);
+      
+      Toast.success('Statut mis à jour');
+      return true;
+    } catch (error) {
+      console.error('Erreur mise à jour inscription:', error);
+      Toast.error('Erreur lors de la mise à jour');
+      return false;
+    }
+  },
+
+  // Désinscrire
+  async desinscrire(nouvelleAmeId, programmeId) {
+    try {
+      const na = NouvellesAmes.getById(nouvelleAmeId);
+      if (!na) return false;
+      
+      const inscriptions = (na.programmes_inscrits || []).filter(i => i.programme_id !== programmeId);
+      
+      await NouvellesAmes.update(nouvelleAmeId, {
+        programmes_inscrits: inscriptions
+      }, true);
+      
+      Toast.success('Désinscription effectuée');
+      return true;
+    } catch (error) {
+      console.error('Erreur désinscription:', error);
+      Toast.error('Erreur lors de la désinscription');
+      return false;
+    }
+  },
+
+  // Obtenir les programmes d'exhortation disponibles
+  getProgrammesExhortation() {
+    return AppState.programmes.filter(p => Programmes.isExhortation(p.type));
+  },
+
+  // Obtenir les statistiques d'inscription
+  getStats(nouvelleAmeId) {
+    const na = NouvellesAmes.getById(nouvelleAmeId);
+    if (!na) return { total: 0, en_cours: 0, termines: 0 };
+    
+    const inscriptions = na.programmes_inscrits || [];
+    return {
+      total: inscriptions.length,
+      en_cours: inscriptions.filter(i => i.statut === 'inscrit' || i.statut === 'en_cours').length,
+      termines: inscriptions.filter(i => i.statut === 'termine').length
+    };
+  },
+
+  // Statuts possibles
+  getStatuts() {
+    return [
+      { value: 'inscrit', label: 'Inscrit', color: '#2196F3', icon: 'fa-user-plus' },
+      { value: 'en_cours', label: 'En cours', color: '#FF9800', icon: 'fa-spinner' },
+      { value: 'termine', label: 'Terminé', color: '#4CAF50', icon: 'fa-check-circle' },
+      { value: 'abandonne', label: 'Abandonné', color: '#9E9E9E', icon: 'fa-times-circle' }
+    ];
+  },
+
+  getStatutLabel(value) {
+    const s = this.getStatuts().find(s => s.value === value);
+    return s ? s.label : value;
+  },
+
+  getStatutColor(value) {
+    const s = this.getStatuts().find(s => s.value === value);
+    return s ? s.color : '#9E9E9E';
+  }
+};
+
+// ============================================
 // PAGES NOUVELLES ÂMES
 // ============================================
 
@@ -512,9 +701,27 @@ const PagesNouvellesAmes = {
     const mentors = Membres.getMentors();
     
     return `
+      <!-- Statistiques visuelles -->
+      <div class="na-stats-section" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-lg); margin-bottom: var(--spacing-lg);">
+        <div class="card" style="min-height: 280px;">
+          <div class="card-header"><h3 class="card-title"><i class="fas fa-chart-pie"></i> Par canal</h3></div>
+          <div class="card-body" style="min-height: 220px;">
+            <canvas id="chart-na-canal" style="max-height: 200px;"></canvas>
+          </div>
+        </div>
+        <div class="card" style="min-height: 280px;">
+          <div class="card-header"><h3 class="card-title"><i class="fas fa-chart-line"></i> Évolution (6 mois)</h3></div>
+          <div class="card-body" style="min-height: 220px;">
+            <canvas id="chart-na-evolution" style="max-height: 200px;"></canvas>
+          </div>
+        </div>
+      </div>
+      <style>@media (max-width: 768px) { .na-stats-section { grid-template-columns: 1fr !important; } }</style>
+
       <div class="nouvelles-ames-header">
         <div class="stats-mini">
           <span class="stat-mini"><strong>${stats.total}</strong> total</span>
+          <span class="stat-mini text-success"><strong>${stats.integres}</strong> intégrés</span>
           <span class="stat-mini text-warning"><strong>${stats.aRelancer}</strong> à relancer</span>
         </div>
         <div class="header-actions">
@@ -549,6 +756,10 @@ const PagesNouvellesAmes = {
           <option value="">Tous les mentors</option>
           ${mentors.map(m => `<option value="${m.id}">${m.prenom} ${m.nom}</option>`).join('')}
         </select>
+        <input type="date" class="form-control" id="filter-date-contact-debut" placeholder="1er contact du" 
+               title="Date premier contact (du)" onchange="PagesNouvellesAmes.applyFilters()">
+        <input type="date" class="form-control" id="filter-date-contact-fin" placeholder="au" 
+               title="Date premier contact (au)" onchange="PagesNouvellesAmes.applyFilters()">
       </div>
       
       <div class="card">
@@ -709,12 +920,16 @@ const PagesNouvellesAmes = {
     const canal = document.getElementById('filter-canal')?.value || '';
     const statut = document.getElementById('filter-statut')?.value || '';
     const mentor = document.getElementById('filter-mentor')?.value || '';
+    const dateDebut = document.getElementById('filter-date-contact-debut')?.value || '';
+    const dateFin = document.getElementById('filter-date-contact-fin')?.value || '';
     
     this.currentFilters = {
       search: search || undefined,
       canal: canal || undefined,
       statut: statut || undefined,
-      suivi_par_id: mentor || undefined
+      suivi_par_id: mentor || undefined,
+      date_premier_contact_debut: dateDebut || undefined,
+      date_premier_contact_fin: dateFin || undefined
     };
     
     const nouvellesAmes = NouvellesAmes.filterBy(this.currentFilters);
@@ -1093,6 +1308,38 @@ const PagesNouvellesAmes = {
               `}
             </div>
           </div>
+          
+          <!-- Programmes d'exhortation -->
+          <div class="card mt-3">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fas fa-graduation-cap"></i> Programmes d'exhortation</h3>
+              ${na.statut !== 'integre' ? `
+              <button class="btn btn-sm btn-primary" onclick="PagesNouvellesAmes.showInscriptionModal('${id}')">
+                <i class="fas fa-plus"></i> Inscrire
+              </button>
+              ` : ''}
+            </div>
+            <div class="card-body" style="padding: 0;">
+              ${this.renderProgrammesInscrits(na)}
+            </div>
+          </div>
+
+          ${typeof NotesSuivi !== 'undefined' && NotesSuivi.canAddNote() ? `
+          <div class="card mt-3">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fas fa-sticky-note"></i> Notes de suivi</h3>
+            </div>
+            <div class="card-body">
+              <div id="notes-list-nouvelle_ame-${id}" class="notes-list" style="margin-bottom: var(--spacing-md);"></div>
+              <div class="notes-add">
+                <textarea class="form-control" id="note-input-nouvelle_ame-${id}" rows="2" placeholder="Ajouter une note de suivi..."></textarea>
+                <button type="button" class="btn btn-primary btn-sm" onclick="NotesSuivi.addNote('nouvelle_ame', '${id}', document.getElementById('note-input-nouvelle_ame-${id}').value)">
+                  <i class="fas fa-plus"></i> Ajouter
+                </button>
+              </div>
+            </div>
+          </div>
+          ` : ''}
         </div>
       </div>
       
@@ -1480,6 +1727,250 @@ const PagesNouvellesAmes = {
     } catch (error) {
       console.error('Erreur export PDF:', error);
       Toast.error('Erreur lors de la génération du PDF');
+    }
+  },
+
+  // ============================================
+  // PROGRAMMES D'EXHORTATION
+  // ============================================
+
+  // Rendu de la liste des programmes inscrits
+  renderProgrammesInscrits(na) {
+    const inscriptions = na.programmes_inscrits || [];
+    
+    if (inscriptions.length === 0) {
+      return `
+        <div class="empty-state" style="padding: var(--spacing-lg);">
+          <i class="fas fa-graduation-cap"></i>
+          <h4>Aucune inscription</h4>
+          <p>Inscrivez cette personne à un programme d'exhortation.</p>
+        </div>
+      `;
+    }
+    
+    return `
+      <div class="inscriptions-list">
+        ${inscriptions.map(i => this.renderInscriptionItem(i, na.id)).join('')}
+      </div>
+      <style>
+        .inscriptions-list {
+          display: flex;
+          flex-direction: column;
+        }
+        .inscription-item {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-md);
+          padding: var(--spacing-md);
+          border-bottom: 1px solid var(--border-color);
+        }
+        .inscription-item:last-child {
+          border-bottom: none;
+        }
+        .inscription-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: var(--radius-sm);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.2rem;
+          color: white;
+        }
+        .inscription-info {
+          flex: 1;
+        }
+        .inscription-name {
+          font-weight: 600;
+          margin-bottom: 2px;
+        }
+        .inscription-meta {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+        }
+        .inscription-actions {
+          display: flex;
+          gap: var(--spacing-xs);
+        }
+      </style>
+    `;
+  },
+
+  // Rendu d'une inscription
+  renderInscriptionItem(inscription, nouvelleAmeId) {
+    const typeInfo = Programmes.getTypes().find(t => t.value === inscription.programme_type) || {};
+    const statutInfo = InscriptionsProgrammes.getStatuts().find(s => s.value === inscription.statut) || {};
+    const dateInscription = new Date(inscription.date_inscription);
+    
+    return `
+      <div class="inscription-item">
+        <div class="inscription-icon" style="background: ${typeInfo.color || '#607D8B'}">
+          <i class="fas ${typeInfo.icon || 'fa-book'}"></i>
+        </div>
+        <div class="inscription-info">
+          <div class="inscription-name">${Utils.escapeHtml(inscription.programme_nom)}</div>
+          <div class="inscription-meta">
+            Inscrit le ${dateInscription.toLocaleDateString('fr-FR')}
+            ${inscription.date_debut ? `| Début: ${new Date(inscription.date_debut).toLocaleDateString('fr-FR')}` : ''}
+          </div>
+        </div>
+        <span class="badge" style="background: ${statutInfo.color}20; color: ${statutInfo.color}">
+          <i class="fas ${statutInfo.icon}"></i> ${statutInfo.label}
+        </span>
+        <div class="inscription-actions">
+          <select class="form-control form-control-sm" style="width: auto; padding: 4px 8px;" 
+                  onchange="PagesNouvellesAmes.updateInscriptionStatut('${nouvelleAmeId}', '${inscription.programme_id}', this.value)">
+            ${InscriptionsProgrammes.getStatuts().map(s => 
+              `<option value="${s.value}" ${s.value === inscription.statut ? 'selected' : ''}>${s.label}</option>`
+            ).join('')}
+          </select>
+          <button class="btn btn-sm btn-danger" onclick="PagesNouvellesAmes.desinscrireProgramme('${nouvelleAmeId}', '${inscription.programme_id}')" title="Désinscrire">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  // Afficher la modal d'inscription à un programme
+  showInscriptionModal(nouvelleAmeId) {
+    const na = NouvellesAmes.getById(nouvelleAmeId);
+    if (!na) return;
+    
+    // Récupérer les programmes d'exhortation
+    const programmesExhort = InscriptionsProgrammes.getProgrammesExhortation();
+    const inscrits = (na.programmes_inscrits || []).map(i => i.programme_id);
+    const disponibles = programmesExhort.filter(p => !inscrits.includes(p.id));
+    
+    const modalId = 'inscription-programme-modal';
+    const modalHtml = `
+      <div class="modal-overlay active" id="${modalId}">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-graduation-cap"></i> Inscrire à un programme</h3>
+            <button class="modal-close" onclick="document.getElementById('${modalId}').remove();">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-info mb-3">
+              <i class="fas fa-user"></i> ${Utils.escapeHtml(na.prenom)} ${Utils.escapeHtml(na.nom)}
+            </div>
+            
+            ${disponibles.length > 0 ? `
+            <div class="programmes-grid">
+              ${disponibles.map(p => {
+                const typeInfo = Programmes.getTypes().find(t => t.value === p.type) || {};
+                const date = p.date_debut?.toDate ? p.date_debut.toDate() : new Date(p.date_debut);
+                return `
+                <div class="programme-option" onclick="PagesNouvellesAmes.inscrireAuProgramme('${nouvelleAmeId}', '${p.id}')">
+                  <div class="programme-option-icon" style="background: ${typeInfo.color}">
+                    <i class="fas ${typeInfo.icon || 'fa-book'}"></i>
+                  </div>
+                  <div class="programme-option-info">
+                    <div class="programme-option-name">${Utils.escapeHtml(p.nom)}</div>
+                    <div class="programme-option-date">${date.toLocaleDateString('fr-FR')}</div>
+                  </div>
+                </div>
+              `;
+              }).join('')}
+            </div>
+            ` : `
+            <div class="alert alert-warning">
+              <i class="fas fa-info-circle"></i>
+              Aucun programme d'exhortation disponible. Créez d'abord un programme de type "Exhortation" dans le calendrier.
+            </div>
+            `}
+          </div>
+        </div>
+      </div>
+      <style>
+        .programmes-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+          gap: var(--spacing-md);
+        }
+        .programme-option {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-md);
+          padding: var(--spacing-md);
+          border: 1px solid var(--border-color);
+          border-radius: var(--radius-md);
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .programme-option:hover {
+          border-color: var(--primary);
+          background: var(--bg-primary);
+        }
+        .programme-option-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: var(--radius-sm);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+        }
+        .programme-option-name {
+          font-weight: 600;
+        }
+        .programme-option-date {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+        }
+      </style>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  },
+
+  // Inscrire au programme
+  async inscrireAuProgramme(nouvelleAmeId, programmeId) {
+    const result = await InscriptionsProgrammes.inscrire(nouvelleAmeId, programmeId);
+    if (result) {
+      document.getElementById('inscription-programme-modal')?.remove();
+      App.navigate('nouvelle-ame-detail', { id: nouvelleAmeId });
+    }
+  },
+
+  // Mettre à jour le statut d'inscription
+  async updateInscriptionStatut(nouvelleAmeId, programmeId, nouveauStatut) {
+    await InscriptionsProgrammes.updateStatut(nouvelleAmeId, programmeId, nouveauStatut);
+  },
+
+  // Désinscrire d'un programme
+  desinscrireProgramme(nouvelleAmeId, programmeId) {
+    Modal.confirm(
+      'Désinscrire du programme',
+      'Êtes-vous sûr de vouloir désinscrire cette personne de ce programme ?',
+      async () => {
+        const result = await InscriptionsProgrammes.desinscrire(nouvelleAmeId, programmeId);
+        if (result) {
+          App.navigate('nouvelle-ame-detail', { id: nouvelleAmeId });
+        }
+      }
+    );
+  },
+
+  initCharts() {
+    if (typeof ChartsHelper === 'undefined') return;
+    const stats = NouvellesAmes.getStats();
+    const evolution = NouvellesAmes.getEvolutionMensuelle(6);
+    const parCanal = Object.entries(stats.parCanal || {}).filter(([, v]) => v > 0);
+    const canvasCanal = document.getElementById('chart-na-canal');
+    const canvasEvol = document.getElementById('chart-na-evolution');
+    if (canvasCanal) {
+      if (parCanal.length > 0) {
+        const canalLabels = parCanal.map(([k]) => (CANAUX.find(c => c.value === k) || {}).label || k);
+        const canalData = parCanal.map(([, v]) => v);
+        const canalColors = parCanal.map(([k]) => (CANAUX.find(c => c.value === k) || {}).color || '#607D8B');
+        ChartsHelper.createDoughnut('chart-na-canal', canalLabels, canalData, canalColors);
+      }
+    }
+    if (canvasEvol && evolution.some(e => e.total > 0)) {
+      ChartsHelper.createLine('chart-na-evolution', evolution.map(e => e.label), [
+        { label: 'Nouvelles âmes', data: evolution.map(e => e.total) },
+        { label: 'Intégrés', data: evolution.map(e => e.integres) }
+      ]);
     }
   }
 };

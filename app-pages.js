@@ -18,9 +18,10 @@ const Pages = {
             
             <form class="login-form" id="login-form">
               <div class="form-group">
-                <label class="form-label required">Nom de la famille</label>
-                <input type="text" class="form-control" id="login-famille" 
-                       placeholder="Ex: Famille Espérance" value="${Utils.escapeHtml(savedFamille)}" required>
+                <label class="form-label required">Famille</label>
+                <select class="form-control" id="login-famille" required>
+                  <option value="">Choisir une famille...</option>
+                </select>
                 <span class="form-hint">Le nom de votre groupe (fourni par votre Berger)</span>
               </div>
               
@@ -65,7 +66,23 @@ const Pages = {
     // Afficher les boutons d'export si admin/berger OU si mentor sur "mes-disciples"
     const showExportButtons = Permissions.canViewAllMembers() || (isMesDisciples && Permissions.hasRole('mentor'));
 
+    const statsSection = isMesDisciples && membres.length > 0 ? `
+      <div class="disciples-stats-section" style="margin-bottom: var(--spacing-lg);">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-chart-bar"></i> Statistiques de présence</h3>
+          </div>
+          <div class="card-body">
+            <div style="min-height: 250px;">
+              <canvas id="chart-disciples-presence" style="max-height: 240px;"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    ` : '';
+
     return `
+      ${statsSection}
       <div class="members-header">
         <div class="members-filters">
           <div class="search-box">
@@ -81,6 +98,13 @@ const Pages = {
             <option value="adjoint_berger">Adjoints</option>
             <option value="berger">Bergers</option>
           </select>
+          ${Permissions.canViewAllMembers() && !isMesDisciples ? `
+          <select class="form-control" id="filter-mentor" onchange="App.filterMembres()" style="width: auto;">
+            <option value="">Tous les mentors</option>
+            <option value="none">Non affecté</option>
+            ${(AppState.membres || []).filter(m => m.statut_compte === 'actif' && ['mentor', 'adjoint_berger', 'berger'].includes(m.role)).map(m => `<option value="${m.id}">${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)}</option>`).join('')}
+          </select>
+          ` : ''}
         </div>
         ${showExportButtons ? `
         <button type="button" class="btn btn-outline" onclick="App.exportMembresCSV()" title="Télécharger la liste en CSV">
@@ -141,7 +165,7 @@ const Pages = {
 
     return `
       <div class="member-card" data-id="${membre.id}" data-role="${membre.role}" 
-           data-name="${(membre.prenom + ' ' + membre.nom).toLowerCase()}">
+           data-name="${(membre.prenom + ' ' + membre.nom).toLowerCase()}" data-mentor-id="${membre.mentor_id || ''}">
         <div class="member-avatar" style="${avatarStyle}">
           ${!membre.photo_url ? Utils.getInitials(membre.prenom, membre.nom) : ''}
         </div>
@@ -238,9 +262,12 @@ const Pages = {
     const canEdit = Permissions.canEditMember(membre.id);
     const mentor = membre.mentor_id ? Membres.getById(membre.mentor_id) : null;
 
+    const isOwnProfil = membre.id === AppState.user.id;
     return `
       <div class="card" style="max-width: 800px; margin: 0 auto;">
-        <div class="card-header">
+        <div class="card-header" style="display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-md);">
+          ${isOwnProfil ? `<button type="button" class="btn btn-outline btn-sm" onclick="App.navigate('mon-compte')"><i class="fas fa-arrow-left"></i> Retour vers Mon compte</button>` : ''}
+          ${!isOwnProfil && Permissions.hasRole('mentor') ? `<button type="button" class="btn btn-outline btn-sm" onclick="App.navigate('mes-disciples')"><i class="fas fa-arrow-left"></i> Retour vers Mes disciples</button>` : ''}
           <div class="d-flex align-center gap-2">
             <div class="member-avatar" style="width: 60px; height: 60px; font-size: 1.5rem; ${membre.photo_url ? `background-image: url('${Utils.escapeHtml(membre.photo_url)}'); background-size: cover; background-position: center;` : `background: ${membre.sexe === 'F' ? '#E91E63' : 'var(--primary)'}`}">
               ${!membre.photo_url ? Utils.getInitials(membre.prenom, membre.nom) : ''}
@@ -278,7 +305,7 @@ const Pages = {
               <h4 class="mb-2">Parcours spirituel</h4>
               <p><strong>Mentor:</strong> ${mentor ? `${mentor.prenom} ${mentor.nom}` : '-'}</p>
               <p><strong>Arrivée ICC:</strong> ${Utils.formatDate(membre.date_arrivee_icc) || '-'}</p>
-              <p><strong>Formations:</strong> ${membre.formations?.length > 0 ? membre.formations.join(', ') : '-'}</p>
+              <p><strong>Formations:</strong> ${membre.formations?.length > 0 ? membre.formations.map(f => ({ 'RTT_301': 'RTT (301)' }[f] || f)).join(', ') : '-'}</p>
               <p><strong>Ministère:</strong> ${membre.ministere_service || '-'}</p>
               <p><strong>Baptisé (immersion):</strong> ${membre.baptise_immersion === true ? 'Oui' : membre.baptise_immersion === false ? 'Non' : '-'}</p>
             </div>
@@ -290,6 +317,20 @@ const Pages = {
               <p><strong>Centres d'intérêt:</strong> ${membre.passions_centres_interet || '-'}</p>
             </div>
           </div>
+
+          ${NotesSuivi.canAddNote() ? `
+          <hr style="margin: var(--spacing-lg) 0;">
+          <div id="notes-section-membre-${membre.id}">
+            <h4 class="mb-2"><i class="fas fa-sticky-note"></i> Notes de suivi</h4>
+            <div id="notes-list-membre-${membre.id}" class="notes-list" style="margin-bottom: var(--spacing-md);"></div>
+            <div class="notes-add">
+              <textarea class="form-control" id="note-input-membre-${membre.id}" rows="2" placeholder="Ajouter une note de suivi..."></textarea>
+              <button type="button" class="btn btn-primary btn-sm" onclick="NotesSuivi.addNote('membre', '${membre.id}', document.getElementById('note-input-membre-${membre.id}').value)">
+                <i class="fas fa-plus"></i> Ajouter
+              </button>
+            </div>
+          </div>
+          ` : ''}
         </div>
         <div class="card-footer text-muted" style="font-size: 0.85rem;">
           Inscrit le ${Utils.formatDate(membre.created_at, 'full')}
@@ -303,13 +344,18 @@ const Pages = {
     const membre = membreId ? Membres.getById(membreId) : AppState.user;
     if (!membre) return '<div class="alert alert-danger">Membre non trouvé</div>';
 
-    const formations = ['BDR', '101', '201', 'IEBI', 'Poimano'];
+    const formations = ['BDR', '101', '201', 'IEBI', 'Poimano', 'RTT_301'];
+    const formationLabels = { 'RTT_301': 'RTT (301)' };
     const membreFormations = membre.formations || [];
+    const today = new Date().toISOString().split('T')[0];
+    const minDate = '1900-01-01';
 
     const getDateValue = (date) => {
       if (!date) return '';
       const d = date.toDate ? date.toDate() : new Date(date);
       if (isNaN(d.getTime())) return '';
+      const y = d.getFullYear();
+      if (y < 1900 || y > 2100) return '';
       return d.toISOString().split('T')[0];
     };
 
@@ -345,7 +391,7 @@ const Pages = {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);">
               <div class="form-group">
                 <label class="form-label">Date de naissance</label>
-                <input type="date" class="form-control" id="edit-date-naissance" value="${getDateValue(membre.date_naissance)}">
+                <input type="date" class="form-control" id="edit-date-naissance" min="${minDate}" max="${today}" value="${getDateValue(membre.date_naissance)}">
               </div>
               <div class="form-group">
                 <label class="form-label">Téléphone</label>
@@ -369,7 +415,7 @@ const Pages = {
             
             <div class="form-group">
               <label class="form-label">Date d'arrivée à ICC</label>
-              <input type="date" class="form-control" id="edit-date-icc" value="${getDateValue(membre.date_arrivee_icc)}">
+              <input type="date" class="form-control" id="edit-date-icc" min="${minDate}" max="${today}" value="${getDateValue(membre.date_arrivee_icc)}">
             </div>
             
             <div class="form-group">
@@ -377,8 +423,8 @@ const Pages = {
               <div style="display: flex; flex-wrap: wrap; gap: var(--spacing-md);">
                 ${formations.map(f => `
                   <div class="form-check">
-                    <input type="checkbox" id="formation-${f}" value="${f}" ${membreFormations.includes(f) ? 'checked' : ''}>
-                    <label for="formation-${f}">${f}</label>
+                    <input type="checkbox" id="formation-${f.replace(/[^a-zA-Z0-9_]/g, '_')}" value="${f}" ${membreFormations.includes(f) ? 'checked' : ''}>
+                    <label for="formation-${f.replace(/[^a-zA-Z0-9_]/g, '_')}">${formationLabels[f] || f}</label>
                   </div>
                 `).join('')}
               </div>
@@ -391,11 +437,15 @@ const Pages = {
             
             <div class="form-group">
               <label class="form-label">Baptisé par immersion ?</label>
-              <select class="form-control" id="edit-baptise">
+              <select class="form-control" id="edit-baptise" onchange="var g=document.getElementById('edit-date-bapteme-group');if(g)g.style.display=this.value==='true'?'block':'none';">
                 <option value="">-- Sélectionner --</option>
                 <option value="true" ${membre.baptise_immersion === true ? 'selected' : ''}>Oui</option>
                 <option value="false" ${membre.baptise_immersion === false ? 'selected' : ''}>Non</option>
               </select>
+            </div>
+            <div class="form-group" id="edit-date-bapteme-group" style="display: ${membre.baptise_immersion === true ? 'block' : 'none'};">
+              <label class="form-label">Date du baptême</label>
+              <input type="date" class="form-control" id="edit-date-bapteme" min="${minDate}" max="${today}" value="${getDateValue(membre.date_bapteme)}">
             </div>
             
             <hr style="margin: var(--spacing-lg) 0;">
@@ -413,6 +463,7 @@ const Pages = {
                 <option value="emploi" ${membre.statut_professionnel === 'emploi' ? 'selected' : ''}>En emploi</option>
                 <option value="etudiant" ${membre.statut_professionnel === 'etudiant' ? 'selected' : ''}>Étudiant</option>
                 <option value="recherche_emploi" ${membre.statut_professionnel === 'recherche_emploi' ? 'selected' : ''}>En recherche d'emploi</option>
+                <option value="entrepreneur_autoentrepreneur" ${membre.statut_professionnel === 'entrepreneur_autoentrepreneur' ? 'selected' : ''}>Entrepreneur / Autoentrepreneur</option>
                 <option value="autre" ${membre.statut_professionnel === 'autre' ? 'selected' : ''}>Autre</option>
               </select>
             </div>
@@ -480,6 +531,36 @@ const Pages = {
           </div>
 
           <hr style="margin: var(--spacing-lg) 0;">
+          <h4 class="mb-2">Préférences</h4>
+          <div class="form-group">
+            <label class="form-label">Thème d'affichage</label>
+            <select class="form-control" id="pref-theme" onchange="App.setThemePreference(this.value)" style="max-width: 200px;">
+              <option value="light" ${(localStorage.getItem('crm_theme') || 'light') === 'light' ? 'selected' : ''}>Clair</option>
+              <option value="dark" ${localStorage.getItem('crm_theme') === 'dark' ? 'selected' : ''}>Sombre</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Raccourcis (pages favorites dans le menu)</label>
+            <div style="display: flex; flex-wrap: wrap; gap: var(--spacing-sm);">
+              ${['dashboard', 'calendrier', 'nouvelles-ames', 'evangelisation', 'statistiques', 'sujets-priere'].map(id => {
+                const labels = { dashboard: 'Tableau de bord', calendrier: 'Calendrier', 'nouvelles-ames': 'Nouvelles âmes', evangelisation: 'Évangélisation', statistiques: 'Statistiques', 'sujets-priere': 'Prières' };
+                const favs = JSON.parse(localStorage.getItem('crm_raccourcis') || '[]');
+                const checked = favs.includes(id);
+                return `<label class="form-check" style="margin-bottom: 0;"><input type="checkbox" value="${id}" ${checked ? 'checked' : ''} onchange="App.toggleRaccourci('${id}', this.checked)"><span>${labels[id]}</span></label>`;
+              }).join('')}
+            </div>
+          </div>
+
+          ${Permissions.hasRole('berger') ? `
+          <hr style="margin: var(--spacing-lg) 0;">
+          <h4 class="mb-2">Sauvegarde des données</h4>
+          <p class="text-muted mb-2" style="font-size: 0.9rem;">Exporter l'ensemble des données (membres, programmes, nouvelles âmes, sujets de prière) en JSON pour archivage.</p>
+          <button type="button" class="btn btn-outline" onclick="App.exportGlobal()">
+            <i class="fas fa-download"></i> Exporter les données (JSON)
+          </button>
+          ` : ''}
+
+          <hr style="margin: var(--spacing-lg) 0;">
 
           <h4 class="mb-3">Changer mon mot de passe</h4>
           <form id="form-change-password" onsubmit="App.submitChangePassword(event)">
@@ -518,6 +599,7 @@ const Pages = {
     const membres = AppState.membres
       .filter(m => m.statut_compte === 'actif')
       .sort((a, b) => a.nom.localeCompare(b.nom));
+    const moisLabels = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
     return `
       <div class="members-header">
@@ -526,6 +608,13 @@ const Pages = {
           <input type="text" class="form-control" id="search-annuaire" 
                  placeholder="Rechercher..." onkeyup="App.filterAnnuaire()">
         </div>
+        <label style="display: flex; align-items: center; gap: 8px; white-space: nowrap;">
+          <i class="fas fa-birthday-cake"></i>
+          <select class="form-control" id="filter-annuaire-mois" onchange="App.filterAnnuaire()" title="Filtrer par mois d'anniversaire">
+            <option value="">Tous les mois</option>
+            ${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${String(m).padStart(2, '0')}">${moisLabels[m]}</option>`).join('')}
+          </select>
+        </label>
       </div>
       
       <div class="card">
@@ -534,10 +623,12 @@ const Pages = {
             ${membres.map(m => {
               const isBirthday = Utils.isBirthday(m.date_naissance);
               let birthDisplay = '-';
+              let birthMonth = '';
               if (m.date_naissance) {
                 const d = m.date_naissance.toDate ? m.date_naissance.toDate() : new Date(m.date_naissance);
                 if (!isNaN(d.getTime())) {
                   birthDisplay = `${d.getDate()} ${d.toLocaleString('fr-FR', { month: 'long' })}`;
+                  birthMonth = String(d.getMonth() + 1).padStart(2, '0');
                 }
               }
               
@@ -545,7 +636,7 @@ const Pages = {
                 ? `background-image: url('${Utils.escapeHtml(m.photo_url)}'); background-size: cover; background-position: center; position: relative;`
                 : `background: ${m.sexe === 'F' ? '#E91E63' : 'var(--primary)'}; position: relative;`;
               return `
-                <div class="member-card" data-name="${(m.prenom + ' ' + m.nom).toLowerCase()}">
+                <div class="member-card" data-name="${(m.prenom + ' ' + m.nom).toLowerCase()}" data-birth-month="${birthMonth}">
                   <div class="member-avatar ${isBirthday ? 'birthday-glow' : ''}" 
                        style="${avatarStyleAnnuaire}">
                     ${!m.photo_url ? Utils.getInitials(m.prenom, m.nom) : ''}
@@ -558,11 +649,14 @@ const Pages = {
                     <div class="text-muted" style="font-size: 0.85rem;">
                       <i class="fas fa-calendar-alt"></i> ${birthDisplay}
                     </div>
+                    <div class="text-muted" style="font-size: 0.8rem; margin-top: 2px;">
+                      ${(m.adresse_ville || m.adresse_code_postal) ? `<i class="fas fa-map-marker-alt"></i> ${[m.adresse_ville, m.adresse_code_postal].filter(Boolean).join(' ')}` : ''}
+                    </div>
                   </div>
                   <div style="flex: 1;">
                     <div style="font-size: 0.9rem;">${m.profession || '-'}</div>
                     <div class="text-muted" style="font-size: 0.8rem;">
-                      ${m.statut_professionnel ? Utils.capitalize(m.statut_professionnel.replace('_', ' ')) : ''}
+                      ${m.statut_professionnel ? (m.statut_professionnel === 'entrepreneur_autoentrepreneur' ? 'Entrepreneur / Autoentrepreneur' : Utils.capitalize(m.statut_professionnel.replace('_', ' '))) : ''}
                     </div>
                   </div>
                   <div style="flex: 1.5;">
@@ -670,5 +764,84 @@ const Pages = {
       </div>
       ` : ''}
     `;
+  },
+
+  async renderAdminFamilles() {
+    if (!Permissions.isAdmin()) return '<div class="alert alert-danger">Accès réservé à l\'administrateur.</div>';
+    let families = [];
+    try {
+      const snapshot = await db.collection('familles').get();
+      families = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      families.sort((a, b) => (a.nom_affichage || a.nom || '').localeCompare(b.nom_affichage || b.nom || ''));
+    } catch (e) {
+      console.error('Erreur chargement familles:', e);
+      return '<div class="alert alert-danger">Impossible de charger les familles.</div>';
+    }
+    return `
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-church"></i> Familles</h3>
+          <button type="button" class="btn btn-primary" onclick="App.showCreateFamilleModal()">
+            <i class="fas fa-plus"></i> Créer une famille
+          </button>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3">Les familles ont des données et membres totalement séparés. Créez une famille puis ajoutez son premier berger pour qu'il puisse inviter mentors et disciples.</p>
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Nom affiché</th>
+                  <th>Statut</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${families.length === 0 ? '<tr><td colspan="3" class="text-center text-muted">Aucune famille. Créez-en une.</td></tr>' : families.map(f => `
+                  <tr>
+                    <td><strong>${Utils.escapeHtml(f.nom_affichage || f.nom || f.id)}</strong></td>
+                    <td><span class="badge badge-${f.statut === 'actif' ? 'success' : 'secondary'}">${f.statut || 'actif'}</span></td>
+                    <td>
+                      <button type="button" class="btn btn-sm btn-outline" data-famille-id="${f.id}" data-famille-nom="${Utils.escapeHtml(f.nom_affichage || f.nom || '')}" onclick="App.showAddBergerModalFromButton(this)">
+                        <i class="fas fa-user-plus"></i> Ajouter un berger
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+};
+
+// ============================================
+// PAGES DISCIPLES - Stats et graphiques
+// ============================================
+const PagesDisciples = {
+  async initCharts() {
+    if (typeof ChartsHelper === 'undefined') return;
+    const canvas = document.getElementById('chart-disciples-presence');
+    if (!canvas) return;
+    try {
+      const stats = await Statistiques.calculatePresenceStats({
+        mentorId: AppState.user.id,
+        dateDebut: new Date(new Date().setMonth(new Date().getMonth() - 2)),
+        dateFin: new Date()
+      });
+      const parMembre = (stats.parMembre || []).slice(0, 10);
+      if (parMembre.length === 0) {
+        canvas.parentElement.innerHTML = '<div class="empty-state"><p>Aucune donnée de présence</p></div>';
+        return;
+      }
+      const labels = parMembre.map(m => m.prenom + ' ' + m.nom.substring(0, 1) + '.');
+      const data = parMembre.map(m => m.tauxPresence);
+      const colors = data.map(t => t >= 80 ? '#4CAF50' : t >= 50 ? '#FF9800' : '#F44336');
+      ChartsHelper.createBar('chart-disciples-presence', labels, data, colors);
+    } catch (e) {
+      console.error('Erreur init charts disciples:', e);
+    }
   }
 };

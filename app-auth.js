@@ -3,6 +3,30 @@
 // ============================================
 
 const Auth = {
+  async loadFamiliesForLogin() {
+    const select = document.getElementById('login-famille');
+    if (!select || typeof db === 'undefined') return;
+    try {
+      const snapshot = await db.collection('familles')
+        .where('statut', '==', 'actif')
+        .get();
+      const saved = localStorage.getItem('crm_famille_nom') || '';
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      docs.sort((a, b) => (a.nom_affichage || a.nom || '').localeCompare(b.nom_affichage || b.nom || ''));
+      docs.forEach(d => {
+        const nom = d.nom || d.id;
+        const label = d.nom_affichage || nom;
+        const opt = document.createElement('option');
+        opt.value = nom;
+        opt.textContent = label;
+        if (saved && (nom === saved || label === saved)) opt.selected = true;
+        select.appendChild(opt);
+      });
+    } catch (e) {
+      console.warn('Chargement des familles pour connexion:', e);
+    }
+  },
+
   async login(email, password, familleNom) {
     App.showLoading();
     const LOGIN_TIMEOUT_MS = 30000; // 30 s max : évite spinner bloqué sur "Se connecter"
@@ -248,6 +272,99 @@ const Auth = {
     } catch (error) {
       console.error('Erreur création membre:', error);
       
+      if (error.code === 'auth/email-already-in-use') {
+        Toast.error('Cet email est déjà utilisé');
+      } else {
+        Toast.error(error.message || 'Erreur lors de la création');
+      }
+      throw error;
+    } finally {
+      App.hideLoading();
+    }
+  },
+
+  async createFamille(nom) {
+    if (!AppState.user || AppState.user.role !== 'admin') {
+      throw new Error('Réservé à l\'administrateur');
+    }
+    const nomTrim = (nom || '').trim();
+    if (!nomTrim) throw new Error('Nom de famille requis');
+    const nomLower = nomTrim.toLowerCase();
+    const snapshot = await db.collection('familles').where('nom', '==', nomLower).get();
+    if (!snapshot.empty) {
+      throw new Error('Une famille avec ce nom existe déjà');
+    }
+    const docRef = await db.collection('familles').add({
+      nom: nomLower,
+      nom_affichage: nomTrim,
+      statut: 'actif',
+      created_at: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    return { id: docRef.id, nom: nomLower, nom_affichage: nomTrim, statut: 'actif' };
+  },
+
+  async createMembreForFamily(familleId, membreData) {
+    if (!AppState.user || AppState.user.role !== 'admin') {
+      throw new Error('Réservé à l\'administrateur');
+    }
+    const familleDoc = await db.collection('familles').doc(familleId).get();
+    if (!familleDoc.exists) throw new Error('Famille non trouvée');
+    const familleNom = familleDoc.data().nom_affichage || familleDoc.data().nom;
+
+    App.showLoading();
+    try {
+      const tempPassword = Math.random().toString(36).slice(-8) + 'A1!';
+      const userCredential = await auth.createUserWithEmailAndPassword(
+        membreData.email,
+        tempPassword
+      );
+      const uid = userCredential.user.uid;
+
+      const newMembre = {
+        email: membreData.email.toLowerCase().trim(),
+        nom: (membreData.nom || '').trim(),
+        prenom: (membreData.prenom || '').trim(),
+        famille_id: familleId,
+        mentor_id: null,
+        role: membreData.role || 'berger',
+        statut_compte: 'actif',
+        sexe: null,
+        date_naissance: null,
+        adresse_ville: null,
+        adresse_code_postal: null,
+        telephone: null,
+        date_arrivee_icc: null,
+        formations: [],
+        ministere_service: null,
+        baptise_immersion: null,
+        profession: null,
+        statut_professionnel: null,
+        passions_centres_interet: null,
+        created_at: firebase.firestore.FieldValue.serverTimestamp(),
+        updated_at: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      await db.collection('utilisateurs').doc(uid).set(newMembre);
+
+      try {
+        await auth.sendPasswordResetEmail(membreData.email);
+      } catch (emailErr) {
+        console.warn('Impossible d\'envoyer l\'email de réinitialisation:', emailErr);
+      }
+
+      AppState.user = null;
+      AppState.famille = null;
+      AppState.membres = [];
+      InactivityManager.stop();
+      await auth.signOut();
+      localStorage.removeItem('crm_famille_id');
+      localStorage.setItem('crm_famille_nom', familleNom);
+      App.showLoginPage();
+      Toast.success(`${newMembre.prenom} a été ajouté comme berger de la famille. Reconnectez-vous.`);
+      console.log('Mot de passe temporaire:', tempPassword);
+      return { id: uid, tempPassword, adminDisconnected: true, ...newMembre };
+    } catch (error) {
+      console.error('Erreur création membre pour famille:', error);
       if (error.code === 'auth/email-already-in-use') {
         Toast.error('Cet email est déjà utilisé');
       } else {

@@ -1,0 +1,20 @@
+rules_version = '2';
+// Règles Firebase Storage : avatars (photos de profil) et documents (fichiers partagés).
+// À déployer : firebase deploy --only storage (si firebase.json pointe sur ce fichier).
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Photos de profil
+    match /avatars/{userId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write, delete: if request.auth != null && request.auth.uid == userId;
+    }
+    // Documents partagés (PDF, images, vidéos, etc.) par famille
+    match /documents/{familleId}/{allPaths=**} {
+      allow read, write, delete: if request.auth != null;
+    }
+    // Médias des témoignages (audio / courte vidéo)
+    match /temoignages/{familleId}/{allPaths=**} {
+      allow read, write, delete: if request.auth != null;
+    }
+  }
+}

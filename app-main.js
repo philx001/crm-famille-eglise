@@ -7,12 +7,18 @@ const App = {
   async init() {
     initFirebase();
     Toast.init();
+    this.applyTheme(localStorage.getItem('crm_theme') || 'light');
     this.setupErrorHandling();
     // Attendre la vérification de session (spinner initial) pour garder la session après F5
     const isLoggedIn = await Auth.checkAuthState();
     if (isLoggedIn) {
       await this.loadAllData();
-      this.navigate('dashboard');
+      if (window.location.hash && window.location.hash.length > 1) {
+        this.navigateFromHash();
+      } else {
+        this.navigate('dashboard');
+      }
+      window.addEventListener('hashchange', () => this.navigateFromHash());
     } else {
       this.showLoginPage();
     }
@@ -64,11 +70,12 @@ const App = {
     await Promise.race([loadPromise, timeoutPromise]);
   },
 
-  showLoginPage() {
+  async showLoginPage() {
     document.getElementById('app').innerHTML = Pages.renderLogin();
+    await Auth.loadFamiliesForLogin();
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const famille = document.getElementById('login-famille').value;
+      const famille = document.getElementById('login-famille').value.trim();
       const email = document.getElementById('login-email').value;
       const password = document.getElementById('login-password').value;
       await Auth.login(email, password, famille);
@@ -88,17 +95,57 @@ const App = {
 
   currentParams: {},
 
+  // Navigation par hash : #page ou #page/id (compatible liens directs et rafraîchissement)
+  parseHash() {
+    const raw = (window.location.hash || '#dashboard').slice(1).trim();
+    const [page, id] = raw.split('/').map(s => s.trim()).filter(Boolean);
+    const params = {};
+    if (page && id) {
+      if (['programme-detail', 'programmes-edit', 'presences'].includes(page)) params.programmeId = id;
+      else if (page === 'historique-membre') params.membreId = id;
+      else params.id = id;
+    }
+    return { page: page || 'dashboard', params: params };
+  },
+
+  updateHash(page, params = {}) {
+    let hash = page;
+    const id = params.programmeId || params.membreId || params.id;
+    if (id) hash += '/' + id;
+    if (window.location.hash !== '#' + hash) {
+      window.location.hash = hash;
+    }
+  },
+
   navigate(page, params = {}) {
     AppState.currentPage = page;
     this.currentParams = params;
+    this.updateHash(page, params);
     this.render();
+  },
+
+  navigateFromHash() {
+    const { page, params } = this.parseHash();
+    const validPages = ['dashboard', 'membres', 'membres-add', 'profil', 'profil-edit', 'mon-compte', 'annuaire',
+      'mes-disciples', 'calendrier', 'programmes', 'programmes-add', 'programmes-edit', 'programme-detail',
+      'presences', 'historique-membre', 'statistiques', 'notifications', 'sujets-priere', 'temoignages',
+      'documents', 'nouvelles-ames', 'nouvelles-ames-add', 'nouvelle-ame-detail', 'nouvelle-ame-suivi',
+      'evangelisation', 'evangelisation-stats', 'evangelisation-planning', 'evangelisation-add',
+      'evangelisation-detail', 'secteurs'];
+    if (validPages.includes(page)) {
+      AppState.currentPage = page;
+      this.currentParams = params;
+      this.render();
+    }
   },
 
   async render() {
     if (!AppState.user) { this.showLoginPage(); return; }
 
     let pageContent = '', pageTitle = '';
+    App.showLoading();
 
+    try {
     switch (AppState.currentPage) {
       case 'dashboard': pageTitle = 'Tableau de bord'; pageContent = await this.renderDashboardEnhanced(); break;
       case 'membres': pageTitle = 'Membres'; pageContent = Pages.renderMembres(); break;
@@ -108,7 +155,7 @@ const App = {
       case 'mon-compte': pageTitle = 'Mon compte'; pageContent = Pages.renderMonCompte(); break;
       case 'annuaire': pageTitle = 'Annuaire'; pageContent = Pages.renderAnnuaire(); break;
       case 'mes-disciples': pageTitle = 'Mes disciples'; pageContent = Pages.renderMembres(); break;
-      case 'calendrier': pageTitle = 'Calendrier'; pageContent = PagesCalendrier.renderCalendrier(); break;
+      case 'calendrier': pageTitle = 'Calendrier'; pageContent = await PagesCalendrier.renderCalendrier(); break;
       case 'programmes': pageTitle = 'Programmes'; pageContent = PagesCalendrier.renderProgrammes(); break;
       case 'programmes-add': pageTitle = 'Nouveau programme'; pageContent = PagesCalendrier.renderProgrammeForm(); break;
       case 'programmes-edit': pageTitle = 'Modifier le programme'; pageContent = PagesCalendrier.renderProgrammeForm(this.currentParams.programmeId); break;
@@ -124,10 +171,249 @@ const App = {
       case 'nouvelles-ames-add': pageTitle = 'Ajouter une nouvelle âme'; pageContent = PagesNouvellesAmes.renderAdd(); break;
       case 'nouvelle-ame-detail': pageTitle = 'Détail nouvelle âme'; pageContent = await PagesNouvellesAmes.renderDetail(this.currentParams.id); break;
       case 'nouvelle-ame-suivi': pageTitle = 'Ajouter un suivi'; pageContent = PagesNouvellesAmes.renderAddSuivi(this.currentParams.id); break;
+      case 'evangelisation': pageTitle = 'Évangélisation'; pageContent = await PagesEvangelisation.render(); break;
+      case 'evangelisation-stats': pageTitle = 'Statistiques évangélisation'; pageContent = await PagesEvangelisation.renderEvangelisationStats(); break;
+      case 'evangelisation-planning': pageTitle = 'Planning évangélisation'; pageContent = await PagesEvangelisation.renderPlanning(); break;
+      case 'evangelisation-add': pageTitle = 'Nouvelle session'; pageContent = PagesEvangelisation.renderAdd(); break;
+      case 'evangelisation-detail': pageTitle = 'Détail session'; pageContent = await PagesEvangelisation.renderDetail(this.currentParams.id); break;
+      case 'secteurs': pageTitle = 'Secteurs'; pageContent = await PagesEvangelisation.renderSecteurs(); break;
+      case 'admin-familles': pageTitle = 'Gestion des familles'; pageContent = await Pages.renderAdminFamilles(); break;
       default: pageTitle = 'Page non trouvée'; pageContent = '<div class="alert alert-warning">Cette page n\'existe pas.</div>';
     }
 
     document.getElementById('app').innerHTML = this.renderLayout(pageTitle, pageContent);
+    this.applyTheme(localStorage.getItem('crm_theme') || 'light');
+    } catch (err) {
+      console.error('Erreur chargement page:', err);
+      Toast.error('Erreur lors du chargement de la page. Réessayez.');
+      pageTitle = pageTitle || 'Erreur';
+      pageContent = '<div class="alert alert-danger"><strong>Erreur de chargement.</strong><p>Si le problème persiste, rafraîchissez la page (F5) ou vérifiez votre connexion.</p></div>';
+      document.getElementById('app').innerHTML = this.renderLayout(pageTitle, pageContent);
+    } finally {
+      App.hideLoading();
+    }
+    if (AppState.currentPage === 'sujets-priere' && typeof PagesPriere.initCharts === 'function') {
+      setTimeout(() => PagesPriere.initCharts(), 50);
+    }
+    if (AppState.currentPage === 'mes-disciples' && typeof PagesDisciples.initCharts === 'function') {
+      setTimeout(() => PagesDisciples.initCharts(), 50);
+    }
+    if (AppState.currentPage === 'nouvelles-ames' && typeof PagesNouvellesAmes.initCharts === 'function') {
+      setTimeout(() => PagesNouvellesAmes.initCharts(), 50);
+    }
+    if (AppState.currentPage === 'nouvelle-ame-detail' && typeof NotesSuivi !== 'undefined' && NotesSuivi.canAddNote() && this.currentParams.id) {
+      setTimeout(() => NotesSuivi.loadAndRender('nouvelle_ame', this.currentParams.id), 50);
+    }
+    if (AppState.currentPage === 'statistiques' && typeof PagesStatistiques.initCharts === 'function') {
+      setTimeout(() => PagesStatistiques.initCharts(), 50);
+    }
+  },
+
+  renderObjectifsKPI(statsNA, statsEvang, statsMembres) {
+    const famId = AppState.famille?.id || 'default';
+    const stored = JSON.parse(localStorage.getItem(`crm_objectifs_${famId}`) || '{}');
+    const objNA = stored.nouvelles_ames || 5;
+    const objContacts = stored.contacts_evang || 10;
+    const realNA = statsNA?.integres || 0;
+    const realContacts = statsEvang?.totalContacts || 0;
+    const pctNA = objNA > 0 ? Math.round((realNA / objNA) * 100) : 0;
+    const pctContacts = objContacts > 0 ? Math.round((realContacts / objContacts) * 100) : 0;
+    return `
+      <div class="dashboard-section">
+        <div class="section-header">
+          <h3 class="section-title"><i class="fas fa-bullseye"></i> Objectifs du mois</h3>
+          <button type="button" class="btn btn-sm btn-outline" onclick="App.editObjectifs()" title="Modifier les objectifs">Modifier</button>
+        </div>
+        <div class="card">
+          <div class="card-body">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-lg);">
+              <div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px;">Nouvelles âmes intégrées</div>
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                  <span style="font-size: 1.5rem; font-weight: 700;">${realNA}</span>
+                  <span style="color: var(--text-muted);">/ ${objNA}</span>
+                </div>
+                <div class="progress-bar-container" style="margin-top: 8px; height: 8px;">
+                  <div class="progress-bar" style="width: ${Math.min(pctNA, 100)}%; background: ${pctNA >= 100 ? 'var(--success)' : 'var(--primary)'};"></div>
+                </div>
+              </div>
+              <div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px;">Contacts évangélisation</div>
+                <div style="display: flex; align-items: baseline; gap: 8px;">
+                  <span style="font-size: 1.5rem; font-weight: 700;">${realContacts}</span>
+                  <span style="color: var(--text-muted);">/ ${objContacts}</span>
+                </div>
+                <div class="progress-bar-container" style="margin-top: 8px; height: 8px;">
+                  <div class="progress-bar" style="width: ${Math.min(pctContacts, 100)}%; background: ${pctContacts >= 100 ? 'var(--success)' : '#009688'};"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  editObjectifs() {
+    const famId = AppState.famille?.id || 'default';
+    const stored = JSON.parse(localStorage.getItem(`crm_objectifs_${famId}`) || '{}');
+    const objNA = stored.nouvelles_ames ?? 5;
+    const objContacts = stored.contacts_evang ?? 10;
+    const html = `
+      <div class="modal-overlay active" id="modal-objectifs">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-bullseye"></i> Objectifs du mois</h3>
+            <button class="modal-close" onclick="document.getElementById('modal-objectifs').remove();">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Nouvelles âmes à intégrer (objectif)</label>
+              <input type="number" class="form-control" id="obj-na" min="0" value="${objNA}">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Contacts évangélisation (objectif)</label>
+              <input type="number" class="form-control" id="obj-contacts" min="0" value="${objContacts}">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="document.getElementById('modal-objectifs').remove();">Annuler</button>
+            <button class="btn btn-primary" onclick="App.saveObjectifs()"><i class="fas fa-save"></i> Enregistrer</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', html);
+  },
+
+  getRaccourcisNav() {
+    const RACCOURCIS = [
+      { id: 'dashboard', label: 'Tableau de bord', icon: 'fa-home' },
+      { id: 'calendrier', label: 'Calendrier', icon: 'fa-calendar-alt' },
+      { id: 'nouvelles-ames', label: 'Nouvelles âmes', icon: 'fa-seedling' },
+      { id: 'evangelisation', label: 'Évangélisation', icon: 'fa-bullhorn' },
+      { id: 'statistiques', label: 'Statistiques', icon: 'fa-chart-bar' },
+      { id: 'sujets-priere', label: 'Prières', icon: 'fa-praying-hands' }
+    ];
+    const favs = JSON.parse(localStorage.getItem('crm_raccourcis') || '[]');
+    if (favs.length === 0) return '';
+    const items = favs.map(id => RACCOURCIS.find(r => r.id === id)).filter(Boolean);
+    if (items.length === 0) return '';
+    return `
+      <div class="nav-section">
+        <div class="nav-section-title">Raccourcis</div>
+        ${items.map(r => `
+          <div class="nav-item ${AppState.currentPage === r.id ? 'active' : ''}" onclick="App.navigate('${r.id}')">
+            <i class="fas ${r.icon}"></i><span>${r.label}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  },
+
+  saveObjectifs() {
+    const famId = AppState.famille?.id || 'default';
+    const objNA = parseInt(document.getElementById('obj-na')?.value || '5', 10);
+    const objContacts = parseInt(document.getElementById('obj-contacts')?.value || '10', 10);
+    localStorage.setItem(`crm_objectifs_${famId}`, JSON.stringify({
+      nouvelles_ames: Math.max(0, objNA),
+      contacts_evang: Math.max(0, objContacts)
+    }));
+    document.getElementById('modal-objectifs')?.remove();
+    Toast.success('Objectifs enregistrés');
+    this.render();
+  },
+
+  showCreateFamilleModal() {
+    const modalId = 'modal-create-famille';
+    const html = `
+      <div class="modal-overlay active" id="${modalId}">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-church"></i> Créer une famille</h3>
+            <button class="modal-close" onclick="document.getElementById('${modalId}').remove();">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label required">Nom de la famille</label>
+              <input type="text" class="form-control" id="new-famille-nom" placeholder="Ex: Famille Espérance" required>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove();">Annuler</button>
+            <button class="btn btn-primary" onclick="App.submitCreateFamille()"><i class="fas fa-save"></i> Créer</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', html);
+  },
+
+  async submitCreateFamille() {
+    const nom = document.getElementById('new-famille-nom')?.value?.trim();
+    if (!nom) { Toast.warning('Saisissez le nom de la famille'); return; }
+    try {
+      await Auth.createFamille(nom);
+      document.getElementById('modal-create-famille')?.remove();
+      Toast.success('Famille créée');
+      this.render();
+    } catch (e) {
+      Toast.error(e.message || 'Erreur');
+    }
+  },
+
+  showAddBergerModalFromButton(btn) {
+    const familleId = btn.dataset.familleId;
+    const familleNom = btn.dataset.familleNom || '';
+    if (!familleId) return;
+    this.showAddBergerModal(familleId, familleNom);
+  },
+
+  showAddBergerModal(familleId, familleNom) {
+    const modalId = 'modal-add-berger-famille';
+    const html = `
+      <div class="modal-overlay active" id="${modalId}">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-user-plus"></i> Ajouter un berger</h3>
+            <button class="modal-close" onclick="document.getElementById('${modalId}').remove();">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-info mb-3">Famille : <strong>${Utils.escapeHtml(familleNom)}</strong>. Ce berger pourra ensuite ajouter mentors et disciples depuis la fenêtre de connexion.</div>
+            <div class="form-group">
+              <label class="form-label required">Prénom</label>
+              <input type="text" class="form-control" id="berger-prenom" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Nom</label>
+              <input type="text" class="form-control" id="berger-nom" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Email</label>
+              <input type="email" class="form-control" id="berger-email" required>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove();">Annuler</button>
+            <button class="btn btn-primary" onclick="App.submitAddBergerForFamily('${familleId}')"><i class="fas fa-save"></i> Créer le berger</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', html);
+  },
+
+  async submitAddBergerForFamily(familleId) {
+    const prenom = document.getElementById('berger-prenom')?.value?.trim();
+    const nom = document.getElementById('berger-nom')?.value?.trim();
+    const email = document.getElementById('berger-email')?.value?.trim();
+    if (!prenom || !nom || !email) { Toast.warning('Remplissez tous les champs'); return; }
+    try {
+      await Auth.createMembreForFamily(familleId, { prenom, nom, email, role: 'berger' });
+      document.getElementById('modal-add-berger-famille')?.remove();
+    } catch (e) {
+      Toast.error(e.message || 'Erreur');
+    }
   },
 
   async renderDashboardEnhanced() {
@@ -164,6 +450,37 @@ const App = {
       }
     }
 
+    // Répartition des membres par mentor (proportion du total famille) pour le tableau de bord
+    let repartitionMentors = null;
+    if (Permissions.canViewStats()) {
+      try {
+        repartitionMentors = Statistiques.getRepartitionMentorsData();
+      } catch (e) {
+        console.error('Erreur répartition mentors:', e);
+      }
+    }
+    
+    // Charger les statistiques des nouvelles âmes (pour mentors et plus)
+    let statsNouvellesAmes = { total: 0, aRelancer: 0 };
+    let amesARelancer = [];
+    let statsEvangelisation = { totalSessions: 0, totalContacts: 0, upcoming: 0 };
+    if (Permissions.hasRole('mentor')) {
+      try {
+        await NouvellesAmes.loadAll();
+        statsNouvellesAmes = NouvellesAmes.getStats();
+        amesARelancer = NouvellesAmes.getARelancer(7).slice(0, 5);
+      } catch (error) {
+        console.error('Erreur chargement stats nouvelles âmes:', error);
+      }
+      
+      try {
+        await SessionsEvangelisation.loadAll();
+        statsEvangelisation = SessionsEvangelisation.getStats();
+      } catch (error) {
+        console.error('Erreur chargement stats évangélisation:', error);
+      }
+    }
+
     return `
       <div class="dashboard-grid">
         <div class="stat-card clickable" onclick="App.navigate('membres')" title="Voir tous les membres" style="cursor: pointer;">
@@ -184,11 +501,63 @@ const App = {
           <div class="stat-icon info" style="cursor: pointer;"><i class="fas fa-birthday-cake"></i></div>
           <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.anniversairesAujourdhui.length}</div><div class="stat-label" style="cursor: pointer;">Anniversaires</div></div>
         </div>
+        ${Permissions.hasRole('mentor') ? `
+        <div class="stat-card clickable" onclick="App.navigate('nouvelles-ames')" title="Voir les nouvelles âmes" style="cursor: pointer;">
+          <div class="stat-icon" style="background: #8BC34A20; color: #8BC34A; cursor: pointer;"><i class="fas fa-seedling"></i></div>
+          <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${statsNouvellesAmes.total}</div><div class="stat-label" style="cursor: pointer;">Nouvelles âmes</div></div>
+        </div>
+        <div class="stat-card clickable" onclick="App.navigate('evangelisation')" title="Voir l'évangélisation" style="cursor: pointer;">
+          <div class="stat-icon" style="background: #00968820; color: #009688; cursor: pointer;"><i class="fas fa-bullhorn"></i></div>
+          <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${statsEvangelisation.totalContacts}</div><div class="stat-label" style="cursor: pointer;">Contacts évangélisation</div></div>
+        </div>
+        ` : ''}
       </div>
       ${stats.anniversairesAujourdhui.length > 0 ? `<div class="alert alert-success mb-3"><i class="fas fa-birthday-cake"></i><div class="alert-content"><div class="alert-title">🎂 Joyeux anniversaire !</div><p class="mb-0">${stats.anniversairesAujourdhui.map(m => m.prenom + ' ' + m.nom).join(', ')}</p></div></div>` : ''}
+      ${repartitionMentors && repartitionMentors.totalFamille > 0 ? (Permissions.hasRole('berger') || Permissions.isAdmin() ? `
+      <div class="dashboard-section">
+        <div class="section-header">
+          <h3 class="section-title"><i class="fas fa-users-cog"></i> Répartition des membres par mentor</h3>
+          <a href="#" onclick="App.navigate('statistiques'); return false;" class="btn btn-sm btn-outline" style="cursor: pointer;">Voir les stats</a>
+        </div>
+        <div class="card">
+          <div class="card-body">
+            <p class="text-muted mb-3"><strong>Total famille :</strong> ${repartitionMentors.totalFamille} membre(s) actif(s). Chaque ligne = le groupe du mentor (tous rôles confondus) en proportion du total.</p>
+            <div class="table-responsive">
+              <table class="table">
+                <thead><tr><th>Mentor / Berger</th><th class="text-center">Membres dans le groupe</th><th class="text-center">% du total</th></tr></thead>
+                <tbody>
+                  ${repartitionMentors.parMentor.map(m => `
+                    <tr>
+                      <td><strong>${Utils.escapeHtml(m.mentorName)}</strong></td>
+                      <td class="text-center">${m.nbDansGroupe}</td>
+                      <td class="text-center"><span class="badge badge-primary">${m.proportion}%</span></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      ` : Permissions.hasRole('mentor') ? (() => {
+        const monEntree = repartitionMentors.parMentor.find(m => m.mentorId === user.id);
+        if (!monEntree) return '';
+        return `
+      <div class="dashboard-section">
+        <div class="section-header"><h3 class="section-title"><i class="fas fa-user-friends"></i> Votre groupe</h3><a href="#" onclick="App.navigate('statistiques'); return false;" class="btn btn-sm btn-outline" style="cursor: pointer;">Voir les stats</a></div>
+        <div class="card">
+          <div class="card-body">
+            <p class="mb-0">Votre groupe représente <strong>${monEntree.nbDansGroupe} membre(s)</strong> sur ${repartitionMentors.totalFamille} au total, soit <strong>${monEntree.proportion}%</strong> de la famille.</p>
+          </div>
+        </div>
+      </div>
+      `;
+      })() : '') : ''}
       ${programmesAPointer.length > 0 ? `<div class="alert alert-warning mb-3"><i class="fas fa-exclamation-triangle"></i><div class="alert-content"><div class="alert-title">⚠️ Programmes à pointer</div><p class="mb-2">${programmesAPointer.length} programme${programmesAPointer.length > 1 ? 's' : ''} récent${programmesAPointer.length > 1 ? 's' : ''} ${programmesAPointer.length > 1 ? 'n\'ont pas' : 'n\'a pas'} été complètement pointé${programmesAPointer.length > 1 ? 's' : ''}.</p><div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">${programmesAPointer.map(p => { const date = p.date_debut?.toDate ? p.date_debut.toDate() : new Date(p.date_debut); return `<a href="#" onclick="App.navigate('presences', {programmeId: '${p.id}'}); return false;" class="btn btn-sm btn-warning" style="cursor: pointer;">${Utils.escapeHtml(p.nom)} - ${Utils.formatDate(date)}</a>`; }).join('')}</div></div></div>` : ''}
       ${dernieresNotifications.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-bell"></i> Dernières notifications</h3><a href="#" onclick="App.navigate('notifications'); return false;" class="btn btn-sm btn-outline" style="cursor: pointer;">Voir tout</a></div><div class="card"><div class="card-body" style="padding: 0;">${dernieresNotifications.map(n => { const priorite = Notifications.getPriorite(n.priorite); const date = n.created_at?.toDate ? n.created_at.toDate() : new Date(n.created_at); return `<div class="notification-card-mini" onclick="App.navigate('notifications'); return false;" style="cursor: pointer;"><div class="notif-priority" style="background: ${priorite.bgColor}; color: ${priorite.color};"><i class="fas ${priorite.icon}"></i></div><div class="notif-content"><div class="notif-text">${Utils.escapeHtml(n.contenu)}</div><div class="notif-meta"><span class="notif-author">${n.auteur_prenom || 'Anonyme'}</span><span class="notif-date">${Utils.formatRelativeDate(date)}</span></div></div></div>`; }).join('')}</div></div></div>` : ''}
       ${alertesAbsence.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-user-clock"></i> Alertes absence</h3><a href="#" onclick="App.navigate('statistiques'); return false;" class="btn btn-sm btn-outline" style="cursor: pointer;">Voir les stats</a></div><div class="alert alert-warning mb-0"><div class="alert-content"><p class="mb-2">Membres avec moins de 50 % de présence sur les 30 derniers jours (à recontacter) :</p><ul class="mb-0" style="list-style: none; padding-left: 0;">${alertesAbsence.slice(0, 8).map(a => `<li style="padding: var(--spacing-xs) 0; border-bottom: 1px solid rgba(0,0,0,0.06);"><strong>${Utils.escapeHtml(a.prenom)} ${Utils.escapeHtml(a.nom)}</strong> — ${a.tauxPresence} % (${a.nbPresences}/${a.nbTotal} présences, ${a.nbAbsences} absence${a.nbAbsences > 1 ? 's' : ''})${a.dernierProgramme ? ` — Dernier programme : ${Utils.formatDate(a.dernierProgramme)}` : ''}</li>`).join('')}</ul>${alertesAbsence.length > 8 ? `<p class="mt-2 mb-0 text-muted">... et ${alertesAbsence.length - 8} autre(s). <a href="#" onclick="App.navigate('statistiques'); return false;">Voir les statistiques</a></p>` : ''}</div></div></div>` : ''}
+      ${amesARelancer.length > 0 ? `<div class="dashboard-section"><div class="section-header"><h3 class="section-title"><i class="fas fa-seedling"></i> Nouvelles âmes à relancer</h3><a href="#" onclick="App.navigate('nouvelles-ames'); return false;" class="btn btn-sm btn-outline" style="cursor: pointer;">Voir tout</a></div><div class="alert alert-info mb-0"><div class="alert-content"><p class="mb-2"><strong>${amesARelancer.length}</strong> nouvelle(s) âme(s) sans contact depuis plus de 7 jours :</p><ul class="mb-0" style="list-style: none; padding-left: 0;">${amesARelancer.map(na => { const lastContact = na.date_dernier_contact?.toDate ? na.date_dernier_contact.toDate() : new Date(na.date_dernier_contact || na.created_at); const daysAgo = Math.floor((new Date() - lastContact) / (1000 * 60 * 60 * 24)); return `<li style="padding: var(--spacing-xs) 0; border-bottom: 1px solid rgba(0,0,0,0.06); display: flex; justify-content: space-between; align-items: center;"><span><strong>${Utils.escapeHtml(na.prenom)} ${Utils.escapeHtml(na.nom)}</strong> — dernier contact il y a ${daysAgo} jour${daysAgo > 1 ? 's' : ''}</span><a href="#" onclick="App.navigate('nouvelle-ame-detail', {id: '${na.id}'}); return false;" class="btn btn-sm btn-primary" style="padding: 4px 8px;"><i class="fas fa-phone"></i> Relancer</a></li>`; }).join('')}</ul></div></div></div>` : ''}
+      ${Permissions.hasRole('berger') ? App.renderObjectifsKPI(statsNouvellesAmes, statsEvangelisation, stats) : ''}
       <div class="dashboard-section">
         <div class="section-header"><h3 class="section-title"><i class="fas fa-bolt"></i> Actions rapides</h3></div>
         <div class="quick-actions">
@@ -232,6 +601,7 @@ const App = {
         <aside class="sidebar">
           <div class="sidebar-header"><div class="sidebar-logo">✝️</div><div><div class="sidebar-title">CRM Famille</div><div class="sidebar-subtitle">${Utils.escapeHtml(famille?.nom || '')}</div></div></div>
           <nav class="sidebar-nav">
+            ${App.getRaccourcisNav()}
             <div class="nav-section"><div class="nav-section-title">Principal</div>
               <div class="nav-item ${AppState.currentPage === 'dashboard' ? 'active' : ''}" onclick="App.navigate('dashboard')"><i class="fas fa-home"></i><span>Tableau de bord</span></div>
               <div class="nav-item ${AppState.currentPage === 'profil' ? 'active' : ''}" onclick="App.navigate('profil')"><i class="fas fa-user"></i><span>Mon profil</span></div>
@@ -250,9 +620,11 @@ const App = {
               <div class="nav-item ${AppState.currentPage === 'programmes' ? 'active' : ''}" onclick="App.navigate('programmes')"><i class="fas fa-clipboard-list"></i><span>Programmes</span></div>
               <div class="nav-item ${AppState.currentPage === 'statistiques' ? 'active' : ''}" onclick="App.navigate('statistiques')"><i class="fas fa-chart-bar"></i><span>Statistiques</span></div>
               <div class="nav-item ${AppState.currentPage === 'nouvelles-ames' || AppState.currentPage === 'nouvelles-ames-add' || AppState.currentPage === 'nouvelle-ame-detail' || AppState.currentPage === 'nouvelle-ame-suivi' ? 'active' : ''}" onclick="App.navigate('nouvelles-ames')"><i class="fas fa-seedling"></i><span>Nouvelles âmes</span></div>
+              <div class="nav-item ${AppState.currentPage === 'evangelisation' || AppState.currentPage === 'evangelisation-add' || AppState.currentPage === 'evangelisation-detail' || AppState.currentPage === 'evangelisation-planning' || AppState.currentPage === 'evangelisation-stats' || AppState.currentPage === 'secteurs' ? 'active' : ''}" onclick="App.navigate('evangelisation')"><i class="fas fa-bullhorn"></i><span>Évangélisation</span></div>
             </div>` : ''}
             ${Permissions.canViewAllMembers() ? `<div class="nav-section"><div class="nav-section-title">Administration</div>
               <div class="nav-item ${AppState.currentPage === 'membres' ? 'active' : ''}" onclick="App.navigate('membres')"><i class="fas fa-users"></i><span>Tous les membres</span></div>
+              ${Permissions.isAdmin() ? `<div class="nav-item ${AppState.currentPage === 'admin-familles' ? 'active' : ''}" onclick="App.navigate('admin-familles')"><i class="fas fa-church"></i><span>Familles</span></div>` : ''}
             </div>` : ''}
           </nav>
           <div class="sidebar-user">
@@ -262,15 +634,116 @@ const App = {
           </div>
         </aside>
         <main class="main-content">
-          <header class="main-header"><div class="header-left"><h1 class="page-title">${pageTitle}</h1></div><div class="header-right"><div class="header-family-badge"><i class="fas fa-church"></i><span>${Utils.escapeHtml(famille?.nom || '')}</span></div></div></header>
+          <header class="main-header">
+            <div class="header-left"><h1 class="page-title">${pageTitle}</h1></div>
+            <div class="header-right">
+              <div class="global-search" style="position: relative;">
+                <input type="text" class="form-control" id="global-search-input" placeholder="Rechercher membre, nouvelle âme..." 
+                       style="width: 220px; padding-left: 36px;" 
+                       oninput="App.globalSearchDebounce()" onfocus="App.globalSearchShow()" onblur="setTimeout(() => App.globalSearchHide(), 150)">
+                <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;"></i>
+                <div id="global-search-results" class="global-search-dropdown" style="display: none;"></div>
+              </div>
+              <button type="button" class="btn btn-icon btn-outline" onclick="App.toggleTheme()" title="Changer le thème (clair/sombre)" style="padding: 8px;">
+                <i class="fas fa-moon" id="theme-icon-light"></i>
+                <i class="fas fa-sun" id="theme-icon-dark" style="display: none;"></i>
+              </button>
+              <div class="header-family-badge"><i class="fas fa-church"></i><span>${Utils.escapeHtml(famille?.nom_affichage || famille?.nom || '')}</span></div>
+            </div>
+          </header>
           <div class="page-content">${content}</div>
         </main>
       </div>
     `;
   },
 
-  filterMembres() { const search = document.getElementById('search-membres')?.value.toLowerCase() || ''; const roleFilter = document.getElementById('filter-role')?.value || ''; document.querySelectorAll('#membres-list .member-card').forEach(card => { const name = card.dataset.name || ''; const role = card.dataset.role || ''; card.style.display = name.includes(search) && (!roleFilter || role === roleFilter) ? '' : 'none'; }); },
-  filterAnnuaire() { const search = document.getElementById('search-annuaire')?.value.toLowerCase() || ''; document.querySelectorAll('#annuaire-list .member-card').forEach(card => { card.style.display = (card.dataset.name || '').includes(search) ? '' : 'none'; }); },
+  applyTheme(theme) {
+    const isDark = theme === 'dark';
+    document.body.classList.toggle('theme-dark', isDark);
+    const iconLight = document.getElementById('theme-icon-light');
+    const iconDark = document.getElementById('theme-icon-dark');
+    if (iconLight) iconLight.style.display = isDark ? 'none' : 'inline';
+    if (iconDark) iconDark.style.display = isDark ? 'inline' : 'none';
+  },
+  toggleRaccourci(pageId, add) {
+    const favs = JSON.parse(localStorage.getItem('crm_raccourcis') || '[]');
+    if (add) { if (!favs.includes(pageId)) favs.push(pageId); }
+    else { const idx = favs.indexOf(pageId); if (idx >= 0) favs.splice(idx, 1); }
+    localStorage.setItem('crm_raccourcis', JSON.stringify(favs));
+    Toast.success('Raccourcis mis à jour');
+    this.render();
+  },
+
+  setThemePreference(theme) {
+    localStorage.setItem('crm_theme', theme);
+    this.applyTheme(theme);
+    Toast.success('Préférence enregistrée');
+  },
+  toggleTheme() {
+    const current = localStorage.getItem('crm_theme') || 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('crm_theme', next);
+    this.applyTheme(next);
+    const iconLight = document.getElementById('theme-icon-light');
+    const iconDark = document.getElementById('theme-icon-dark');
+    if (iconLight) iconLight.style.display = next === 'dark' ? 'none' : 'inline';
+    if (iconDark) iconDark.style.display = next === 'dark' ? 'inline' : 'none';
+  },
+
+  globalSearchDebounceId: null,
+  globalSearchDebounce() {
+    clearTimeout(this.globalSearchDebounceId);
+    this.globalSearchDebounceId = setTimeout(() => this.globalSearch(), 200);
+  },
+  globalSearchShow() {
+    const q = document.getElementById('global-search-input')?.value?.trim();
+    if (q && q.length >= 2) this.globalSearch();
+  },
+  globalSearchHide() {
+    const dd = document.getElementById('global-search-results');
+    if (dd) dd.style.display = 'none';
+  },
+  globalSearch() {
+    const q = (document.getElementById('global-search-input')?.value || '').trim().toLowerCase();
+    const dd = document.getElementById('global-search-results');
+    if (!dd) return;
+    if (q.length < 2) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
+    const results = [];
+    const membres = AppState.membres?.filter(m => m.statut_compte === 'actif') || [];
+    membres.forEach(m => {
+      const name = `${(m.prenom || '')} ${(m.nom || '')}`.toLowerCase();
+      if (name.includes(q)) results.push({ type: 'membre', id: m.id, label: `${m.prenom} ${m.nom}`, sub: 'Membre', icon: 'fa-user' });
+    });
+    let naCache = [];
+    if (typeof NouvellesAmesData !== 'undefined') naCache = NouvellesAmesData.cache || [];
+    naCache.filter(na => na.statut !== 'integre').forEach(na => {
+      const name = `${(na.prenom || '')} ${(na.nom || '')}`.toLowerCase();
+      if (name.includes(q)) results.push({ type: 'nouvelle_ame', id: na.id, label: `${na.prenom} ${na.nom}`, sub: 'Nouvelle âme', icon: 'fa-seedling' });
+    });
+    if (typeof SujetsPriere !== 'undefined' && SujetsPriere.items) {
+      SujetsPriere.items.slice(0, 50).forEach(s => {
+        const text = ((s.contenu || '') + (s.auteur_prenom || '')).toLowerCase();
+        if (text.includes(q)) results.push({ type: 'priere', id: s.id, label: (s.contenu || '').substring(0, 40) + (s.contenu?.length > 40 ? '...' : ''), sub: 'Sujet de prière', icon: 'fa-praying-hands' });
+      });
+    }
+    const html = results.slice(0, 8).map(r => {
+      const action = r.type === 'membre' ? `App.viewMembre('${r.id}')` :
+        r.type === 'nouvelle_ame' ? `App.navigate('nouvelle-ame-detail', {id:'${r.id}'})` :
+        `App.navigate('sujets-priere')`;
+      return `<div class="global-search-item" onclick="${action}; App.globalSearchHide(); document.getElementById('global-search-input').value='';" style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border-color);">
+        <i class="fas ${r.icon}" style="color:var(--primary)"></i>
+        <div><div style="font-weight:600">${Utils.escapeHtml(r.label)}</div><div style="font-size:0.8rem;color:var(--text-muted)">${r.sub}</div></div>
+      </div>`;
+    }).join('');
+    dd.innerHTML = html ? html : '<div style="padding:12px;color:var(--text-muted)">Aucun résultat</div>';
+    dd.style.display = 'block';
+    dd.style.position = 'absolute'; dd.style.top = '100%'; dd.style.left = '0'; dd.style.right = '0';
+    dd.style.background = 'var(--bg-secondary)'; dd.style.border = '1px solid var(--border-color)'; dd.style.borderRadius = 'var(--radius-sm)';
+    dd.style.boxShadow = 'var(--shadow-lg)'; dd.style.zIndex = '1000'; dd.style.maxHeight = '300px'; dd.style.overflowY = 'auto';
+  },
+
+  filterMembres() { const search = document.getElementById('search-membres')?.value.toLowerCase() || ''; const roleFilter = document.getElementById('filter-role')?.value || ''; const mentorFilter = document.getElementById('filter-mentor')?.value || ''; document.querySelectorAll('#membres-list .member-card').forEach(card => { const name = card.dataset.name || ''; const role = card.dataset.role || ''; const mentorId = card.dataset.mentorId || ''; const matchMentor = !mentorFilter || (mentorFilter === 'none' ? mentorId === '' : mentorId === mentorFilter); card.style.display = name.includes(search) && (!roleFilter || role === roleFilter) && matchMentor ? '' : 'none'; }); },
+  filterAnnuaire() { const search = document.getElementById('search-annuaire')?.value.toLowerCase() || ''; const moisValue = document.getElementById('filter-annuaire-mois')?.value || ''; document.querySelectorAll('#annuaire-list .member-card').forEach(card => { const name = card.dataset.name || ''; const birthMonth = card.dataset.birthMonth || ''; const matchSearch = name.includes(search); const matchMois = !moisValue || birthMonth === moisValue; card.style.display = matchSearch && matchMois ? '' : 'none'; }); },
   filterProgrammes() { const search = document.getElementById('search-programmes')?.value.toLowerCase() || ''; const typeFilter = document.getElementById('filter-type')?.value || ''; document.querySelectorAll('#programmes-list .programme-card').forEach(card => { const name = card.dataset.name || ''; const type = card.dataset.type || ''; card.style.display = name.includes(search) && (!typeFilter || type === typeFilter) ? '' : 'none'; }); },
 
   exportMembresCSV() {
@@ -339,6 +812,51 @@ const App = {
     Toast.success(`Export de ${membres.length} membre(s) réussi.`);
   },
 
+  async exportGlobal() {
+    if (!Permissions.hasRole('berger')) { Toast.error('Réservé aux bergers'); return; }
+    try {
+      let naCache = [];
+      if (typeof NouvellesAmes !== 'undefined') {
+        await NouvellesAmes.loadAll();
+        naCache = NouvellesAmesData?.cache || [];
+      }
+      let sujetsPriere = [];
+      if (typeof SujetsPriere !== 'undefined') {
+        await SujetsPriere.loadAll();
+        sujetsPriere = SujetsPriere.items || [];
+      }
+      const toPlain = (o) => {
+        if (!o) return o;
+        if (o && o.toDate) return o.toDate().toISOString();
+        if (Array.isArray(o)) return o.map(toPlain);
+        if (typeof o === 'object') {
+          const r = {};
+          for (const k in o) r[k] = toPlain(o[k]);
+          return r;
+        }
+        return o;
+      };
+      const data = {
+        export_date: new Date().toISOString(),
+        famille: AppState.famille?.nom,
+        membres: (AppState.membres || []).map(toPlain),
+        programmes: (AppState.programmes || []).map(toPlain),
+        nouvelles_ames: naCache.map(toPlain),
+        sujets_priere: sujetsPriere.map(toPlain)
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `crm_backup_${AppState.famille?.nom || 'famille'}_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      Toast.success('Export terminé');
+    } catch (e) {
+      console.error('Export global:', e);
+      Toast.error('Erreur lors de l\'export');
+    }
+  },
+
   exportMembresPDF() {
     const isMesDisciples = AppState.currentPage === 'mes-disciples';
     const canExport = Permissions.canViewAllMembers() || (isMesDisciples && Permissions.hasRole('mentor'));
@@ -377,7 +895,12 @@ const App = {
     }
   },
 
-  viewMembre(id) { document.querySelector('.page-content').innerHTML = Pages.renderProfil(id); },
+  viewMembre(id) {
+    document.querySelector('.page-content').innerHTML = Pages.renderProfil(id);
+    if (typeof NotesSuivi !== 'undefined' && NotesSuivi.canAddNote()) {
+      setTimeout(() => NotesSuivi.loadAndRender('membre', id), 50);
+    }
+  },
   editMembre(id) { document.querySelector('.page-content').innerHTML = Pages.renderProfilEdit(id); },
   viewProgramme(id) { this.navigate('programme-detail', { programmeId: id }); },
   editProgramme(id) { this.navigate('programmes-edit', { programmeId: id }); },
@@ -602,7 +1125,7 @@ const App = {
     }
   },
 
-  async submitEditProfil(event, membreId) { event.preventDefault(); const formations = []; document.querySelectorAll('[id^="formation-"]:checked').forEach(cb => formations.push(cb.value)); const data = { prenom: document.getElementById('edit-prenom').value.trim(), nom: document.getElementById('edit-nom').value.trim(), sexe: document.getElementById('edit-sexe').value || null, date_naissance: document.getElementById('edit-date-naissance').value ? new Date(document.getElementById('edit-date-naissance').value) : null, telephone: document.getElementById('edit-telephone').value.trim() || null, adresse_ville: document.getElementById('edit-ville').value.trim() || null, adresse_code_postal: document.getElementById('edit-cp').value.trim() || null, date_arrivee_icc: document.getElementById('edit-date-icc').value ? new Date(document.getElementById('edit-date-icc').value) : null, formations, ministere_service: document.getElementById('edit-ministere').value.trim() || null, baptise_immersion: document.getElementById('edit-baptise').value === 'true' ? true : document.getElementById('edit-baptise').value === 'false' ? false : null, profession: document.getElementById('edit-profession').value.trim() || null, statut_professionnel: document.getElementById('edit-statut-pro').value || null, passions_centres_interet: document.getElementById('edit-passions').value.trim() || null }; if (await Membres.update(membreId, data)) this.navigate('profil'); },
+  async submitEditProfil(event, membreId) { event.preventDefault(); const formations = []; document.querySelectorAll('[id^="formation-"]:checked').forEach(cb => formations.push(cb.value)); const data = { prenom: document.getElementById('edit-prenom').value.trim(), nom: document.getElementById('edit-nom').value.trim(), sexe: document.getElementById('edit-sexe').value || null, date_naissance: document.getElementById('edit-date-naissance').value ? new Date(document.getElementById('edit-date-naissance').value) : null, telephone: document.getElementById('edit-telephone').value.trim() || null, adresse_ville: document.getElementById('edit-ville').value.trim() || null, adresse_code_postal: document.getElementById('edit-cp').value.trim() || null, date_arrivee_icc: document.getElementById('edit-date-icc').value ? new Date(document.getElementById('edit-date-icc').value) : null, formations, ministere_service: document.getElementById('edit-ministere').value.trim() || null, baptise_immersion: document.getElementById('edit-baptise').value === 'true' ? true : document.getElementById('edit-baptise').value === 'false' ? false : null, date_bapteme: document.getElementById('edit-date-bapteme')?.value ? new Date(document.getElementById('edit-date-bapteme').value) : null, profession: document.getElementById('edit-profession').value.trim() || null, statut_professionnel: document.getElementById('edit-statut-pro').value || null, passions_centres_interet: document.getElementById('edit-passions').value.trim() || null }; if (await Membres.update(membreId, data)) this.navigate('profil'); },
 
   async submitProgramme(event, programmeId = null) {
     event.preventDefault();

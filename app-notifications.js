@@ -78,16 +78,47 @@ const Notifications = {
     }
   },
 
+  // Modifier une notification
+  async update(id, data) {
+    try {
+      const notif = this.items.find(n => n.id === id);
+      if (!notif) throw new Error('Notification non trouvée');
+
+      const canEdit = notif.auteur_id === AppState.user.id ||
+        Permissions.hasRole('adjoint_berger') ||
+        Permissions.isAdmin();
+      if (!canEdit) throw new Error('Permission refusée');
+
+      const updates = {
+        contenu: data.contenu,
+        priorite: data.priorite || notif.priorite,
+        updated_at: firebase.firestore.FieldValue.serverTimestamp(),
+        updated_by: AppState.user.id,
+        updated_by_prenom: AppState.user.prenom
+      };
+
+      await db.collection('notifications').doc(id).update(updates);
+      await this.loadAll();
+
+      Toast.success('Notification modifiée');
+      return true;
+    } catch (error) {
+      console.error('Erreur modification notification:', error);
+      Toast.error(error.message || 'Erreur lors de la modification');
+      return false;
+    }
+  },
+
   // Supprimer une notification
   async delete(id) {
     try {
       const notif = this.items.find(n => n.id === id);
       if (!notif) throw new Error('Notification non trouvée');
 
-      // Vérifier les droits (auteur ou admin)
-      if (notif.auteur_id !== AppState.user.id && !Permissions.isAdmin()) {
-        throw new Error('Permission refusée');
-      }
+      const canDelete = notif.auteur_id === AppState.user.id ||
+        Permissions.hasRole('adjoint_berger') ||
+        Permissions.isAdmin();
+      if (!canDelete) throw new Error('Permission refusée');
 
       await db.collection('notifications').doc(id).delete();
       this.items = this.items.filter(n => n.id !== id);
@@ -198,6 +229,45 @@ const PagesNotifications = {
         </div>
       </div>
 
+      <!-- Modal modification notification -->
+      <div class="modal-overlay" id="modal-edit-notif">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-edit"></i> Modifier la notification</h3>
+            <button class="modal-close" onclick="Modal.hide('modal-edit-notif')">&times;</button>
+          </div>
+          <div class="modal-body">
+            <form id="form-edit-notif" onsubmit="PagesNotifications.submitEditNotification(event)">
+              <input type="hidden" id="notif-edit-id" value="">
+              <div class="form-group">
+                <label class="form-label required">Message</label>
+                <textarea class="form-control" id="notif-contenu-edit" rows="4" 
+                          placeholder="Écrivez votre message..." required></textarea>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Priorité</label>
+                <div class="priorite-selector">
+                  ${Notifications.getPriorites().map((p, i) => `
+                    <label class="priorite-option" style="--color: ${p.color}; --bg: ${p.bgColor}">
+                      <input type="radio" name="notif-priorite-edit" value="${p.value}" ${i === 0 ? 'checked' : ''}>
+                      <span class="priorite-badge">
+                        <i class="fas ${p.icon}"></i> ${p.label}
+                      </span>
+                    </label>
+                  `).join('')}
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="Modal.hide('modal-edit-notif')">Annuler</button>
+            <button class="btn btn-primary" onclick="document.getElementById('form-edit-notif').requestSubmit()">
+              <i class="fas fa-save"></i> Enregistrer
+            </button>
+          </div>
+        </div>
+      </div>
+
       <style>
         .notif-header {
           display: flex;
@@ -234,6 +304,15 @@ const PagesNotifications = {
           justify-content: space-between;
           align-items: flex-start;
           margin-bottom: var(--spacing-sm);
+        }
+        .notif-actions {
+          display: flex;
+          gap: var(--spacing-xs);
+        }
+        .notif-updated {
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          margin-left: var(--spacing-xs);
         }
         .notif-priorite {
           display: flex;
@@ -297,7 +376,10 @@ const PagesNotifications = {
   renderNotificationCard(notif) {
     const priorite = Notifications.getPriorite(notif.priorite);
     const date = notif.created_at?.toDate ? notif.created_at.toDate() : new Date(notif.created_at);
-    const canDelete = notif.auteur_id === AppState.user.id || Permissions.isAdmin();
+    const canEdit = notif.auteur_id === AppState.user.id ||
+      Permissions.hasRole('adjoint_berger') ||
+      Permissions.isAdmin();
+    const updatedDate = notif.updated_at ? (notif.updated_at.toDate ? notif.updated_at.toDate() : new Date(notif.updated_at)) : null;
 
     return `
       <div class="notif-card" style="--notif-color: ${priorite.color}">
@@ -305,16 +387,22 @@ const PagesNotifications = {
           <div class="notif-priorite" style="background: ${priorite.bgColor}; color: ${priorite.color}">
             <i class="fas ${priorite.icon}"></i> ${priorite.label}
           </div>
-          ${canDelete ? `
-            <button class="btn btn-icon btn-secondary" onclick="PagesNotifications.deleteNotification('${notif.id}')" title="Supprimer">
-              <i class="fas fa-trash"></i>
-            </button>
+          ${canEdit ? `
+            <div class="notif-actions">
+              <button class="btn btn-icon btn-secondary" onclick="PagesNotifications.showEditModal('${notif.id}')" title="Modifier">
+                <i class="fas fa-edit"></i>
+              </button>
+              <button class="btn btn-icon btn-secondary" onclick="PagesNotifications.deleteNotification('${notif.id}')" title="Supprimer">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
           ` : ''}
         </div>
         <div class="notif-contenu">${Utils.escapeHtml(notif.contenu).replace(/\n/g, '<br>')}</div>
         <div class="notif-footer">
           <div class="notif-author">
             <i class="fas fa-user"></i> ${Utils.escapeHtml(notif.auteur_prenom || 'Anonyme')}
+            ${updatedDate ? ` <span class="notif-updated">(modifié le ${Utils.formatDate(updatedDate)}${notif.updated_by_prenom ? ' par ' + Utils.escapeHtml(notif.updated_by_prenom) : ''})</span>` : ''}
           </div>
           <div class="notif-date">
             <i class="fas fa-clock"></i> ${Utils.formatRelativeDate(date)}
@@ -351,6 +439,38 @@ const PagesNotifications = {
     document.getElementById('notif-contenu').value = '';
     document.querySelector('input[name="notif-priorite"][value="normal"]').checked = true;
     Modal.show('modal-add-notif');
+  },
+
+  showEditModal(notifId) {
+    const notif = Notifications.items.find(n => n.id === notifId);
+    if (!notif) return;
+    document.getElementById('notif-edit-id').value = notifId;
+    document.getElementById('notif-contenu-edit').value = notif.contenu || '';
+    const prioriteRadio = document.querySelector(`input[name="notif-priorite-edit"][value="${notif.priorite || 'normal'}"]`);
+    if (prioriteRadio) prioriteRadio.checked = true;
+    Modal.show('modal-edit-notif');
+  },
+
+  async submitEditNotification(event) {
+    event.preventDefault();
+    const id = document.getElementById('notif-edit-id').value;
+    const contenu = document.getElementById('notif-contenu-edit').value.trim();
+    const priorite = document.querySelector('input[name="notif-priorite-edit"]:checked').value;
+
+    if (!contenu) {
+      Toast.error('Veuillez entrer un message');
+      return;
+    }
+
+    const success = await Notifications.update(id, { contenu, priorite });
+    if (success) {
+      Modal.hide('modal-edit-notif');
+      const notifications = this.filterNotifications();
+      document.getElementById('notif-list').innerHTML =
+        notifications.length > 0
+          ? notifications.map(n => this.renderNotificationCard(n)).join('')
+          : `<div class="empty-state"><i class="fas fa-bell-slash"></i><h3>Aucune notification</h3><p>Il n'y a pas encore de notification dans cette famille.</p></div>`;
+    }
   },
 
   async submitNotification(event) {

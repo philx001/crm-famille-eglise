@@ -67,19 +67,24 @@ service cloud.firestore {
         belongsToFamily(resource.data.famille_id);
     }
 
-    // PRÉSENCES
+    // PRÉSENCES (création/modification : tout utilisateur authentifié ; l'app restreint la page aux mentor+)
     match /presences/{presenceId} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && hasRole('mentor');
-      allow delete: if isAuthenticated() && hasRole('berger');
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated() && (hasRole('berger') || isAdmin());
     }
 
-    // DOCUMENTS
+    // DOCUMENTS (fichiers partagés)
+    // - Lecture : tout membre authentifié de la famille
+    // - Création : tout membre authentifié de la famille peut ajouter un document
+    // - Modification / suppression : uniquement l'auteur du document (uploaded_by) OU adjoint_berger, berger, admin de la famille
     match /documents/{documentId} {
       allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
-      allow create, update, delete: if isAuthenticated() &&
-        hasRole('adjoint_berger') &&
-        belongsToFamily(request.resource.data.famille_id);
+      allow create: if isAuthenticated() && belongsToFamily(request.resource.data.famille_id);
+      allow update, delete: if isAuthenticated() && belongsToFamily(resource.data.famille_id) && (
+        resource.data.uploaded_by == request.auth.uid
+        || hasRole('adjoint_berger')
+      );
     }
 
     // SUJETS DE PRIÈRE
@@ -97,7 +102,9 @@ service cloud.firestore {
       allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
       allow create: if isAuthenticated() &&
         belongsToFamily(request.resource.data.famille_id);
-      allow update, delete: if isAuthenticated() && isAdmin();
+      allow update, delete: if isAuthenticated() && belongsToFamily(resource.data.famille_id) && (
+        resource.data.auteur_id == request.auth.uid || isAdmin()
+      );
     }
 
     // NOTIFICATIONS
@@ -105,8 +112,8 @@ service cloud.firestore {
       allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
       allow create: if isAuthenticated() &&
         belongsToFamily(request.resource.data.famille_id);
-      allow update, delete: if isAuthenticated() && (
-        resource.data.auteur_id == request.auth.uid || isAdmin()
+      allow update, delete: if isAuthenticated() && belongsToFamily(resource.data.famille_id) && (
+        resource.data.auteur_id == request.auth.uid || hasRole('adjoint_berger') || isAdmin()
       );
     }
 
@@ -127,15 +134,21 @@ service cloud.firestore {
 
     // SESSIONS D'ÉVANGÉLISATION
     match /sessions_evangelisation/{sessionId} {
-      allow read: if isAuthenticated() && hasRole('mentor');
-      allow create, update: if isAuthenticated() && hasRole('adjoint_berger');
-      allow delete: if isAuthenticated() && hasRole('berger');
+      // Tout utilisateur authentifié peut accéder
+      // Le contrôle des rôles se fait côté client
+      allow read, create, update, delete: if isAuthenticated();
     }
 
     // SECTEURS D'ÉVANGÉLISATION
     match /secteurs_evangelisation/{secteurId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAuthenticated() && hasRole('adjoint_berger');
+      // Tout utilisateur authentifié peut accéder
+      // Le contrôle des rôles se fait côté client
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
+    // NOTES DE SUIVI (membres, nouvelles âmes)
+    match /notes_suivi/{noteId} {
+      allow read, create, update, delete: if isAuthenticated();
     }
   }
 }

@@ -66,6 +66,20 @@
   --font-heading: 'Playfair Display', Georgia, serif;
 }
 
+/* Thème sombre */
+body.theme-dark {
+  --bg-primary: #1A2332;
+  --bg-secondary: #243447;
+  --bg-tertiary: #2D3E50;
+  --text-primary: #E8EDF2;
+  --text-secondary: #B8C5D0;
+  --text-muted: #8A9BAC;
+  --border-color: #3D5166;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
 /* Reset et base */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -1286,3 +1300,7 @@ select.form-control {
     grid-template-columns: 1fr;
   }
 }
+
+/* Notes de suivi */
+.notes-add { display: flex; gap: var(--spacing-sm); align-items: flex-start; margin-top: var(--spacing-sm); }
+.notes-add textarea { flex: 1; min-height: 60px; }

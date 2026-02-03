@@ -254,6 +254,27 @@ const Statistiques = {
     return stats.sort((a, b) => b.tauxPresence - a.tauxPresence);
   },
 
+  // Répartition des membres par mentor (tous rôles) en proportion du total famille
+  getRepartitionMentorsData() {
+    const actifs = AppState.membres.filter(m => m.statut_compte === 'actif');
+    const totalFamille = actifs.length;
+    const mentorsPourRepartition = actifs.filter(m =>
+      ['mentor', 'adjoint_berger', 'berger'].includes(m.role)
+    );
+    const parMentor = mentorsPourRepartition.map(m => {
+      const nbDansGroupe = Membres.getDisciples(m.id).length;
+      const proportion = totalFamille > 0 ? Math.round((nbDansGroupe / totalFamille) * 1000) / 10 : 0;
+      return {
+        mentorId: m.id,
+        mentorName: `${m.prenom} ${m.nom}`,
+        nbDansGroupe,
+        proportion
+      };
+    }).sort((a, b) => b.nbDansGroupe - a.nbDansGroupe);
+
+    return { totalFamille, parMentor };
+  },
+
   // Statistiques d'évolution des membres
   calculateMembresEvolution() {
     const membres = AppState.membres.filter(m => m.statut_compte === 'actif');
@@ -346,6 +367,7 @@ const PagesStatistiques = {
     } catch (error) {
       console.error('Erreur chargement alertes absence:', error);
     }
+    this.alertesAbsence = alertesAbsence;
 
     return `
       <div class="stats-header">
@@ -405,24 +427,30 @@ const PagesStatistiques = {
         </div>
       </div>
 
-      <div class="stats-grid">
-        <!-- Graphique par type de programme -->
+      <!-- Graphique interactif : Répartition présences -->
+      <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--spacing-lg); margin-bottom: var(--spacing-lg);">
         <div class="card">
           <div class="card-header">
-            <h3 class="card-title"><i class="fas fa-chart-bar"></i> Présence par type de programme</h3>
+            <h3 class="card-title"><i class="fas fa-chart-pie"></i> Répartition des présences</h3>
           </div>
-          <div class="card-body">
-            ${this.renderBarChart(this.stats.parType)}
+          <div class="card-body" style="min-height: 250px;">
+            <canvas id="chart-stats-repartition"></canvas>
           </div>
         </div>
-
-        <!-- Évolution mensuelle -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-chart-bar"></i> Taux par type de programme</h3>
+          </div>
+          <div class="card-body" style="min-height: 250px;">
+            <canvas id="chart-stats-type"></canvas>
+          </div>
+        </div>
         <div class="card">
           <div class="card-header">
             <h3 class="card-title"><i class="fas fa-chart-line"></i> Évolution mensuelle</h3>
           </div>
-          <div class="card-body">
-            ${this.renderLineChart(this.stats.evolution)}
+          <div class="card-body" style="min-height: 250px;">
+            <canvas id="chart-stats-evolution"></canvas>
           </div>
         </div>
       </div>
@@ -433,6 +461,14 @@ const PagesStatistiques = {
         <div class="card-header">
           <h3 class="card-title"><i class="fas fa-user-clock"></i> Membres à recontacter</h3>
           <span class="badge badge-warning">${alertesAbsence.length} membre(s) &lt; 50 % présence (30 j)</span>
+          <button type="button" class="btn btn-sm btn-outline" onclick="PagesStatistiques.exportAlertesCSV()" title="Exporter en CSV">
+            <i class="fas fa-file-csv"></i> Exporter CSV
+          </button>
+          ${Permissions.canExportPDF() ? `
+          <button type="button" class="btn btn-sm btn-outline" onclick="PagesStatistiques.exportAlertesPDF()" title="Exporter en PDF">
+            <i class="fas fa-file-pdf"></i> Exporter PDF
+          </button>
+          ` : ''}
         </div>
         <div class="card-body" style="padding: 0;">
           <div class="table-container">
@@ -476,6 +512,14 @@ const PagesStatistiques = {
             <input type="text" class="form-control" placeholder="Rechercher..." 
                    onkeyup="PagesStatistiques.filterTable(this.value)">
           </div>
+          <button type="button" class="btn btn-sm btn-outline" onclick="PagesStatistiques.exportDetailMembreCSV()" title="Exporter en CSV">
+            <i class="fas fa-file-csv"></i> Exporter CSV
+          </button>
+          ${Permissions.canExportPDF() ? `
+          <button type="button" class="btn btn-sm btn-outline" onclick="PagesStatistiques.exportPDF()" title="Exporter le rapport en PDF">
+            <i class="fas fa-file-pdf"></i> Exporter PDF
+          </button>
+          ` : ''}
         </div>
         <div class="card-body" style="padding: 0;">
           <div class="table-container">
@@ -517,6 +561,31 @@ const PagesStatistiques = {
           </div>
         </div>
       </div>
+
+      ${(Permissions.hasRole('berger') || Permissions.isAdmin()) ? `
+      <!-- Répartition des membres par mentor (berger + admin uniquement) -->
+      <div class="card mt-3">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-users-cog"></i> Répartition des membres par mentor</h3>
+          <span class="badge badge-secondary">Proportion de la famille</span>
+        </div>
+        <div class="card-body">
+          ${this.renderRepartitionMentorsSection()}
+        </div>
+      </div>
+      ` : ''}
+
+      ${Permissions.hasRole('mentor') && !Permissions.hasRole('berger') && !Permissions.isAdmin() ? `
+      <!-- Votre groupe (mentor uniquement : proportion de son groupe sur la famille) -->
+      <div class="card mt-3">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-user-friends"></i> Votre groupe</h3>
+        </div>
+        <div class="card-body">
+          ${this.renderMonGroupeSection()}
+        </div>
+      </div>
+      ` : ''}
 
       ${Permissions.hasRole('berger') ? `
       <!-- Statistiques par mentor -->
@@ -749,6 +818,129 @@ const PagesStatistiques = {
     `;
   },
 
+  // Données pour la répartition (délègue à Statistiques)
+  getRepartitionMentorsData() {
+    return Statistiques.getRepartitionMentorsData();
+  },
+
+  // Section "Répartition des membres par mentor" (visible berger + admin uniquement)
+  renderRepartitionMentorsSection() {
+    const { totalFamille, parMentor } = this.getRepartitionMentorsData();
+    if (parMentor.length === 0) {
+      return '<div class="text-muted text-center py-3"><i class="fas fa-info-circle"></i> Aucun mentor dans la famille.</div>';
+    }
+    return `
+      <div class="repartition-mentors-table">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Mentor / Berger</th>
+              <th class="text-center">Membres dans le groupe</th>
+              <th class="text-center">Proportion de la famille</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${parMentor.map(m => `
+              <tr>
+                <td><strong>${Utils.escapeHtml(m.mentorName)}</strong></td>
+                <td class="text-center">${m.nbDansGroupe}</td>
+                <td class="text-center">
+                  <div class="proportion-bar-wrap">
+                    <div class="proportion-bar" style="width: ${m.proportion}%;"></div>
+                    <span class="proportion-text">${m.nbDansGroupe} / ${totalFamille} = ${m.proportion}%</span>
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="repartition-total text-muted mt-2"><strong>Total famille :</strong> ${totalFamille} membre(s) actif(s)</div>
+      </div>
+      <style>
+        .repartition-mentors-table .proportion-bar-wrap {
+          position: relative;
+          display: inline-block;
+          width: 100%;
+          max-width: 200px;
+          height: 24px;
+          background: var(--bg-tertiary);
+          border-radius: var(--radius-full);
+          overflow: hidden;
+        }
+        .repartition-mentors-table .proportion-bar {
+          height: 100%;
+          background: var(--primary);
+          border-radius: var(--radius-full);
+          min-width: 0;
+        }
+        .repartition-mentors-table .proportion-text {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          text-shadow: 0 0 2px white;
+        }
+      </style>
+    `;
+  },
+
+  // Section "Votre groupe" (visible mentor uniquement, pas berger ni admin)
+  renderMonGroupeSection() {
+    const { totalFamille, parMentor } = this.getRepartitionMentorsData();
+    const monEntree = parMentor.find(m => m.mentorId === AppState.user.id);
+    if (!monEntree || totalFamille === 0) {
+      return '<div class="text-muted text-center py-3"><i class="fas fa-info-circle"></i> Aucune donnée pour votre groupe.</div>';
+    }
+    return `
+      <div class="mon-groupe-card">
+        <div class="mon-groupe-value">${monEntree.nbDansGroupe} membre${monEntree.nbDansGroupe > 1 ? 's' : ''} sur ${totalFamille} (${monEntree.proportion}% de la famille)</div>
+        <div class="mon-groupe-proportion">
+          <div class="proportion-bar-wrap">
+            <div class="proportion-bar" style="width: ${monEntree.proportion}%;"></div>
+            <span class="proportion-text">${monEntree.proportion}% de la famille</span>
+          </div>
+        </div>
+      </div>
+      <style>
+        .mon-groupe-card {
+          padding: var(--spacing-lg);
+          background: var(--bg-primary);
+          border-radius: var(--radius-md);
+        }
+        .mon-groupe-value {
+          font-size: 1.25rem;
+          font-weight: 600;
+          margin-bottom: var(--spacing-sm);
+        }
+        .mon-groupe-card .proportion-bar-wrap {
+          position: relative;
+          height: 28px;
+          background: var(--bg-tertiary);
+          border-radius: var(--radius-full);
+          overflow: hidden;
+        }
+        .mon-groupe-card .proportion-bar {
+          height: 100%;
+          background: var(--primary);
+          border-radius: var(--radius-full);
+        }
+        .mon-groupe-card .proportion-text {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          text-shadow: 0 0 2px white;
+        }
+      </style>
+    `;
+  },
+
   // Stats par mentor - version simplifiée et synchrone
   renderMentorStatsSimple() {
     const mentors = Membres.getMentors();
@@ -850,6 +1042,33 @@ const PagesStatistiques = {
     }
   },
 
+  initCharts() {
+    if (typeof ChartsHelper === 'undefined' || !this.stats) return;
+    const g = this.stats.global || {};
+    const parType = this.stats.parType || [];
+    const evolution = this.stats.evolution || [];
+    if (g.totalPresencesEffectives !== undefined && g.totalAbsences !== undefined) {
+      ChartsHelper.createDoughnut('chart-stats-repartition',
+        ['Présents', 'Absents', 'Excusés'],
+        [g.totalPresencesEffectives || 0, g.totalAbsences || 0, g.totalExcuses || 0],
+        ['#4CAF50', '#F44336', '#FF9800']);
+    }
+    if (parType.length > 0) {
+      ChartsHelper.createBar('chart-stats-type',
+        parType.map(d => d.label),
+        parType.map(d => d.tauxPresence),
+        parType.map(d => d.color));
+    }
+    if (evolution.length > 0) {
+      const labels = evolution.map(d => {
+        const m = d.mois || '';
+        return m ? m.slice(5) + '/' + m.slice(2, 4) : d.label;
+      });
+      ChartsHelper.createLine('chart-stats-evolution', labels,
+        [{ label: 'Taux présence (%)', data: evolution.map(d => d.tauxPresence) }]);
+    }
+  },
+
   // Mettre à jour les stats
   async updateStats() {
     if (this.currentPeriode === 'custom') {
@@ -862,6 +1081,7 @@ const PagesStatistiques = {
     }
 
     document.querySelector('.page-content').innerHTML = await this.renderStatistiques();
+    setTimeout(() => this.initCharts(), 50);
   },
 
   // Filtrer le tableau
@@ -924,30 +1144,147 @@ const PagesStatistiques = {
     `).join('');
   },
 
-  // Export PDF
+  escapeCsv(val) {
+    if (val == null || val === '') return '';
+    const s = String(val).replace(/"/g, '""');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+  },
+
+  exportDetailMembreCSV() {
+    if (!this.stats || !this.stats.parMembre || this.stats.parMembre.length === 0) {
+      Toast.info('Aucune donnée à exporter');
+      return;
+    }
+    const rows = [
+      ['Membre', 'Mentor', 'Présences', 'Absences', 'Excusés', 'Taux %'],
+      ...this.stats.parMembre.map(m => [
+        m.nomComplet,
+        m.mentor,
+        m.nbPresences,
+        m.nbAbsences,
+        m.nbExcuses,
+        m.tauxPresence
+      ])
+    ];
+    const csv = rows.map(row => row.map(cell => this.escapeCsv(cell)).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `statistiques-detail-membres-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    Toast.success('Export CSV téléchargé');
+  },
+
+  exportAlertesCSV() {
+    if (!this.alertesAbsence || this.alertesAbsence.length === 0) {
+      Toast.info('Aucune alerte à exporter');
+      return;
+    }
+    const rows = [
+      ['Membre', 'Mentor', 'Présences', 'Absences', 'Taux %', 'Dernier programme'],
+      ...this.alertesAbsence.map(a => [
+        `${a.prenom} ${a.nom}`,
+        a.mentor,
+        a.nbPresences,
+        a.nbAbsences,
+        a.tauxPresence,
+        a.dernierProgramme ? Utils.formatDate(a.dernierProgramme) : ''
+      ])
+    ];
+    const csv = rows.map(row => row.map(cell => this.escapeCsv(cell)).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `statistiques-alertes-absence-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    Toast.success('Export CSV téléchargé');
+  },
+
+  exportAlertesPDF() {
+    if (!this.alertesAbsence || this.alertesAbsence.length === 0) {
+      Toast.info('Aucune alerte à exporter');
+      return;
+    }
+    const famille = AppState.famille?.nom || '';
+    const rows = this.alertesAbsence.map(a => `
+      <tr>
+        <td>${Utils.escapeHtml(a.prenom)} ${Utils.escapeHtml(a.nom)}</td>
+        <td>${Utils.escapeHtml(a.mentor)}</td>
+        <td class="text-center">${a.nbPresences}</td>
+        <td class="text-center">${a.nbAbsences}</td>
+        <td class="text-center"><span class="badge badge-danger">${a.tauxPresence} %</span></td>
+        <td>${a.dernierProgramme ? Utils.formatDate(a.dernierProgramme) : '-'}</td>
+      </tr>
+    `).join('');
+    const content = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Membres à recontacter - ${Utils.escapeHtml(famille)}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; padding: 15mm; color: #333; }
+    .header { text-align: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #2D5A7B; }
+    .header h1 { color: #2D5A7B; font-size: 18pt; }
+    .header .subtitle { font-size: 10pt; color: #666; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10pt; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #f5f7fa; font-weight: 600; }
+    .text-center { text-align: center; }
+    .badge { padding: 2px 8px; border-radius: 10px; font-size: 9pt; }
+    .badge-danger { background: #FFEBEE; color: #C62828; }
+    .no-print { display: none; }
+    @media print { .no-print { display: none; } }
+    .btn-print { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; background: #2D5A7B; color: white; border: none; border-radius: 8px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <button class="btn-print no-print" onclick="window.print()">Imprimer / PDF</button>
+  <div class="header">
+    <h1>Membres à recontacter</h1>
+    <div class="subtitle">Famille ${Utils.escapeHtml(famille)} — &lt; 50 % présence (30 derniers jours)</div>
+    <div class="subtitle">Généré le ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Membre</th>
+        <th>Mentor</th>
+        <th class="text-center">Présences</th>
+        <th class="text-center">Absences</th>
+        <th class="text-center">Taux</th>
+        <th>Dernier programme</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body>
+</html>`;
+    const printWindow = window.open('about:blank', '_blank');
+    if (!printWindow) {
+      Toast.error('Autorisez les popups pour ouvrir l\'export PDF.');
+      return;
+    }
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.onload = () => setTimeout(() => printWindow.print(), 300);
+    Toast.success('Fenêtre ouverte : dans la boîte d\'impression, choisissez « Enregistrer au format PDF » comme destination pour sauvegarder le fichier.');
+  },
+
+  // Export PDF (ouvre une fenêtre d'impression : utiliser « Enregistrer au format PDF » dans la boîte d'impression)
   async exportPDF() {
-    Toast.info('Génération du PDF en cours...');
-    
     try {
-      const pdf = await PDFExport.generatePresenceReport(this.stats, {
+      await PDFExport.generatePresenceReport(this.stats, {
         dateDebut: this.currentDateDebut,
         dateFin: this.currentDateFin,
         famille: AppState.famille.nom
       });
-      
-      // Télécharger le PDF
-      const blob = new Blob([pdf], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `rapport-presences-${AppState.famille.nom}-${new Date().toISOString().split('T')[0]}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      
-      Toast.success('PDF téléchargé !');
+      Toast.success('Fenêtre ouverte : utilisez « Imprimer » puis « Enregistrer au format PDF » pour sauvegarder le rapport.');
     } catch (error) {
       console.error('Erreur export PDF:', error);
-      Toast.error('Erreur lors de la génération du PDF');
+      Toast.error(error.message || 'Erreur lors de l\'ouverture du rapport. Autorisez les fenêtres popup.');
     }
   }
 };

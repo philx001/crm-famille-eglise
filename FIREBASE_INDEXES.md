@@ -113,6 +113,23 @@ Une fois les index créés :
 
 ---
 
+---
+
+### 6. Collection `notes_suivi`
+
+**Requête :** `where('famille_id', '==', ...) + where('entite_ref', '==', ...) + orderBy('created_at', 'desc')`
+
+**Création automatique :**
+- Cliquez sur le lien dans l'erreur de la console
+- Ou créez manuellement :
+  - Collection : `notes_suivi`
+  - Champs indexés :
+    - `famille_id` (Ascending)
+    - `entite_ref` (Ascending)
+    - `created_at` (Descending)
+
+---
+
 ## 📝 Note
 
 Ces erreurs sont **normales** lors du premier déploiement. Une fois les index créés, elles ne réapparaîtront plus.

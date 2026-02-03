@@ -1,36 +1,36 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function getUserData() {
       return get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data;
     }
-    
+
     function hasRole(role) {
       let userData = getUserData();
       let roles = ['disciple', 'nouveau', 'mentor', 'adjoint_berger', 'berger', 'admin'];
       return roles.indexOf(userData.role) >= roles.indexOf(role);
     }
-    
+
     function belongsToFamily(familleId) {
       let userData = getUserData();
       return userData.role == 'admin' || userData.famille_id == familleId;
     }
-    
+
     function isAdmin() {
-      return getUserData().role == 'admin';
+      return isAuthenticated() && getUserData().role == 'admin';
     }
-    
+
     // FAMILLES : lecture sans auth pour la page de connexion (recherche par nom)
     match /familles/{familleId} {
       allow read: if request.auth == null || (isAuthenticated() && belongsToFamily(familleId));
       allow create, update, delete: if isAuthenticated() && isAdmin();
     }
-    
+
     // UTILISATEURS
     match /utilisateurs/{userId} {
       allow read: if isAuthenticated() && (
@@ -40,77 +40,102 @@ service cloud.firestore {
         (hasRole('mentor') && resource.data.mentor_id == request.auth.uid) ||
         (resource.data.famille_id == getUserData().famille_id)
       );
-      
-      allow create: if isAuthenticated() && 
-        hasRole('mentor') && 
-        request.resource.data.famille_id == getUserData().famille_id;
-      
+
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+
       allow update: if isAuthenticated() && (
-        (request.auth.uid == userId && 
-         request.resource.data.famille_id == resource.data.famille_id &&
-         request.resource.data.role == resource.data.role) ||
+        request.auth.uid == userId ||
         (hasRole('berger') && resource.data.famille_id == getUserData().famille_id) ||
         isAdmin()
       );
-      
+
       allow delete: if isAuthenticated() && (
         (hasRole('berger') && resource.data.famille_id == getUserData().famille_id) ||
         isAdmin()
       );
     }
-    
+
     // PROGRAMMES
     match /programmes/{programmeId} {
       allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
-      allow create, update: if isAuthenticated() && 
-        hasRole('adjoint_berger') && 
+      allow create, update: if isAuthenticated() &&
         belongsToFamily(request.resource.data.famille_id);
-      allow delete: if isAuthenticated() && 
-        hasRole('berger') && 
+      allow delete: if isAuthenticated() &&
+        (hasRole('berger') || isAdmin()) &&
         belongsToFamily(resource.data.famille_id);
     }
-    
-    // PRÉSENCES
+
+    // PRÉSENCES (création/modification : tout utilisateur authentifié ; l'app restreint la page aux mentor+)
     match /presences/{presenceId} {
       allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && hasRole('mentor');
-      allow delete: if isAuthenticated() && hasRole('berger');
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated() && (hasRole('berger') || isAdmin());
     }
-    
-    // DOCUMENTS
+
+    // DOCUMENTS (fichiers partagés)
     match /documents/{documentId} {
       allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
-      allow create, update, delete: if isAuthenticated() && 
-        hasRole('adjoint_berger') && 
-        belongsToFamily(request.resource.data.famille_id);
+      allow create: if isAuthenticated() && belongsToFamily(request.resource.data.famille_id);
+      allow update, delete: if isAuthenticated() && belongsToFamily(resource.data.famille_id) && (
+        resource.data.uploaded_by == request.auth.uid
+        || hasRole('adjoint_berger')
+      );
     }
-    
+
     // SUJETS DE PRIÈRE
     match /sujets_priere/{sujetId} {
       allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
-      allow create: if isAuthenticated() && 
+      allow create: if isAuthenticated() &&
         belongsToFamily(request.resource.data.famille_id);
       allow update, delete: if isAuthenticated() && (
         resource.data.auteur_id == request.auth.uid || isAdmin()
       );
     }
-    
-    // TÉMOIGNAGES
+
+    // TÉMOIGNAGES (auteur ou admin peut modifier/supprimer)
     match /temoignages/{temoignageId} {
       allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
-      allow create: if isAuthenticated() && 
+      allow create: if isAuthenticated() &&
         belongsToFamily(request.resource.data.famille_id);
-      allow update, delete: if isAuthenticated() && isAdmin();
-    }
-    
-    // NOTIFICATIONS
-    match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
-      allow create: if isAuthenticated() && 
-        belongsToFamily(request.resource.data.famille_id);
-      allow update, delete: if isAuthenticated() && (
+      allow update, delete: if isAuthenticated() && belongsToFamily(resource.data.famille_id) && (
         resource.data.auteur_id == request.auth.uid || isAdmin()
       );
+    }
+
+    // NOTIFICATIONS (auteur, adjoint_berger+, ou admin peut modifier/supprimer)
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
+      allow create: if isAuthenticated() &&
+        belongsToFamily(request.resource.data.famille_id);
+      allow update, delete: if isAuthenticated() && belongsToFamily(resource.data.famille_id) && (
+        resource.data.auteur_id == request.auth.uid || hasRole('adjoint_berger') || isAdmin()
+      );
+    }
+
+    // NOUVELLES ÂMES
+    match /nouvelles_ames/{nouvelleAmeId} {
+      allow read, create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    // SUIVIS DES NOUVELLES ÂMES
+    match /suivis_ames/{suiviId} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
+    // SESSIONS D'ÉVANGÉLISATION
+    match /sessions_evangelisation/{sessionId} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
+    // SECTEURS D'ÉVANGÉLISATION
+    match /secteurs_evangelisation/{secteurId} {
+      allow read, create, update, delete: if isAuthenticated();
+    }
+
+    // NOTES DE SUIVI
+    match /notes_suivi/{noteId} {
+      allow read, create, update, delete: if isAuthenticated();
     }
   }
 }

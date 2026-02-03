@@ -91,7 +91,18 @@ const Documents = {
       return newDoc;
     } catch (error) {
       console.error('Erreur upload document:', error);
-      Toast.error(error.message || 'Erreur lors de l\'upload');
+      const isPermissionError = error.message && (error.message.toLowerCase().includes('permission') || error.message.toLowerCase().includes('insufficient'));
+      if (isPermissionError) {
+        Toast.error('Droits insuffisants. Vérifiez : 1) Règles Firestore (collection "documents") et 2) Règles Storage (chemin "documents"). Puis publiez les deux.');
+        setTimeout(() => {
+          if (window.confirm('Ouvrir la console Firebase (Storage et Firestore) pour vérifier les règles ?')) {
+            window.open('https://console.firebase.google.com/project/crm-famille-eglise/storage/rules', '_blank');
+            window.open('https://console.firebase.google.com/project/crm-famille-eglise/firestore/rules', '_blank');
+          }
+        }, 500);
+      } else {
+        Toast.error(error.message || 'Erreur lors de l\'upload');
+      }
       throw error;
     } finally {
       App.hideLoading();

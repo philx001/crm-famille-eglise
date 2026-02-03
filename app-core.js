@@ -40,6 +40,8 @@ const Utils = {
     if (!date) return '';
     const d = date.toDate ? date.toDate() : new Date(date);
     if (isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    if (year < 1900 || year > 2100) return ''; // dates non réalistes
     const options = format === 'full' 
       ? { day: 'numeric', month: 'long', year: 'numeric' }
       : { day: '2-digit', month: '2-digit', year: 'numeric' };

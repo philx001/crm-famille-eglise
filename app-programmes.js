@@ -195,16 +195,34 @@ const Programmes = {
   // Types de programmes
   getTypes() {
     return [
-      { value: 'culte_dimanche', label: 'Culte du dimanche', color: '#2196F3' },
-      { value: 'temps_partage_lundi', label: 'Temps de partage du lundi', color: '#4CAF50' },
-      { value: 'com_frat_dimanche', label: "Com'frat du dimanche", color: '#FF9800' },
-      { value: 'autre_comfrat', label: "Autre Com'frat", color: '#FF5722' },
-      { value: 'temps_priere', label: 'Temps de prière', color: '#9C27B0' },
-      { value: 'veillee_priere', label: 'Veillée de prière', color: '#673AB7' },
-      { value: 'evangelisation_groupe', label: 'Évangélisation en groupe', color: '#009688' },
-      { value: 'sortie_famille', label: 'Sortie en famille', color: '#E91E63' },
-      { value: 'autre', label: 'Autre', color: '#607D8B' }
+      { value: 'culte_dimanche', label: 'Culte du dimanche', color: '#2196F3', category: 'culte' },
+      { value: 'temps_partage_lundi', label: 'Temps de partage du lundi', color: '#4CAF50', category: 'partage' },
+      { value: 'com_frat_dimanche', label: "Com'frat du dimanche", color: '#FF9800', category: 'comfrat' },
+      { value: 'autre_comfrat', label: "Autre Com'frat", color: '#FF5722', category: 'comfrat' },
+      { value: 'temps_priere', label: 'Temps de prière', color: '#9C27B0', category: 'priere' },
+      { value: 'veillee_priere', label: 'Veillée de prière', color: '#673AB7', category: 'priere' },
+      { value: 'evangelisation_groupe', label: 'Évangélisation en groupe', color: '#009688', category: 'evangelisation' },
+      { value: 'sortie_famille', label: 'Sortie en famille', color: '#E91E63', category: 'famille' },
+      // Programmes d'exhortation pour nouvelles âmes
+      { value: 'exhort_accueil', label: 'Accueil Nouvelles Âmes', color: '#8BC34A', category: 'exhortation', icon: 'fa-hand-holding-heart' },
+      { value: 'exhort_foi_fondements', label: 'Foi & Fondements', color: '#00BCD4', category: 'exhortation', icon: 'fa-book-bible' },
+      { value: 'exhort_bapteme', label: 'Préparation au Baptême', color: '#3F51B5', category: 'exhortation', icon: 'fa-water' },
+      { value: 'exhort_maturite', label: 'Maturité Chrétienne', color: '#795548', category: 'exhortation', icon: 'fa-graduation-cap' },
+      { value: 'exhort_servir', label: 'Appel à Servir', color: '#FF5722', category: 'exhortation', icon: 'fa-hands-helping' },
+      { value: 'exhort_mariage', label: 'Préparation au Mariage', color: '#E91E63', category: 'exhortation', icon: 'fa-ring' },
+      { value: 'autre', label: 'Autre', color: '#607D8B', category: 'autre' }
     ];
+  },
+
+  // Obtenir les types d'exhortation uniquement
+  getExhortationTypes() {
+    return this.getTypes().filter(t => t.category === 'exhortation');
+  },
+
+  // Vérifier si un programme est de type exhortation
+  isExhortation(type) {
+    const found = this.getTypes().find(t => t.value === type);
+    return found?.category === 'exhortation';
   },
 
   getTypeLabel(type) {
@@ -413,11 +431,24 @@ const PagesCalendrier = {
   currentYear: new Date().getFullYear(),
   currentMonth: new Date().getMonth(),
 
-  // Page calendrier
-  renderCalendrier() {
+  // Page calendrier (unifié : programmes + sessions évangélisation)
+  async renderCalendrier() {
     const year = this.currentYear;
     const month = this.currentMonth;
     const programmes = Programmes.getByMonth(year, month);
+
+    let sessionsEvang = [];
+    if (typeof EvangelisationData !== 'undefined') {
+      try {
+        await EvangelisationData.loadSessions();
+        sessionsEvang = (EvangelisationData.sessions || []).filter(s => {
+          const d = s.date?.toDate ? s.date.toDate() : new Date(s.date || 0);
+          return d.getFullYear() === year && d.getMonth() === month;
+        });
+      } catch (e) {
+        console.warn('Calendrier: chargement sessions évangélisation ignoré', e);
+      }
+    }
 
     const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
       'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
@@ -426,13 +457,18 @@ const PagesCalendrier = {
     const firstDay = new Date(year, month, 1).getDay();
     const startDay = firstDay === 0 ? 6 : firstDay - 1; // Lundi = 0
 
-    // Grouper les programmes par jour
     const programmesByDay = {};
     programmes.forEach(p => {
       const d = p.date_debut.toDate ? p.date_debut.toDate() : new Date(p.date_debut);
       const day = d.getDate();
       if (!programmesByDay[day]) programmesByDay[day] = [];
-      programmesByDay[day].push(p);
+      programmesByDay[day].push({ ...p, _type: 'programme' });
+    });
+    sessionsEvang.forEach(s => {
+      const d = s.date?.toDate ? s.date.toDate() : new Date(s.date || 0);
+      const day = d.getDate();
+      if (!programmesByDay[day]) programmesByDay[day] = [];
+      programmesByDay[day].push({ ...s, _type: 'evangelisation' });
     });
 
     let calendarHtml = '';
@@ -454,13 +490,20 @@ const PagesCalendrier = {
             <td class="calendar-day ${isToday ? 'today' : ''}" data-date="${year}-${String(month + 1).padStart(2, '0')}-${String(dayCount).padStart(2, '0')}">
               <div class="day-number">${dayCount}</div>
               <div class="day-events">
-                ${dayProgrammes.slice(0, 3).map(p => `
-                  <div class="event-badge" style="background: ${Programmes.getTypeColor(p.type)}" 
-                       onclick="App.viewProgramme('${p.id}')" title="${Utils.escapeHtml(p.nom)}">
-                    ${Utils.escapeHtml(p.nom.substring(0, 15))}${p.nom.length > 15 ? '...' : ''}
-                  </div>
-                `).join('')}
-                ${dayProgrammes.length > 3 ? `<div class="event-more">+${dayProgrammes.length - 3} autre(s)</div>` : ''}
+                ${dayProgrammes.slice(0, 4).map(item => {
+                  if (item._type === 'evangelisation') {
+                    const nom = item.secteur_nom || 'Évangélisation';
+                    return `<div class="event-badge event-evangelisation" style="background: #1976D2" 
+                             onclick="App.navigate('evangelisation-detail', { id: '${item.id}' })" title="${Utils.escapeHtml(nom)}">
+                      <i class="fas fa-bullhorn"></i> ${Utils.escapeHtml(nom.substring(0, 12))}${nom.length > 12 ? '...' : ''}
+                    </div>`;
+                  }
+                  return `<div class="event-badge" style="background: ${Programmes.getTypeColor(item.type)}" 
+                           onclick="App.viewProgramme('${item.id}')" title="${Utils.escapeHtml(item.nom)}">
+                    ${Utils.escapeHtml(item.nom.substring(0, 15))}${item.nom.length > 15 ? '...' : ''}
+                  </div>`;
+                }).join('')}
+                ${dayProgrammes.length > 4 ? `<div class="event-more">+${dayProgrammes.length - 4} autre(s)</div>` : ''}
               </div>
             </td>
           `;
@@ -519,6 +562,10 @@ const PagesCalendrier = {
               <span>${t.label}</span>
             </div>
           `).join('')}
+          <div class="legend-item">
+            <span class="legend-color" style="background: #1976D2"></span>
+            <span>Évangélisation</span>
+          </div>
         </div>
       </div>
 
@@ -645,28 +692,28 @@ const PagesCalendrier = {
     `;
   },
 
-  prevMonth() {
+  async prevMonth() {
     this.currentMonth--;
     if (this.currentMonth < 0) {
       this.currentMonth = 11;
       this.currentYear--;
     }
-    document.querySelector('.page-content').innerHTML = this.renderCalendrier();
+    document.querySelector('.page-content').innerHTML = await this.renderCalendrier();
   },
 
-  nextMonth() {
+  async nextMonth() {
     this.currentMonth++;
     if (this.currentMonth > 11) {
       this.currentMonth = 0;
       this.currentYear++;
     }
-    document.querySelector('.page-content').innerHTML = this.renderCalendrier();
+    document.querySelector('.page-content').innerHTML = await this.renderCalendrier();
   },
 
-  goToToday() {
+  async goToToday() {
     this.currentYear = new Date().getFullYear();
     this.currentMonth = new Date().getMonth();
-    document.querySelector('.page-content').innerHTML = this.renderCalendrier();
+    document.querySelector('.page-content').innerHTML = await this.renderCalendrier();
   },
 
   // Liste des programmes
@@ -762,8 +809,16 @@ const PagesCalendrier = {
     const getDateTimeValue = (date) => {
       if (!date) return '';
       const d = date.toDate ? date.toDate() : new Date(date);
+      const y = d.getFullYear();
+      if (y < 1900 || y > 2100) return '';
       return d.toISOString().slice(0, 16);
     };
+
+    const now = new Date();
+    const minDateTime = '2000-01-01T00:00';
+    const maxDate = new Date(now);
+    maxDate.setFullYear(maxDate.getFullYear() + 10);
+    const maxDateTime = maxDate.toISOString().slice(0, 16);
 
     return `
       <div class="card" style="max-width: 600px; margin: 0 auto;">
@@ -797,12 +852,12 @@ const PagesCalendrier = {
               <div class="form-group">
                 <label class="form-label required">Date et heure de début</label>
                 <input type="datetime-local" class="form-control" id="prog-debut" 
-                       value="${getDateTimeValue(programme?.date_debut)}" required>
+                       min="${minDateTime}" max="${maxDateTime}" value="${getDateTimeValue(programme?.date_debut)}" required>
               </div>
               <div class="form-group">
                 <label class="form-label">Date et heure de fin</label>
                 <input type="datetime-local" class="form-control" id="prog-fin"
-                       value="${getDateTimeValue(programme?.date_fin)}">
+                       min="${minDateTime}" max="${maxDateTime}" value="${getDateTimeValue(programme?.date_fin)}">
               </div>
             </div>
 

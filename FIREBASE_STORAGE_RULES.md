@@ -6,9 +6,8 @@ Si vous rencontrez des erreurs CORS lors du chargement des images depuis Firebas
 
 ## Configuration des règles
 
-1. **Allez dans Firebase Console** : https://console.firebase.google.com/
-2. **Sélectionnez votre projet** : `crm-famille-eglise`
-3. **Allez dans Storage** → **Règles**
+1. **Ouvrez directement la page Règles Storage** : [Firebase Console - Storage Règles (crm-famille-eglise)](https://console.firebase.google.com/project/crm-famille-eglise/storage/rules)
+2. Ou : **Firebase Console** → projet **crm-famille-eglise** → **Storage** → onglet **Règles**
 
 ## Règles recommandées pour les avatars
 
@@ -88,3 +87,27 @@ Si le problème persiste après avoir configuré les règles, vérifiez que :
 - L'utilisateur est bien authentifié
 - Le token Firebase n'a pas expiré
 - Les règles sont bien publiées
+
+---
+
+## « Missing or insufficient permissions » lors de l’upload de documents / vidéos / images
+
+Si, dans la page **Documents**, l’upload d’une vidéo ou d’une image échoue avec **« Missing or insufficient permissions »**, les règles Storage ne permettent pas encore l’écriture dans le chemin des documents.
+
+**Oui, vous devez modifier les règles dans la console Firebase.** Le fichier `storage.rules` ou `FIREBASE_STORAGE_RULES.md` dans le projet ne suffit pas : les règles actives sont celles **déployées dans Firebase Console → Storage → Règles**. Il faut les y éditer et **publier**.
+
+**À faire :**
+
+1. Ouvrir **Firebase Console** → **Storage** → **Règles**.
+2. S’assurer que les règles contiennent **à la fois** `avatars` **et** `documents` (voir blocs ci‑dessus).
+3. En particulier, ce bloc doit être présent pour les documents :
+   ```javascript
+   match /documents/{familleId}/{allPaths=**} {
+     allow read: if request.auth != null;
+     allow write: if request.auth != null;
+     allow delete: if request.auth != null;
+   }
+   ```
+4. Cliquer sur **Publier**, attendre la propagation, puis réessayer l’upload.
+
+Vous pouvez aussi utiliser le fichier **`storage.rules`** à la racine du projet et déployer avec `firebase deploy --only storage` (en configurant `storage.rules` dans `firebase.json` si besoin).

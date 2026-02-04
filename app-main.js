@@ -187,6 +187,7 @@ const App = {
       case 'dashboard': pageTitle = 'Tableau de bord'; pageContent = await this.renderDashboardEnhanced(); break;
       case 'membres': pageTitle = 'Membres'; pageContent = Pages.renderMembres(); break;
       case 'membres-add': pageTitle = 'Ajouter un membre'; pageContent = Pages.renderAddMembre(); break;
+      case 'archives-membres': pageTitle = 'Archivage des membres'; pageContent = Pages.renderArchivesMembres(); break;
       case 'profil': pageTitle = 'Mon profil'; pageContent = Pages.renderProfil(); break;
       case 'profil-edit': pageTitle = 'Modifier le profil'; pageContent = Pages.renderProfilEdit(); break;
       case 'mon-compte': pageTitle = 'Mon compte'; pageContent = Pages.renderMonCompte(); break;
@@ -637,7 +638,7 @@ const App = {
     const familyBranding = Utils.getFamilyBranding(famille);
     const sidebarHeaderHtml = familyBranding
       ? `<div class="sidebar-family-branding">
-           <img src="${Utils.escapeHtml(familyBranding.logoUrl)}" alt="${Utils.escapeHtml(familyBranding.sloganTitle)}" class="sidebar-family-logo">
+           <img src="${Utils.escapeHtml(familyBranding.logoUrl)}" alt="" class="sidebar-family-logo" onerror="this.style.display='none'">
            <div class="sidebar-family-slogan-title">${Utils.escapeHtml(familyBranding.sloganTitle)}</div>
            <div class="sidebar-family-slogan-subtitle">${Utils.escapeHtml(familyBranding.sloganSubtitle)}</div>
          </div>`
@@ -671,6 +672,7 @@ const App = {
             </div>` : ''}
             ${Permissions.canViewAllMembers() ? `<div class="nav-section"><div class="nav-section-title">Administration</div>
               <div class="nav-item ${AppState.currentPage === 'membres' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('membres')" onkeydown="App.navItemKeydown(event, 'membres')"><i class="fas fa-users"></i><span>Tous les membres</span></div>
+              ${Permissions.canViewArchivesMembres() ? `<div class="nav-item ${AppState.currentPage === 'archives-membres' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('archives-membres')" onkeydown="App.navItemKeydown(event, 'archives-membres')"><i class="fas fa-archive"></i><span>Archivage des membres</span></div>` : ''}
               ${Permissions.isAdmin() ? `<div class="nav-item ${AppState.currentPage === 'admin-familles' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('admin-familles')" onkeydown="App.navItemKeydown(event, 'admin-familles')"><i class="fas fa-church"></i><span>Familles</span></div>
               <div class="nav-item ${AppState.currentPage === 'logs' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('logs')" onkeydown="App.navItemKeydown(event, 'logs')"><i class="fas fa-history"></i><span>Journal d'activité</span></div>` : ''}
             </div>` : ''}
@@ -985,6 +987,34 @@ const App = {
     if (typeof NotesSuivi !== 'undefined' && NotesSuivi.canAddNote()) {
       setTimeout(() => NotesSuivi.loadAndRender('membre', id), 50);
     }
+  },
+
+  async blockMembre(id) {
+    const m = Membres.getById(id);
+    if (!m || !Permissions.canBlockMember(m)) {
+      Toast.error('Vous ne pouvez pas bloquer ce membre.');
+      return;
+    }
+    const nom = `${m.prenom || ''} ${m.nom || ''}`.trim() || 'Ce membre';
+    const commentaire = prompt(`Bloquer et archiver "${nom}" ?\n\nIndiquez un commentaire (optionnel) pour l\'archivage :`);
+    if (commentaire === null) return;
+    try {
+      const ok = await Membres.block(id, commentaire);
+      if (ok) this.navigate(AppState.currentPage);
+    } catch (e) {}
+  },
+
+  async unblockMembre(id) {
+    const m = Membres.getById(id);
+    if (!m || !Permissions.canBlockMember(m)) {
+      Toast.error('Vous ne pouvez pas débloquer ce membre.');
+      return;
+    }
+    if (!confirm(`Débloquer ${(m.prenom || '')} ${(m.nom || '')} ? Le membre pourra à nouveau se connecter.`)) return;
+    try {
+      const ok = await Membres.unblock(id);
+      if (ok) this.navigate('archives-membres');
+    } catch (e) {}
   },
 
   async reassignMentor(membreId, newMentorId) {

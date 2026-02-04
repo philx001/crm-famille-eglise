@@ -619,6 +619,18 @@ const Permissions = {
     return false;
   },
 
+  /** Peut bloquer/débloquer (archiver) un membre : superviseur ou admin, pas soi-même */
+  canBlockMember(member) {
+    if (!AppState.user || !member) return false;
+    if (member.id === AppState.user.id) return false;
+    return this.hasRole('superviseur') || this.isAdmin();
+  },
+
+  /** Peut voir la page Archivage des membres */
+  canViewArchivesMembres() {
+    return this.hasRole('superviseur') || this.isAdmin();
+  },
+
   /** Peut réaffecter ce membre (disciple, nouveau, mentor, adjoint) à un autre mentor (page Mes disciples ou Membres) */
   canReassignMentor(membre) {
     if (!AppState.user || !membre) return false;
@@ -698,30 +710,82 @@ const Membres = {
     }
   },
 
-  async delete(id) {
+  /**
+   * Bloquer (archiver) un membre : compte inactif + date et commentaire d'archivage.
+   * Le membre reste en base et apparaît dans "Archivage des membres".
+   */
+  async block(id, commentaireArchivage) {
     try {
-      if (!Permissions.hasRole('superviseur')) {
+      if (!Permissions.canBlockMember(Membres.getById(id))) {
+        throw new Error('Permission refusée');
+      }
+
+      const payload = {
+        statut_compte: 'inactif',
+        date_archivage: firebase.firestore.FieldValue.serverTimestamp(),
+        commentaire_archivage: (commentaireArchivage || '').trim() || null,
+        updated_at: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      await db.collection('utilisateurs').doc(id).update(payload);
+
+      if (typeof AuditLog !== 'undefined') {
+        const m = AppState.membres.find(mem => mem.id === id);
+        AuditLog.recordModification(AppState.user.id, AppState.user.email, AppState.user.prenom, AppState.user.nom, 'archivage_membre', 'utilisateurs', id, m ? `${m.prenom} ${m.nom}` : null);
+      }
+
+      const idx = AppState.membres.findIndex(m => m.id === id);
+      if (idx !== -1) {
+        AppState.membres[idx].statut_compte = 'inactif';
+        AppState.membres[idx].date_archivage = new Date();
+        AppState.membres[idx].commentaire_archivage = (commentaireArchivage || '').trim() || null;
+        AppState.membres[idx].updated_at = new Date();
+      }
+      Toast.success('Membre bloqué et archivé');
+      return true;
+    } catch (error) {
+      console.error('Erreur blocage membre:', error);
+      Toast.error(error.message || 'Erreur lors du blocage');
+      return false;
+    }
+  },
+
+  /**
+   * Débloquer un membre : compte à nouveau actif (les champs d'archivage sont conservés pour l'historique).
+   */
+  async unblock(id) {
+    try {
+      if (!Permissions.canBlockMember(Membres.getById(id))) {
         throw new Error('Permission refusée');
       }
 
       await db.collection('utilisateurs').doc(id).update({
-        statut_compte: 'inactif',
+        statut_compte: 'actif',
         updated_at: firebase.firestore.FieldValue.serverTimestamp()
       });
 
       if (typeof AuditLog !== 'undefined') {
         const m = AppState.membres.find(mem => mem.id === id);
-        AuditLog.recordModification(AppState.user.id, AppState.user.email, AppState.user.prenom, AppState.user.nom, 'desactivation_membre', 'utilisateurs', id, m ? `${m.prenom} ${m.nom}` : null);
+        AuditLog.recordModification(AppState.user.id, AppState.user.email, AppState.user.prenom, AppState.user.nom, 'deblocage_membre', 'utilisateurs', id, m ? `${m.prenom} ${m.nom}` : null);
       }
 
-      AppState.membres = AppState.membres.filter(m => m.id !== id);
-      Toast.success('Membre désactivé');
+      const idx = AppState.membres.findIndex(m => m.id === id);
+      if (idx !== -1) {
+        AppState.membres[idx].statut_compte = 'actif';
+        AppState.membres[idx].updated_at = new Date();
+      }
+      Toast.success('Membre débloqué');
       return true;
     } catch (error) {
-      console.error('Erreur suppression membre:', error);
-      Toast.error('Erreur lors de la suppression');
+      console.error('Erreur déblocage membre:', error);
+      Toast.error(error.message || 'Erreur lors du déblocage');
       return false;
     }
+  },
+
+  /** Ancienne méthode : équivalent à block(id, commentaire). Conservée pour compatibilité. */
+  async delete(id, commentaireArchivage) {
+    return this.block(id, commentaireArchivage);
   },
 
   getMentors() {

@@ -210,6 +210,71 @@ const Pages = {
             <i class="fas fa-edit"></i>
           </button>
           ` : ''}
+          ${Permissions.canBlockMember(membre) ? `
+          <button class="btn btn-icon btn-outline" onclick="App.blockMembre('${membre.id}')" title="Bloquer et archiver">
+            <i class="fas fa-lock"></i>
+          </button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  },
+
+  renderArchivesMembres() {
+    if (!Permissions.canViewArchivesMembres()) {
+      return '<div class="alert alert-warning">Accès non autorisé.</div>';
+    }
+    const archives = (AppState.membres || []).filter(m => m.statut_compte === 'inactif');
+    return `
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-archive"></i> Archivage des membres</h3>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3">Membres dont le compte a été bloqué (archivés). Vous pouvez les débloquer à tout moment.</p>
+          ${archives.length > 0 ? `
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Membre</th>
+                  <th>Email</th>
+                  <th>Rôle</th>
+                  <th>Date d'archivage</th>
+                  <th>Commentaire</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${archives.map(m => {
+                  const dateArch = m.date_archivage && (m.date_archivage.toDate ? m.date_archivage.toDate() : new Date(m.date_archivage));
+                  const dateStr = dateArch && !isNaN(dateArch.getTime()) ? Utils.formatDate(dateArch, 'full') : '—';
+                  const comment = (m.commentaire_archivage || '').trim() || '—';
+                  return `
+                <tr>
+                  <td><strong>${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)}</strong></td>
+                  <td>${Utils.escapeHtml(m.email)}</td>
+                  <td><span class="badge badge-${m.role}">${Utils.getRoleLabel(m.role)}</span></td>
+                  <td>${dateStr}</td>
+                  <td style="max-width: 200px;">${Utils.escapeHtml(comment)}</td>
+                  <td>
+                    <button type="button" class="btn btn-sm btn-success" onclick="App.unblockMembre('${m.id}')" title="Débloquer le compte">
+                      <i class="fas fa-unlock"></i> Débloquer
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline" onclick="App.viewMembre('${m.id}')" title="Voir le profil"><i class="fas fa-eye"></i></button>
+                  </td>
+                </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+          ` : `
+          <div class="empty-state">
+            <i class="fas fa-archive"></i>
+            <h3>Aucun membre archivé</h3>
+            <p>Les membres bloqués apparaîtront ici avec la date et le commentaire d'archivage.</p>
+          </div>
+          `}
         </div>
       </div>
     `;
@@ -303,6 +368,11 @@ const Pages = {
             ${canEdit ? `
             <button class="btn btn-primary" onclick="App.editMembre('${membre.id}')">
               <i class="fas fa-edit"></i> Modifier
+            </button>
+            ` : ''}
+            ${!isOwnProfil && Permissions.canBlockMember(membre) && membre.statut_compte === 'actif' ? `
+            <button type="button" class="btn btn-outline btn-warning" onclick="App.blockMembre('${membre.id}')" title="Bloquer le compte et archiver">
+              <i class="fas fa-lock"></i> Bloquer et archiver
             </button>
             ` : ''}
             ${membre.id === AppState.user.id ? `

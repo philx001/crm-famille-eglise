@@ -82,14 +82,17 @@ const Utils = {
 
   /**
    * Retourne le logo et slogan d'une famille pour la sidebar (null si pas de branding).
-   * Pour étendre à d'autres familles, ajouter des cas ou un mapping (id/nom → logo + slogan).
    */
   getFamilyBranding(famille) {
     if (!famille) return null;
     const nom = ((famille.nom_affichage || famille.nom || '') + '').toLowerCase().normalize('NFD').replace(/\u0301/g, 'e').replace(/[\u0300-\u036f]/g, '');
     if (nom.includes('determin')) {
+      const defaultLogoPath = '/assets/logo-determines.png';
+      const defaultLogoUrl = (typeof window !== 'undefined' && window.location)
+        ? (window.location.origin + defaultLogoPath)
+        : 'assets/logo-determines.png';
       return {
-        logoUrl: 'assets/logo-determines.png',
+        logoUrl: (typeof LOGO_DETERMINES_URL !== 'undefined' && LOGO_DETERMINES_URL) ? LOGO_DETERMINES_URL : defaultLogoUrl,
         sloganTitle: 'LES DÉTERMINÉS',
         sloganSubtitle: 'À ÊTRE DES DISCIPLES DE JÉSUS-CHRIST'
       };

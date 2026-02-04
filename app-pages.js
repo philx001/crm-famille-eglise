@@ -12,27 +12,27 @@ const Pages = {
           <div class="login-card">
             <div class="login-header">
               <div class="login-logo">✝️</div>
-              <h1 class="login-title">CRM Famille</h1>
-              <p class="login-subtitle">Gestion des groupes de disciples</p>
+              <h1 class="login-title">Familles de Disciples - ICC</h1>
+              <p class="login-subtitle">Gestion des Groupes de Disciples</p>
             </div>
             
             <form class="login-form" id="login-form">
               <div class="form-group">
-                <label class="form-label required">Famille</label>
-                <select class="form-control" id="login-famille" required>
+                <label class="form-label required" for="login-famille">Famille</label>
+                <select class="form-control" id="login-famille" required aria-describedby="login-famille-hint">
                   <option value="">Choisir une famille...</option>
                 </select>
-                <span class="form-hint">Le nom de votre groupe (fourni par votre Berger)</span>
+                <span id="login-famille-hint" class="form-hint">Le nom de votre groupe (fourni par votre superviseur)</span>
               </div>
               
               <div class="form-group">
-                <label class="form-label required">Email</label>
+                <label class="form-label required" for="login-email">Email</label>
                 <input type="email" class="form-control" id="login-email" 
                        placeholder="votre@email.com" required>
               </div>
               
               <div class="form-group">
-                <label class="form-label required">Mot de passe</label>
+                <label class="form-label required" for="login-password">Mot de passe</label>
                 <div class="password-input-wrap">
                   <input type="password" class="form-control" id="login-password" 
                          placeholder="••••••••" required autocomplete="current-password">

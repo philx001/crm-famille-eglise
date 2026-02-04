@@ -46,7 +46,7 @@ const App = {
   },
 
   async loadAllData() {
-    const LOAD_TIMEOUT_MS = 25000; // 25 s max pour éviter spinner bloqué après F5
+    const LOAD_TIMEOUT_MS = 50000; // 50 s max pour éviter spinner bloqué après F5
     App.showLoading();
     const loadPromise = (async () => {
       try {
@@ -62,7 +62,7 @@ const App = {
     })();
     const timeoutPromise = new Promise((resolve) => {
       setTimeout(() => {
-        Toast.warning('Chargement lent. Affichage avec les données disponibles.');
+        // Ne pas afficher de message d'erreur : on affiche simplement l'app avec les données déjà chargées
         App.hideLoading();
         resolve();
       }, LOAD_TIMEOUT_MS);
@@ -73,6 +73,21 @@ const App = {
   async showLoginPage() {
     document.getElementById('app').innerHTML = Pages.renderLogin();
     await Auth.loadFamiliesForLogin();
+    // Bouton afficher/masquer mot de passe (liaison en JS pour fiabilité locale + déployé)
+    const pwdToggle = document.querySelector('.password-input-wrap .password-toggle-btn');
+    if (pwdToggle) {
+      pwdToggle.addEventListener('click', function () {
+        const wrap = this.closest('.password-input-wrap');
+        const input = wrap && wrap.querySelector('input');
+        if (!input) return;
+        const isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+        const icon = this.querySelector('i');
+        if (icon) icon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
+        this.setAttribute('aria-label', isPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+        this.setAttribute('title', isPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+      });
+    }
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const famille = document.getElementById('login-famille').value.trim();
@@ -132,6 +147,11 @@ const App = {
     const isOpen = sidebar.classList.toggle('open');
     overlay.classList.toggle('active', isOpen);
     overlay.setAttribute('aria-hidden', !isOpen);
+    const menuBtn = document.getElementById('mobile-menu-btn');
+    if (menuBtn) {
+      menuBtn.setAttribute('aria-expanded', isOpen);
+      menuBtn.setAttribute('aria-label', isOpen ? 'Fermer le menu' : 'Ouvrir le menu');
+    }
   },
 
   closeSidebar() {
@@ -321,7 +341,7 @@ const App = {
       <div class="nav-section">
         <div class="nav-section-title">Raccourcis</div>
         ${items.map(r => `
-          <div class="nav-item ${AppState.currentPage === r.id ? 'active' : ''}" onclick="App.navigate('${r.id}')">
+          <div class="nav-item ${AppState.currentPage === r.id ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('${r.id}')" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); App.navigate('${r.id}'); }">
             <i class="fas ${r.icon}"></i><span>${r.label}</span>
           </div>
         `).join('')}
@@ -614,24 +634,33 @@ const App = {
 
   renderLayout(pageTitle, content) {
     const user = AppState.user, famille = AppState.famille;
+    const familyBranding = Utils.getFamilyBranding(famille);
+    const sidebarHeaderHtml = familyBranding
+      ? `<div class="sidebar-family-branding">
+           <img src="${Utils.escapeHtml(familyBranding.logoUrl)}" alt="${Utils.escapeHtml(familyBranding.sloganTitle)}" class="sidebar-family-logo">
+           <div class="sidebar-family-slogan-title">${Utils.escapeHtml(familyBranding.sloganTitle)}</div>
+           <div class="sidebar-family-slogan-subtitle">${Utils.escapeHtml(familyBranding.sloganSubtitle)}</div>
+         </div>`
+      : `<div class="sidebar-header"><div class="sidebar-logo">✝️</div><div><div class="sidebar-title">Familles de Disciples</div><div class="sidebar-subtitle">${Utils.escapeHtml(famille?.nom_affichage || famille?.nom || '')}</div></div></div>`;
     return `
       <div class="app-container">
-        <aside class="sidebar" id="app-sidebar">
-          <div class="sidebar-header"><div class="sidebar-logo">✝️</div><div><div class="sidebar-title">CRM Famille</div><div class="sidebar-subtitle">${Utils.escapeHtml(famille?.nom || '')}</div></div></div>
-          <nav class="sidebar-nav">
+        <a href="#main-content" class="skip-link">Aller au contenu principal</a>
+        <aside class="sidebar" id="app-sidebar" aria-label="Menu latéral">
+          ${sidebarHeaderHtml}
+          <nav class="sidebar-nav" role="navigation" aria-label="Menu principal">
             ${App.getRaccourcisNav()}
             <div class="nav-section"><div class="nav-section-title">Principal</div>
-              <div class="nav-item ${AppState.currentPage === 'dashboard' ? 'active' : ''}" onclick="App.navigate('dashboard')"><i class="fas fa-home"></i><span>Tableau de bord</span></div>
-              <div class="nav-item ${AppState.currentPage === 'profil' ? 'active' : ''}" onclick="App.navigate('profil')"><i class="fas fa-user"></i><span>Mon profil</span></div>
-              <div class="nav-item ${AppState.currentPage === 'mon-compte' ? 'active' : ''}" onclick="App.navigate('mon-compte')"><i class="fas fa-user-cog"></i><span>Mon compte</span></div>
-              <div class="nav-item ${AppState.currentPage === 'calendrier' ? 'active' : ''}" onclick="App.navigate('calendrier')"><i class="fas fa-calendar-alt"></i><span>Calendrier</span></div>
-              <div class="nav-item ${AppState.currentPage === 'annuaire' ? 'active' : ''}" onclick="App.navigate('annuaire')"><i class="fas fa-address-book"></i><span>Annuaire</span></div>
+              <div class="nav-item ${AppState.currentPage === 'dashboard' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('dashboard')" onkeydown="App.navItemKeydown(event, 'dashboard')"><i class="fas fa-home"></i><span>Tableau de bord</span></div>
+              <div class="nav-item ${AppState.currentPage === 'profil' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('profil')" onkeydown="App.navItemKeydown(event, 'profil')"><i class="fas fa-user"></i><span>Mon profil</span></div>
+              <div class="nav-item ${AppState.currentPage === 'mon-compte' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('mon-compte')" onkeydown="App.navItemKeydown(event, 'mon-compte')"><i class="fas fa-user-cog"></i><span>Mon compte</span></div>
+              <div class="nav-item ${AppState.currentPage === 'calendrier' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('calendrier')" onkeydown="App.navItemKeydown(event, 'calendrier')"><i class="fas fa-calendar-alt"></i><span>Calendrier</span></div>
+              <div class="nav-item ${AppState.currentPage === 'annuaire' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('annuaire')" onkeydown="App.navItemKeydown(event, 'annuaire')"><i class="fas fa-address-book"></i><span>Annuaire</span></div>
             </div>
             <div class="nav-section"><div class="nav-section-title">Communauté</div>
-              <div class="nav-item ${AppState.currentPage === 'notifications' ? 'active' : ''}" onclick="App.navigate('notifications')"><i class="fas fa-bell"></i><span>Notifications</span></div>
-              <div class="nav-item ${AppState.currentPage === 'sujets-priere' ? 'active' : ''}" onclick="App.navigate('sujets-priere')"><i class="fas fa-praying-hands"></i><span>Prière</span></div>
-              <div class="nav-item ${AppState.currentPage === 'temoignages' ? 'active' : ''}" onclick="App.navigate('temoignages')"><i class="fas fa-star"></i><span>Témoignages</span></div>
-              <div class="nav-item ${AppState.currentPage === 'documents' ? 'active' : ''}" onclick="App.navigate('documents')"><i class="fas fa-folder"></i><span>Documents</span></div>
+              <div class="nav-item ${AppState.currentPage === 'notifications' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('notifications')" onkeydown="App.navItemKeydown(event, 'notifications')"><i class="fas fa-bell"></i><span>Notifications</span></div>
+              <div class="nav-item ${AppState.currentPage === 'sujets-priere' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('sujets-priere')" onkeydown="App.navItemKeydown(event, 'sujets-priere')"><i class="fas fa-praying-hands"></i><span>Prière</span></div>
+              <div class="nav-item ${AppState.currentPage === 'temoignages' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('temoignages')" onkeydown="App.navItemKeydown(event, 'temoignages')"><i class="fas fa-star"></i><span>Témoignages</span></div>
+              <div class="nav-item ${AppState.currentPage === 'documents' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('documents')" onkeydown="App.navItemKeydown(event, 'documents')"><i class="fas fa-folder"></i><span>Documents</span></div>
             </div>
             ${Permissions.hasRole('mentor') ? `<div class="nav-section"><div class="nav-section-title">Gestion</div>
               <div class="nav-item ${AppState.currentPage === 'mes-disciples' ? 'active' : ''}" onclick="App.navigate('mes-disciples')"><i class="fas fa-user-friends"></i><span>Mes disciples</span></div>
@@ -641,9 +670,9 @@ const App = {
               <div class="nav-item ${AppState.currentPage === 'evangelisation' || AppState.currentPage === 'evangelisation-add' || AppState.currentPage === 'evangelisation-detail' || AppState.currentPage === 'evangelisation-planning' || AppState.currentPage === 'evangelisation-stats' || AppState.currentPage === 'secteurs' ? 'active' : ''}" onclick="App.navigate('evangelisation')"><i class="fas fa-bullhorn"></i><span>Évangélisation</span></div>
             </div>` : ''}
             ${Permissions.canViewAllMembers() ? `<div class="nav-section"><div class="nav-section-title">Administration</div>
-              <div class="nav-item ${AppState.currentPage === 'membres' ? 'active' : ''}" onclick="App.navigate('membres')"><i class="fas fa-users"></i><span>Tous les membres</span></div>
-              ${Permissions.isAdmin() ? `<div class="nav-item ${AppState.currentPage === 'admin-familles' ? 'active' : ''}" onclick="App.navigate('admin-familles')"><i class="fas fa-church"></i><span>Familles</span></div>
-              <div class="nav-item ${AppState.currentPage === 'logs' ? 'active' : ''}" onclick="App.navigate('logs')"><i class="fas fa-history"></i><span>Journal d'activité</span></div>` : ''}
+              <div class="nav-item ${AppState.currentPage === 'membres' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('membres')" onkeydown="App.navItemKeydown(event, 'membres')"><i class="fas fa-users"></i><span>Tous les membres</span></div>
+              ${Permissions.isAdmin() ? `<div class="nav-item ${AppState.currentPage === 'admin-familles' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('admin-familles')" onkeydown="App.navItemKeydown(event, 'admin-familles')"><i class="fas fa-church"></i><span>Familles</span></div>
+              <div class="nav-item ${AppState.currentPage === 'logs' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('logs')" onkeydown="App.navItemKeydown(event, 'logs')"><i class="fas fa-history"></i><span>Journal d'activité</span></div>` : ''}
             </div>` : ''}
           </nav>
           <div class="sidebar-user">

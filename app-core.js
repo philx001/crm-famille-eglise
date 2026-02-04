@@ -80,6 +80,23 @@ const Utils = {
     return str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
   },
 
+  /**
+   * Retourne le logo et slogan d'une famille pour la sidebar (null si pas de branding).
+   * Pour étendre à d'autres familles, ajouter des cas ou un mapping (id/nom → logo + slogan).
+   */
+  getFamilyBranding(famille) {
+    if (!famille) return null;
+    const nom = ((famille.nom_affichage || famille.nom || '') + '').toLowerCase().normalize('NFD').replace(/\u0301/g, 'e').replace(/[\u0300-\u036f]/g, '');
+    if (nom.includes('determin')) {
+      return {
+        logoUrl: 'assets/logo-determines.png',
+        sloganTitle: 'LES DÉTERMINÉS',
+        sloganSubtitle: 'À ÊTRE DES DISCIPLES DE JÉSUS-CHRIST'
+      };
+    }
+    return null;
+  },
+
   isBirthday(dateNaissance) {
     if (!dateNaissance) return false;
     const d = dateNaissance.toDate ? dateNaissance.toDate() : new Date(dateNaissance);
@@ -374,6 +391,8 @@ const ErrorHandler = {
 
   // Afficher une erreur de session avec option de reconnexion
   showSessionError() {
+    // Ne pas afficher si on est déjà sur la page de connexion (déconnexion volontaire ou redirection)
+    if (document.getElementById('login-form')) return;
     const errorId = 'session-error-' + Date.now();
     const errorHtml = `
       <div class="alert alert-warning" id="${errorId}" style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 10000; max-width: 500px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">

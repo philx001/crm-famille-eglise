@@ -140,12 +140,13 @@ const Auth = {
   async logout() {
     try {
       InactivityManager.stop();
-      await auth.signOut();
+      // Vider l'état AVANT signOut pour que onAuthStateChanged ne déclenche pas "Session expirée"
       AppState.user = null;
       AppState.famille = null;
       AppState.membres = [];
       localStorage.removeItem('crm_famille_id');
       localStorage.removeItem('crm_famille_nom');
+      await auth.signOut();
       App.showLoginPage();
     } catch (error) {
       console.error('Erreur de déconnexion:', error);

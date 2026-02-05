@@ -1,5 +1,6 @@
 {
   "buildCommand": "node scripts/inject-version.js",
+  "outputDirectory": ".",
   "headers": [
     {
       "source": "/index.html",

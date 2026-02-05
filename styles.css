@@ -752,6 +752,22 @@ a.btn-outline {
   background: rgba(45, 90, 123, 0.2);
 }
 
+/* Téléphone : indicatif étroit, numéro large (tous profils) */
+.phone-edit-row {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: stretch;
+}
+.phone-edit-row .edit-indicatif {
+  width: 145px;
+  min-width: 145px;
+  max-width: 160px;
+}
+.phone-edit-row .edit-numero {
+  flex: 1;
+  min-width: 140px;
+}
+
 .form-error {
   font-size: 0.8rem;
   color: var(--danger);

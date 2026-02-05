@@ -458,8 +458,12 @@ const Pages = {
 
     return `
       <div class="card" style="max-width: 700px; margin: 0 auto;">
-        <div class="card-header">
-          <h3 class="card-title"><i class="fas fa-user-edit"></i> Modifier le profil</h3>
+        <div class="card-header" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--spacing-md);">
+          <h3 class="card-title mb-0"><i class="fas fa-user-edit"></i> Modifier le profil</h3>
+          <div class="d-flex gap-2 profil-edit-actions">
+            <button type="button" class="btn btn-secondary" onclick="App.navigate('profil')">Annuler</button>
+            <button type="submit" form="form-edit-profil" class="btn btn-primary"><i class="fas fa-save"></i> Enregistrer</button>
+          </div>
         </div>
         <div class="card-body">
           <form id="form-edit-profil" onsubmit="App.submitEditProfil(event, '${membre.id}')">
@@ -516,11 +520,9 @@ const Pages = {
               </div>
               <div class="form-group">
                 <label class="form-label">Téléphone</label>
-                <div style="display: flex; gap: var(--spacing-sm); align-items: flex-start;">
-                  <select class="form-control" id="edit-indicatif-telephone" title="Indicatif pays" style="max-width: 220px;">
-                    ${Utils.INDICATIFS_PAYS.map(ind => `<option value="${Utils.escapeHtml(ind.value)}" ${(membre.indicatif_telephone || '+33') === ind.value ? 'selected' : ''}>${Utils.escapeHtml(ind.label)}</option>`).join('')}
-                  </select>
-                  <input type="tel" class="form-control" id="edit-telephone" placeholder="6 12 34 56 78" value="${Utils.escapeHtml(membre.telephone || '')}" style="flex: 1;">
+                <div class="phone-edit-row" style="display: flex; gap: var(--spacing-sm); align-items: flex-start;">
+                  <select class="form-control edit-indicatif" id="edit-indicatif-telephone" title="Indicatif pays">${Utils.INDICATIFS_PAYS.map(ind => `<option value="${Utils.escapeHtml(ind.value)}" ${(membre.indicatif_telephone || '+33') === ind.value ? 'selected' : ''}>${Utils.escapeHtml(ind.label)}</option>`).join('')}</select>
+                  <input type="tel" class="form-control edit-numero" id="edit-telephone" placeholder="6 12 34 56 78" value="${Utils.escapeHtml(membre.telephone || '')}">
                 </div>
                 <span class="form-hint">Ex. France : 6 12 34 56 78 (sans le 0 initial)</span>
               </div>

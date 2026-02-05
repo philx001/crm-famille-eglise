@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="description" content="CRM de gestion des groupes de disciples (Familles) pour église">
   <meta name="theme-color" content="#2D5A7B">
+  <meta name="app-version" content="__APP_VERSION__">
   
   <title>CRM Famille - Gestion des Groupes de Disciples</title>
   
@@ -22,8 +23,8 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   
-  <!-- Styles -->
-  <link rel="stylesheet" href="styles.css">
+  <!-- Styles (version injectée au build) -->
+  <link rel="stylesheet" href="styles.css?v=__APP_VERSION__">
 </head>
 <body>
   <!-- Application Container -->
@@ -39,24 +40,24 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
   
-  <!-- Configuration Firebase -->
-  <script src="firebase-config.js"></script>
+  <!-- Configuration Firebase (version injectée au build) -->
+  <script src="firebase-config.js?v=__APP_VERSION__"></script>
   
-  <!-- Application Scripts -->
-  <script src="app-core.js"></script>
-  <script src="app-auth.js"></script>
-  <script src="app-pages.js"></script>
-  <script src="app-programmes.js"></script>
-  <script src="app-presences.js"></script>
-  <script src="app-statistiques.js"></script>
-  <script src="app-charts.js"></script>
-  <script src="app-pdf-export.js"></script>
-  <script src="app-notifications.js"></script>
-  <script src="app-priere.js"></script>
-  <script src="app-documents.js"></script>
-  <script src="app-notes.js"></script>
-  <script src="app-nouvelles-ames.js"></script>
-  <script src="app-evangelisation.js"></script>
-  <script src="app-main.js"></script>
+  <!-- Application Scripts (version injectée au build) -->
+  <script src="app-core.js?v=__APP_VERSION__"></script>
+  <script src="app-auth.js?v=__APP_VERSION__"></script>
+  <script src="app-pages.js?v=__APP_VERSION__"></script>
+  <script src="app-programmes.js?v=__APP_VERSION__"></script>
+  <script src="app-presences.js?v=__APP_VERSION__"></script>
+  <script src="app-statistiques.js?v=__APP_VERSION__"></script>
+  <script src="app-charts.js?v=__APP_VERSION__"></script>
+  <script src="app-pdf-export.js?v=__APP_VERSION__"></script>
+  <script src="app-notifications.js?v=__APP_VERSION__"></script>
+  <script src="app-priere.js?v=__APP_VERSION__"></script>
+  <script src="app-documents.js?v=__APP_VERSION__"></script>
+  <script src="app-notes.js?v=__APP_VERSION__"></script>
+  <script src="app-nouvelles-ames.js?v=__APP_VERSION__"></script>
+  <script src="app-evangelisation.js?v=__APP_VERSION__"></script>
+  <script src="app-main.js?v=__APP_VERSION__"></script>
 </body>
 </html>

@@ -1307,7 +1307,10 @@ const App = {
       statut_professionnel: document.getElementById('edit-statut-pro').value || null,
       passions_centres_interet: document.getElementById('edit-passions').value.trim() || null
     };
+    const editRoleEl = document.getElementById('edit-role');
+    const editMentorEl = document.getElementById('edit-mentor');
     if (editRoleEl) {
+      const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_superviseur', 'superviseur', 'admin'];
       data.role = editRoleEl.value;
       data.mentor_id = (rolesWithoutMentor.includes(editRoleEl.value) || !editMentorEl?.value) ? null : editMentorEl.value;
     }

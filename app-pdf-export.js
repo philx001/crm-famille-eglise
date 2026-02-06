@@ -312,7 +312,7 @@ const PDFExport = {
   },
 
   // Générer le rapport de présences pour un programme spécifique
-  generateProgrammePresenceReport(presencesData, options = {}) {
+  async generateProgrammePresenceReport(presencesData, options = {}) {
     const { programme, famille } = options;
     const escape = (v) => String(v != null ? v : '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     
@@ -440,3 +440,6 @@ const PDFExport = {
     return true;
   }
 };
+
+// Exposer globalement pour les autres scripts (Statistiques, Nouvelles âmes, Membres, Présences)
+if (typeof window !== 'undefined') window.PDFExport = PDFExport;

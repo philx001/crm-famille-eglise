@@ -155,7 +155,7 @@ const Auth = {
   },
 
   async checkAuthState() {
-    const AUTH_TIMEOUT_MS = 20000; // 20 s pour laisser Firebase restaurer la session après F5
+    const AUTH_TIMEOUT_MS = 10000; // 10 s pour laisser Firebase restaurer la session après F5
     return new Promise((resolve) => {
       let resolved = false;
       const done = (value) => {

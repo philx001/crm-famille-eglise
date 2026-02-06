@@ -4,23 +4,59 @@
 // ============================================
 
 const App = {
+  _initDone: false,
+
   async init() {
-    initFirebase();
-    Toast.init();
-    this.applyTheme(localStorage.getItem('crm_theme') || 'light');
-    this.setupErrorHandling();
-    // Attendre la vérification de session (spinner initial) pour garder la session après F5
-    const isLoggedIn = await Auth.checkAuthState();
-    if (isLoggedIn) {
-      await this.loadAllData();
-      if (window.location.hash && window.location.hash.length > 1) {
-        this.navigateFromHash();
-      } else {
-        this.navigate('dashboard');
+    const SAFETY_TIMEOUT_MS = 8000; // 8 s : si l'app n'a pas affiché de contenu, forcer la page de connexion
+    const safetyTimer = setTimeout(() => {
+      if (App._initDone) return;
+      const appEl = document.getElementById('app');
+      if (!appEl) return;
+      if (appEl.querySelector('.loading, .spinner')) {
+        console.warn('Délai de démarrage dépassé — affichage de la page de connexion.');
+        App._initDone = true;
+        if (typeof Pages !== 'undefined' && Pages.renderLogin) {
+          appEl.innerHTML = Pages.renderLogin();
+          if (typeof Auth !== 'undefined' && Auth.loadFamiliesForLogin) Auth.loadFamiliesForLogin();
+        } else {
+          appEl.innerHTML = '<div class="card" style="max-width: 400px; margin: 2rem auto; padding: 1.5rem;"><p>Chargement trop long.</p><p><a href="#" onclick="location.reload(); return false;">Rafraîchir la page</a></p></div>';
+        }
       }
-      window.addEventListener('hashchange', () => this.navigateFromHash());
-    } else {
-      this.showLoginPage();
+    }, SAFETY_TIMEOUT_MS);
+
+    try {
+      initFirebase();
+      if (typeof Toast !== 'undefined') Toast.init();
+      this.applyTheme(localStorage.getItem('crm_theme') || 'light');
+      this.setupErrorHandling();
+      const isLoggedIn = await Auth.checkAuthState();
+      if (App._initDone) return;
+      clearTimeout(safetyTimer);
+      App._initDone = true;
+      if (isLoggedIn) {
+        await this.loadAllData();
+        if (window.location.hash && window.location.hash.length > 1) {
+          this.navigateFromHash();
+        } else {
+          this.navigate('dashboard');
+        }
+        window.addEventListener('hashchange', () => this.navigateFromHash());
+      } else {
+        this.showLoginPage();
+      }
+    } catch (err) {
+      clearTimeout(safetyTimer);
+      App._initDone = true;
+      console.error('Erreur au démarrage:', err);
+      const appEl = document.getElementById('app');
+      if (appEl) {
+        if (typeof Pages !== 'undefined' && Pages.renderLogin) {
+          appEl.innerHTML = Pages.renderLogin();
+          if (typeof Auth !== 'undefined' && Auth.loadFamiliesForLogin) Auth.loadFamiliesForLogin();
+        } else {
+          appEl.innerHTML = '<div class="card" style="max-width: 400px; margin: 2rem auto; padding: 1.5rem;"><p><strong>Erreur de chargement.</strong></p><p>' + (err && err.message ? err.message : '') + '</p><p><a href="#" onclick="location.reload(); return false;">Rafraîchir la page</a></p></div>';
+        }
+      }
     }
   },
 
@@ -1004,7 +1040,7 @@ const App = {
     }
   },
 
-  exportMembresPDF() {
+  async exportMembresPDF() {
     const isMesDisciples = AppState.currentPage === 'mes-disciples';
     const canExport = Permissions.canViewAllMembers() || (isMesDisciples && Permissions.hasRole('mentor'));
     

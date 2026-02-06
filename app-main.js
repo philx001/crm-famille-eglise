@@ -15,9 +15,8 @@ const App = {
       if (appEl.querySelector('.loading, .spinner')) {
         console.warn('Délai de démarrage dépassé — affichage de la page de connexion.');
         App._initDone = true;
-        if (typeof Pages !== 'undefined' && Pages.renderLogin) {
-          appEl.innerHTML = Pages.renderLogin();
-          if (typeof Auth !== 'undefined' && Auth.loadFamiliesForLogin) Auth.loadFamiliesForLogin();
+        if (typeof Pages !== 'undefined' && Pages.renderLogin && typeof App !== 'undefined' && App.showLoginPage) {
+          App.showLoginPage();
         } else {
           appEl.innerHTML = '<div class="card" style="max-width: 400px; margin: 2rem auto; padding: 1.5rem;"><p>Chargement trop long.</p><p><a href="#" onclick="location.reload(); return false;">Rafraîchir la page</a></p></div>';
         }
@@ -28,6 +27,7 @@ const App = {
       initFirebase();
       if (typeof Toast !== 'undefined') Toast.init();
       this.applyTheme(localStorage.getItem('crm_theme') || 'light');
+      this.setupPasswordToggleDelegation();
       this.setupErrorHandling();
       const isLoggedIn = await Auth.checkAuthState();
       if (App._initDone) return;
@@ -50,14 +50,30 @@ const App = {
       console.error('Erreur au démarrage:', err);
       const appEl = document.getElementById('app');
       if (appEl) {
-        if (typeof Pages !== 'undefined' && Pages.renderLogin) {
-          appEl.innerHTML = Pages.renderLogin();
-          if (typeof Auth !== 'undefined' && Auth.loadFamiliesForLogin) Auth.loadFamiliesForLogin();
+        if (typeof Pages !== 'undefined' && Pages.renderLogin && typeof App !== 'undefined' && App.showLoginPage) {
+          App.showLoginPage();
         } else {
           appEl.innerHTML = '<div class="card" style="max-width: 400px; margin: 2rem auto; padding: 1.5rem;"><p><strong>Erreur de chargement.</strong></p><p>' + (err && err.message ? err.message : '') + '</p><p><a href="#" onclick="location.reload(); return false;">Rafraîchir la page</a></p></div>';
         }
       }
     }
+  },
+
+  setupPasswordToggleDelegation() {
+    document.addEventListener('click', function (e) {
+      const btn = e.target && e.target.closest && e.target.closest('.password-toggle-btn');
+      if (!btn) return;
+      const wrap = btn.closest('.password-input-wrap');
+      const input = wrap && wrap.querySelector('input');
+      if (!input) return;
+      e.preventDefault();
+      const isPassword = input.type === 'password';
+      input.type = isPassword ? 'text' : 'password';
+      const icon = btn.querySelector('i');
+      if (icon) icon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
+      btn.setAttribute('aria-label', isPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+      btn.setAttribute('title', isPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+    });
   },
 
   setupErrorHandling() {
@@ -113,21 +129,7 @@ const App = {
   async showLoginPage() {
     document.getElementById('app').innerHTML = Pages.renderLogin();
     await Auth.loadFamiliesForLogin();
-    // Bouton afficher/masquer mot de passe (liaison en JS pour fiabilité locale + déployé)
-    const pwdToggle = document.querySelector('.password-input-wrap .password-toggle-btn');
-    if (pwdToggle) {
-      pwdToggle.addEventListener('click', function () {
-        const wrap = this.closest('.password-input-wrap');
-        const input = wrap && wrap.querySelector('input');
-        if (!input) return;
-        const isPassword = input.type === 'password';
-        input.type = isPassword ? 'text' : 'password';
-        const icon = this.querySelector('i');
-        if (icon) icon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
-        this.setAttribute('aria-label', isPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
-        this.setAttribute('title', isPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
-      });
-    }
+    // Affichage/masquage mot de passe géré par setupPasswordToggleDelegation() (délégation au chargement)
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const famille = document.getElementById('login-famille').value.trim();
@@ -1481,4 +1483,5 @@ const App = {
   showForgotPassword() { const e = prompt('Entrez votre adresse email :'); if (e && Utils.isValidEmail(e)) Auth.resetPassword(e); else if (e) Toast.error('Email invalide'); }
 };
 
+window.App = App;
 document.addEventListener('DOMContentLoaded', () => App.init());

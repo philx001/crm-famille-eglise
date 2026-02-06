@@ -36,7 +36,7 @@ const Pages = {
                 <div class="password-input-wrap">
                   <input type="password" class="form-control" id="login-password" 
                          placeholder="••••••••" required autocomplete="current-password">
-                  <button type="button" class="password-toggle-btn" onclick="App.toggleLoginPasswordVisibility(this)" aria-label="Afficher le mot de passe" title="Afficher / masquer le mot de passe">
+                  <button type="button" class="password-toggle-btn" aria-label="Afficher le mot de passe" title="Afficher / masquer le mot de passe">
                     <i class="fas fa-eye" aria-hidden="true"></i>
                   </button>
                 </div>

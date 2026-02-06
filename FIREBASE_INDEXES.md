@@ -115,7 +115,21 @@ Une fois les index créés :
 
 ---
 
-### 6. Collection `notes_suivi`
+### 6. Collection `notes_personnelles`
+
+**Requête :** `where('auteur_id', '==', ...) + orderBy('created_at', 'desc')`
+
+**Création automatique :** Cliquez sur le lien dans l'erreur de la console si besoin.
+
+**Création manuelle :**
+- Collection : `notes_personnelles`
+- Champs indexés :
+  - `auteur_id` (Ascending)
+  - `created_at` (Descending)
+
+---
+
+### 7. Collection `notes_suivi`
 
 **Requête :** `where('famille_id', '==', ...) + where('entite_ref', '==', ...) + orderBy('created_at', 'desc')`
 

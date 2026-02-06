@@ -1,0 +1,40 @@
+========================================
+  AFFICHER LE LOGO "LES DÉTERMINÉS"
+========================================
+
+Vous avez 2 possibilités (une seule suffit) :
+
+----------------------------------------
+  SOLUTION 1 (la plus simple) : une URL
+----------------------------------------
+
+1. Uploadez votre image du logo sur Internet :
+   - soit dans Firebase Storage (votre projet) ;
+   - soit sur un site comme imgur.com (upload image → copier le lien de l’image).
+
+2. Ouvrez le fichier :  app-core.js
+
+3. Trouvez la ligne (vers le début du fichier) :
+      const LOGO_DETERMINES_URL = '';
+
+4. Collez l’URL entre les guillemets, par exemple :
+      const LOGO_DETERMINES_URL = 'https://...votre-lien...';
+
+5. Enregistrez. Le logo s’affichera dans la barre latérale.
+
+----------------------------------------
+  SOLUTION 2 : un fichier dans le projet
+----------------------------------------
+
+1. Enregistrez votre image du logo sur votre ordinateur.
+
+2. Renommez-la exactement :  logo-determines.png
+
+3. Placez ce fichier dans le dossier  assets  de ce projet
+   (le même dossier que ce fichier LOGO_INSTRUCTIONS.txt).
+
+4. Ne modifiez pas app-core.js (gardez LOGO_DETERMINES_URL = '').
+
+5. Le logo s’affichera dans la barre latérale.
+
+========================================

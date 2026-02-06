@@ -254,6 +254,33 @@ const Statistiques = {
     return stats.sort((a, b) => b.tauxPresence - a.tauxPresence);
   },
 
+  // Calculer les stats par mentor à partir de parMembre (résultat de calculatePresenceStats)
+  // pour la période déjà chargée sur la page Statistiques
+  calculateMentorStatsFromParMembre(parMembre) {
+    if (!parMembre || parMembre.length === 0) return [];
+    const mentors = Membres.getMentors();
+    if (mentors.length === 0) return [];
+    const stats = mentors.map(mentor => {
+      const disciples = Membres.getDisciples(mentor.id);
+      const discipleIds = new Set(disciples.map(d => d.id));
+      const membresMentor = parMembre.filter(m => discipleIds.has(m.id));
+      const totalPresences = membresMentor.reduce((s, m) => s + (m.nbTotal || 0), 0);
+      const totalPresents = membresMentor.reduce((s, m) => s + (m.nbPresences || 0), 0);
+      const tauxPresence = totalPresences > 0
+        ? Math.round((totalPresents / totalPresences) * 100 * 10) / 10
+        : 0;
+      return {
+        id: mentor.id,
+        nom: mentor.nom,
+        prenom: mentor.prenom,
+        nomComplet: `${mentor.prenom} ${mentor.nom}`,
+        nbDisciples: disciples.length,
+        tauxPresence
+      };
+    });
+    return stats.sort((a, b) => b.nbDisciples - a.nbDisciples);
+  },
+
   // Répartition des membres par mentor (tous rôles) en proportion du total famille
   getRepartitionMentorsData() {
     const actifs = AppState.membres.filter(m => m.statut_compte === 'actif');
@@ -588,13 +615,14 @@ const PagesStatistiques = {
       ` : ''}
 
       ${Permissions.hasRole('superviseur') ? `
-      <!-- Statistiques par mentor -->
+      <!-- Statistiques par mentor (taux = présence des disciples sur la période choisie) -->
       <div class="card mt-3">
         <div class="card-header">
           <h3 class="card-title"><i class="fas fa-chalkboard-teacher"></i> Statistiques par mentor</h3>
+          <span class="text-muted" style="font-size: 0.85rem; font-weight: normal;">Taux de présence des disciples sur la période</span>
         </div>
         <div class="card-body">
-          ${this.renderMentorStatsSimple()}
+          ${this.stats && this.stats.parMembre ? this.renderMentorStats(Statistiques.calculateMentorStatsFromParMembre(this.stats.parMembre)) : this.renderMentorStatsSimple()}
         </div>
       </div>
       ` : ''}
@@ -1273,18 +1301,21 @@ const PagesStatistiques = {
     Toast.success('Fenêtre ouverte : dans la boîte d\'impression, choisissez « Enregistrer au format PDF » comme destination pour sauvegarder le fichier.');
   },
 
-  // Export PDF (ouvre une fenêtre d'impression : utiliser « Enregistrer au format PDF » dans la boîte d'impression)
+  // Export PDF (téléchargement direct du fichier)
   async exportPDF() {
     try {
+      App.showLoading();
       await PDFExport.generatePresenceReport(this.stats, {
         dateDebut: this.currentDateDebut,
         dateFin: this.currentDateFin,
         famille: AppState.famille.nom
       });
-      Toast.success('Fenêtre ouverte : utilisez « Imprimer » puis « Enregistrer au format PDF » pour sauvegarder le rapport.');
+      Toast.success('Téléchargement du rapport PDF en cours.');
     } catch (error) {
       console.error('Erreur export PDF:', error);
-      Toast.error(error.message || 'Erreur lors de l\'ouverture du rapport. Autorisez les fenêtres popup.');
+      Toast.error(error.message || 'Erreur lors de la génération du rapport PDF.');
+    } finally {
+      App.hideLoading();
     }
   }
 };

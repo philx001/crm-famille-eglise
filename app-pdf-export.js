@@ -4,21 +4,36 @@
 // ============================================
 
 const PDFExport = {
-  // Générer le rapport de présences
+  // Télécharger un document HTML en PDF (comme un fichier, sans ouvrir la boîte d'impression)
+  async downloadHtmlAsPdf(htmlContent, filename) {
+    if (typeof html2pdf === 'undefined') {
+      throw new Error('Génération PDF indisponible. Réessayez ou utilisez l\'impression (Ctrl+P).');
+    }
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('style', 'position:absolute;width:9999px;height:9999px;border:none;left:-9999px;');
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument;
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+    const body = iframe.contentDocument.body;
+    const opt = {
+      margin: 10,
+      filename: filename || 'rapport.pdf',
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    await html2pdf().set(opt).from(body).save();
+    document.body.removeChild(iframe);
+    return true;
+  },
+
+  // Générer le rapport de présences (téléchargement direct PDF)
   async generatePresenceReport(stats, options = {}) {
     const content = this.buildPresenceHTML(stats, options);
-    
-    const printWindow = window.open('about:blank', '_blank');
-    if (!printWindow) {
-      throw new Error('Fenêtre bloquée. Autorisez les popups pour ce site.');
-    }
-    printWindow.document.open();
-    printWindow.document.write(content);
-    printWindow.document.close();
-    printWindow.onload = () => {
-      setTimeout(() => printWindow.print(), 500);
-    };
-    
+    const filename = `rapport-presences-${new Date().toISOString().slice(0, 10)}.pdf`;
+    await this.downloadHtmlAsPdf(content, filename);
     return true;
   },
 
@@ -36,7 +51,7 @@ const PDFExport = {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333; padding: 15mm; }
-    @media print { body { padding: 0; } .no-print { display: none; } }
+    @media print { body { padding: 0; } } .no-print { display: none !important; }
     .header { text-align: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #2D5A7B; }
     .header h1 { color: #2D5A7B; font-size: 22pt; margin-bottom: 5px; }
     .header .subtitle { font-size: 14pt; color: #666; }
@@ -195,7 +210,7 @@ const PDFExport = {
   },
 
   // Générer le rapport liste des membres (PDF via impression navigateur)
-  generateMembersReport(membres, options = {}) {
+  async generateMembersReport(membres, options = {}) {
     const famille = options.famille || '';
     const reportTitle = options.title || 'Liste des membres';
     const escape = (v) => (typeof Utils !== 'undefined' && Utils.escapeHtml ? Utils.escapeHtml(String(v != null ? v : '')) : String(v != null ? v : '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
@@ -242,7 +257,7 @@ const PDFExport = {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10pt; line-height: 1.35; color: #333; padding: 15mm; }
-    @media print { body { padding: 0; } .no-print { display: none; } }
+    @media print { body { padding: 0; } } .no-print { display: none !important; }
     .header { text-align: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #2D5A7B; }
     .header h1 { color: #2D5A7B; font-size: 20pt; margin-bottom: 5px; }
     .header .subtitle { font-size: 12pt; color: #666; }
@@ -342,7 +357,7 @@ const PDFExport = {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333; padding: 15mm; }
-    @media print { body { padding: 0; } .no-print { display: none; } }
+    @media print { body { padding: 0; } } .no-print { display: none !important; }
     .header { text-align: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #2D5A7B; }
     .header h1 { color: #2D5A7B; font-size: 20pt; margin-bottom: 5px; }
     .header .subtitle { font-size: 12pt; color: #666; }
@@ -420,16 +435,8 @@ const PDFExport = {
 </body>
 </html>`;
 
-    const printWindow = window.open('about:blank', '_blank');
-    if (!printWindow) {
-      throw new Error('Fenêtre bloquée. Autorisez les popups pour ce site.');
-    }
-    printWindow.document.open();
-    printWindow.document.write(content);
-    printWindow.document.close();
-    printWindow.onload = () => {
-      setTimeout(() => printWindow.print(), 500);
-    };
+    const filename = `presences-programme-${new Date().toISOString().slice(0, 10)}.pdf`;
+    await this.downloadHtmlAsPdf(content, filename);
     return true;
   }
 };

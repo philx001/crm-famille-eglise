@@ -20,8 +20,8 @@ const PagesPresences = {
     
     // Obtenir les membres à pointer
     let membres = [];
-    if (Permissions.hasRole('superviseur')) {
-      // Le superviseur voit tous les membres
+    if (Permissions.hasRole('adjoint_superviseur')) {
+      // Superviseur et adjoint voient tous les membres actifs
       membres = AppState.membres.filter(m => m.statut_compte === 'actif');
     } else {
       // Le mentor voit ses disciples
@@ -351,8 +351,8 @@ const PagesPresences = {
     Toast.success(`Export de ${this.presencesData.length} présence(s) réussi.`);
   },
 
-  // Export des présences en PDF
-  exportPresencesPDF() {
+  // Export des présences en PDF (téléchargement direct)
+  async exportPresencesPDF() {
     const programme = Programmes.getById(this.currentProgrammeId);
     if (!programme || this.presencesData.length === 0) {
       Toast.warning('Aucune donnée à exporter.');
@@ -360,18 +360,17 @@ const PagesPresences = {
     }
 
     try {
-      PDFExport.generateProgrammePresenceReport(this.presencesData, {
+      App.showLoading();
+      await PDFExport.generateProgrammePresenceReport(this.presencesData, {
         programme: programme,
         famille: AppState.famille?.nom || ''
       });
-      Toast.info('Fenêtre d\'impression ouverte. Utilisez "Imprimer / Enregistrer en PDF" pour sauvegarder.');
+      Toast.success('Téléchargement du PDF en cours.');
     } catch (e) {
       console.error('Erreur export PDF présences:', e);
-      if (e.message && e.message.includes('bloquée')) {
-        Toast.error('Fenêtre bloquée. Autorisez les popups pour ce site puis réessayez.');
-      } else {
-        Toast.error('Erreur lors de la génération du PDF.');
-      }
+      Toast.error(e.message || 'Erreur lors de la génération du PDF.');
+    } finally {
+      App.hideLoading();
     }
   },
 

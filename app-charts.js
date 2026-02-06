@@ -16,19 +16,25 @@ const ChartsHelper = {
     }
   },
 
-  // Créer un graphique donut/camembert
-  createDoughnut(canvasId, labels, data, colors) {
+  // Créer un graphique donut/camembert (onClickSegment(index) optionnel)
+  createDoughnut(canvasId, labels, data, colors, onClickSegment) {
     this.destroy(canvasId);
     const ctx = document.getElementById(canvasId)?.getContext('2d');
     if (!ctx) return null;
     const palette = colors || ['#2D5A7B', '#4CAF50', '#FF9800', '#9C27B0', '#2196F3', '#E91E63'];
+    const options = { ...this.defaultOptions, cutout: '60%' };
+    if (typeof onClickSegment === 'function') {
+      options.onClick = (ev, elements) => {
+        if (elements.length) onClickSegment(elements[0].index);
+      };
+    }
     this.instances[canvasId] = new Chart(ctx, {
       type: 'doughnut',
       data: {
         labels: labels,
         datasets: [{ data: data, backgroundColor: palette.slice(0, data.length), borderWidth: 2 }]
       },
-      options: { ...this.defaultOptions, cutout: '60%' }
+      options
     });
     return this.instances[canvasId];
   },

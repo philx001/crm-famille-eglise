@@ -29,6 +29,12 @@ const THEMATIQUES = [
   { value: 'autre', label: 'Autre', icon: 'fa-question-circle', color: '#607D8B' }
 ];
 
+// Catégories de nouvelles âmes : NA = Nouveaux Arrivants, NC = Nouveaux Convertis
+const CATEGORIES_NA_NC = [
+  { value: 'na', label: 'Nouveaux Arrivants (NA)', shortLabel: 'NA', icon: 'fa-user-plus', color: '#2196F3', description: 'Reçus de l\'extérieur ou déjà dans l\'église mais nouveaux dans la famille' },
+  { value: 'nc', label: 'Nouveaux Convertis (NC)', shortLabel: 'NC', icon: 'fa-heart', color: '#E91E63', description: 'Venus à l\'église et ont donné leur vie au Seigneur très récemment' }
+];
+
 // Statuts des nouvelles âmes
 const STATUTS = [
   { value: 'nouveau', label: 'Nouveau contact', color: '#2196F3' },
@@ -62,10 +68,14 @@ const NouvellesAmes = {
         .where('famille_id', '==', AppState.famille.id)
         .get();
       
-      NouvellesAmesData.cache = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      NouvellesAmesData.cache = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          categorie: data.categorie === 'nc' ? 'nc' : 'na'  // Défaut 'na' pour données existantes
+        };
+      });
       
       // Trier côté client par date de création (plus récent en premier)
       NouvellesAmesData.cache.sort((a, b) => {
@@ -109,7 +119,9 @@ const NouvellesAmes = {
         date_naissance: data.date_naissance || null,
         adresse_ville: data.adresse_ville || null,
         adresse_quartier: data.adresse_quartier || null,
-        
+
+        categorie: data.categorie === 'nc' ? 'nc' : 'na',
+
         canal: data.canal,
         thematique: data.canal === 'exhortation' ? data.thematique : null,
         date_premier_contact: data.date_premier_contact || firebase.firestore.Timestamp.now(),
@@ -200,7 +212,10 @@ const NouvellesAmes = {
   // Filtrer les nouvelles âmes
   filterBy(filters = {}) {
     let result = [...NouvellesAmesData.cache];
-    
+
+    if (filters.categorie) {
+      result = result.filter(na => na.categorie === filters.categorie);
+    }
     if (filters.canal) {
       result = result.filter(na => na.canal === filters.canal);
     }
@@ -240,17 +255,19 @@ const NouvellesAmes = {
     return result;
   },
   
-  // Obtenir uniquement les âmes actives (non intégrées)
-  getActifs() {
-    return NouvellesAmesData.cache.filter(na => na.statut !== 'integre' && na.statut !== 'perdu');
+  // Obtenir uniquement les âmes actives (non intégrées), optionnellement par catégorie
+  getActifs(categorie = null) {
+    let list = NouvellesAmesData.cache.filter(na => na.statut !== 'integre' && na.statut !== 'perdu');
+    if (categorie) list = list.filter(na => na.categorie === categorie);
+    return list;
   },
 
-  // Obtenir les nouvelles âmes à relancer (sans contact depuis X jours)
-  getARelancer(days = 7) {
+  // Obtenir les nouvelles âmes à relancer (sans contact depuis X jours), optionnellement par catégorie
+  getARelancer(days = 7, categorie = null) {
     const limitDate = new Date();
     limitDate.setDate(limitDate.getDate() - days);
     
-    return NouvellesAmesData.cache.filter(na => {
+    let list = NouvellesAmesData.cache.filter(na => {
       if (na.statut === 'integre' || na.statut === 'perdu') return false;
       
       const lastContact = na.date_dernier_contact?.toDate 
@@ -259,35 +276,52 @@ const NouvellesAmes = {
       
       return lastContact < limitDate;
     });
+    if (categorie) list = list.filter(na => (na.categorie || 'na') === categorie);
+    return list;
   },
 
-  // Obtenir les statistiques
-  getStats() {
-    const all = NouvellesAmesData.cache;
-    const actifs = this.getActifs();
+  // Obtenir les nouvelles âmes par catégorie (na ou nc) — exclut les intégrés pour ne pas fausser les stats
+  getByCategorie(cat) {
+    return NouvellesAmesData.cache.filter(na =>
+      (na.categorie || 'na') === cat && na.statut !== 'integre'
+    );
+  },
+
+  // Obtenir les statistiques (optionnellement filtrées par catégorie : 'na', 'nc' ou null = toutes)
+  // Les comptes excluent les intégrés (ils ne figurent que dans "Membres").
+  getStats(categorie = null) {
+    let all = NouvellesAmesData.cache;
+    if (categorie) all = all.filter(na => (na.categorie || 'na') === categorie);
+    const allSansIntegres = all.filter(na => na.statut !== 'integre');
+    const actifs = categorie ? this.getActifs(categorie) : this.getActifs();
+    const countNA = this.getByCategorie('na').length;
+    const countNC = this.getByCategorie('nc').length;
     const stats = {
-      total: actifs.length,  // Compte uniquement les actifs par défaut
-      totalAll: all.length,  // Total incluant les intégrés
+      total: actifs.length,
+      totalAll: allSansIntegres.length,
       integres: all.filter(na => na.statut === 'integre').length,
       parCanal: {},
       parStatut: {},
-      aRelancer: this.getARelancer().length
+      aRelancer: this.getARelancer(7, categorie).length,
+      countNA,
+      countNC
     };
     
     CANAUX.forEach(c => {
-      stats.parCanal[c.value] = all.filter(na => na.canal === c.value).length;
+      stats.parCanal[c.value] = allSansIntegres.filter(na => na.canal === c.value).length;
     });
     
     STATUTS.forEach(s => {
-      stats.parStatut[s.value] = all.filter(na => na.statut === s.value).length;
+      stats.parStatut[s.value] = allSansIntegres.filter(na => na.statut === s.value).length;
     });
     
     return stats;
   },
 
-  // Évolution mensuelle (6 derniers mois)
-  getEvolutionMensuelle(mois = 6) {
-    const all = NouvellesAmesData.cache;
+  // Évolution mensuelle (6 derniers mois), optionnellement par catégorie
+  getEvolutionMensuelle(mois = 6, categorie = null) {
+    let all = NouvellesAmesData.cache;
+    if (categorie) all = all.filter(na => na.categorie === categorie);
     const now = new Date();
     const result = [];
     for (let i = mois - 1; i >= 0; i--) {
@@ -309,6 +343,31 @@ const NouvellesAmes = {
       });
     }
     return result;
+  },
+
+  // Nombre de nouvelles âmes intégrées (statut = integre) par période courante (semaine, mois, trimestre)
+  getIntegresParPeriode() {
+    const cache = NouvellesAmesData.cache || [];
+    const now = new Date();
+    const toDate = (v) => (v && v.toDate) ? v.toDate() : (v ? new Date(v) : null);
+
+    const debutSemaine = new Date(now);
+    debutSemaine.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1));
+    debutSemaine.setHours(0, 0, 0, 0);
+    const debutMois = new Date(now.getFullYear(), now.getMonth(), 1);
+    const moisTrimestre = Math.floor(now.getMonth() / 3) * 3;
+    const debutTrimestre = new Date(now.getFullYear(), moisTrimestre, 1);
+
+    let semaine = 0, mois = 0, trimestre = 0;
+    cache.forEach(na => {
+      if (na.statut !== 'integre') return;
+      const d = toDate(na.date_integration);
+      if (!d) return;
+      if (d >= debutSemaine) semaine++;
+      if (d >= debutMois) mois++;
+      if (d >= debutTrimestre) trimestre++;
+    });
+    return { semaine, mois, trimestre };
   },
 
   // Convertir une nouvelle âme en membre
@@ -420,6 +479,16 @@ const NouvellesAmes = {
   getStatutColor(value) {
     const statut = STATUTS.find(s => s.value === value);
     return statut ? statut.color : '#9E9E9E';
+  },
+
+  getCategorieShortLabel(value) {
+    const cat = CATEGORIES_NA_NC.find(c => c.value === (value || 'na'));
+    return cat ? cat.shortLabel : (value || 'NA');
+  },
+
+  getCategorieLabel(value) {
+    const cat = CATEGORIES_NA_NC.find(c => c.value === (value || 'na'));
+    return cat ? cat.label : (value || 'Nouveaux Arrivants');
   }
 };
 
@@ -689,28 +758,112 @@ const InscriptionsProgrammes = {
 // ============================================
 
 const PagesNouvellesAmes = {
-  currentFilters: { statut: 'actifs' },  // Par défaut, exclure les intégrés
+  currentFilters: { statut: 'actifs' },
+  currentCategorieView: 'all',  // 'all' | 'na' | 'nc'
+
+  async setCategorieView(cat) {
+    this.currentCategorieView = cat;
+    this.currentFilters.categorie = cat === 'all' ? undefined : cat;
+    this.applyFilters();
+    const vueLabel = cat === 'all' ? 'Toutes' : cat === 'na' ? 'NA' : 'NC';
+    const statsEl = document.querySelector('.na-stats-mini-wrap');
+    if (statsEl) {
+      const s = NouvellesAmes.getStats(cat === 'all' ? null : cat);
+      statsEl.innerHTML = `
+        <span class="stat-mini"><strong>${s.total}</strong> total</span>
+        <span class="stat-mini text-success"><strong>${s.integres}</strong> intégrés</span>
+        <span class="stat-mini text-warning"><strong>${s.aRelancer}</strong> à relancer</span>
+      `;
+    }
+    document.querySelectorAll('.na-stats-section .card-header .badge-secondary').forEach(b => { b.textContent = 'Vue : ' + vueLabel; });
+    if (typeof PagesNouvellesAmes.initCharts === 'function') PagesNouvellesAmes.initCharts();
+  },
 
   // Page liste des nouvelles âmes
   async render() {
-    // Toujours recharger les données pour s'assurer qu'elles sont à jour
     await NouvellesAmes.loadAll();
-    
-    const stats = NouvellesAmes.getStats();
+    // Appliquer la catégorie passée par la navigation (ex. depuis le tableau de bord)
+    const navCat = typeof App !== 'undefined' && App.currentParams && (App.currentParams.categorie === 'na' || App.currentParams.categorie === 'nc') ? App.currentParams.categorie : null;
+    if (navCat) this.currentCategorieView = navCat;
+    const cat = this.currentCategorieView;
+    const stats = NouvellesAmes.getStats(cat === 'all' ? null : cat);
+    const statsAll = NouvellesAmes.getStats(null);
+    this.currentFilters.categorie = cat === 'all' ? undefined : cat;
     const nouvellesAmes = NouvellesAmes.filterBy(this.currentFilters);
     const mentors = Membres.getMentors();
-    
+    const countNA = NouvellesAmes.getByCategorie('na').length;
+    const countNC = NouvellesAmes.getByCategorie('nc').length;
+
     return `
-      <!-- Statistiques visuelles -->
+      <!-- Onglets catégories NA / NC -->
+      <div class="na-categories-tabs" style="display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-lg); flex-wrap: wrap;">
+        <button type="button" class="btn ${cat === 'all' ? 'btn-primary' : 'btn-outline'}" onclick="PagesNouvellesAmes.setCategorieView('all')">
+          <i class="fas fa-layer-group"></i> Toutes (${countNA + countNC})
+        </button>
+        <button type="button" class="btn ${cat === 'na' ? 'btn-primary' : 'btn-outline'}" style="${cat === 'na' ? 'border-color: #2196F3; color: #2196F3;' : ''}" onclick="PagesNouvellesAmes.setCategorieView('na')">
+          <i class="fas fa-user-plus"></i> Nouveaux Arrivants (NA) — ${countNA}
+        </button>
+        <button type="button" class="btn ${cat === 'nc' ? 'btn-primary' : 'btn-outline'}" style="${cat === 'nc' ? 'border-color: #E91E63; color: #E91E63;' : ''}" onclick="PagesNouvellesAmes.setCategorieView('nc')">
+          <i class="fas fa-heart"></i> Nouveaux Convertis (NC) — ${countNC}
+        </button>
+      </div>
+
+      <!-- Statistiques interactives : Par catégorie (NA/NC) et Par canal -->
+      <div class="na-stats-summary card" style="margin-bottom: var(--spacing-lg);">
+        <div class="card-header" style="padding: var(--spacing-md) var(--spacing-lg); border-bottom: 1px solid var(--border-color);">
+          <h3 class="card-title mb-0" style="font-size: 1rem;"><i class="fas fa-chart-bar"></i> Statistiques — affectations et chiffres</h3>
+          <p class="mb-0 mt-1" style="font-size: 0.8rem; color: var(--text-muted);"><i class="fas fa-mouse-pointer"></i> Cliquez sur un chiffre pour filtrer la liste.</p>
+        </div>
+        <div class="card-body">
+          <div class="na-stats-summary-grid">
+            <div class="na-stats-summary-block">
+              <span class="na-stats-summary-title">Par catégorie</span>
+              <div class="na-stats-summary-chips">
+                <button type="button" class="na-stat-chip ${cat === 'all' ? 'active' : ''}" onclick="PagesNouvellesAmes.setCategorieView('all')" title="Voir toutes">
+                  Toutes <strong>${countNA + countNC}</strong>
+                </button>
+                <button type="button" class="na-stat-chip na-stat-chip-na ${cat === 'na' ? 'active' : ''}" onclick="PagesNouvellesAmes.setCategorieView('na')" title="Filtrer par NA">
+                  NA <strong>${countNA}</strong>
+                </button>
+                <button type="button" class="na-stat-chip na-stat-chip-nc ${cat === 'nc' ? 'active' : ''}" onclick="PagesNouvellesAmes.setCategorieView('nc')" title="Filtrer par NC">
+                  NC <strong>${countNC}</strong>
+                </button>
+              </div>
+            </div>
+            <div class="na-stats-summary-block">
+              <span class="na-stats-summary-title">Par canal</span>
+              <div class="na-stats-summary-chips">
+                <button type="button" class="na-stat-chip na-stat-chip-canal" onclick="PagesNouvellesAmes.setCanalFilter('')" title="Tous les canaux">
+                  Tous <strong>${(statsAll.parCanal && (statsAll.parCanal.culte || 0) + (statsAll.parCanal.evangelisation || 0) + (statsAll.parCanal.exhortation || 0)) || 0}</strong>
+                </button>
+                ${CANAUX.map(c => `
+                  <button type="button" class="na-stat-chip" style="--chip-color: ${c.color};" onclick="PagesNouvellesAmes.setCanalFilter('${c.value}')" title="Filtrer: ${c.label}">
+                    <i class="fas ${c.icon}"></i> ${c.label} <strong>${(statsAll.parCanal && statsAll.parCanal[c.value]) || 0}</strong>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Statistiques visuelles : par canal et évolution (réagissent aux onglets NA/NC et au clic sur le graphique) -->
       <div class="na-stats-section" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-lg); margin-bottom: var(--spacing-lg);">
         <div class="card" style="min-height: 280px;">
-          <div class="card-header"><h3 class="card-title"><i class="fas fa-chart-pie"></i> Par canal</h3></div>
+          <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-chart-pie"></i> Par canal</h3>
+            <span class="badge badge-secondary">Vue : ${cat === 'all' ? 'Toutes' : cat === 'na' ? 'NA' : 'NC'}</span>
+          </div>
           <div class="card-body" style="min-height: 220px;">
+            <p class="text-muted small mb-2"><i class="fas fa-hand-pointer"></i> Cliquez sur un segment pour filtrer la liste par canal.</p>
             <canvas id="chart-na-canal" style="max-height: 200px;"></canvas>
           </div>
         </div>
         <div class="card" style="min-height: 280px;">
-          <div class="card-header"><h3 class="card-title"><i class="fas fa-chart-line"></i> Évolution (6 mois)</h3></div>
+          <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-chart-line"></i> Évolution (6 mois)</h3>
+            <span class="badge badge-secondary">Vue : ${cat === 'all' ? 'Toutes' : cat === 'na' ? 'NA' : 'NC'}</span>
+          </div>
           <div class="card-body" style="min-height: 220px;">
             <canvas id="chart-na-evolution" style="max-height: 200px;"></canvas>
           </div>
@@ -719,17 +872,23 @@ const PagesNouvellesAmes = {
       <style>@media (max-width: 768px) { .na-stats-section { grid-template-columns: 1fr !important; } }</style>
 
       <div class="nouvelles-ames-header">
-        <div class="stats-mini">
+        <div class="stats-mini na-stats-mini-wrap">
           <span class="stat-mini"><strong>${stats.total}</strong> total</span>
           <span class="stat-mini text-success"><strong>${stats.integres}</strong> intégrés</span>
           <span class="stat-mini text-warning"><strong>${stats.aRelancer}</strong> à relancer</span>
         </div>
         <div class="header-actions">
-          <button class="btn btn-outline" onclick="PagesNouvellesAmes.exportCSV()">
+          <button class="btn btn-outline" onclick="PagesNouvellesAmes.exportCSV()" title="Export CSV (vue actuelle)">
             <i class="fas fa-file-csv"></i> CSV
           </button>
-          <button class="btn btn-outline" onclick="PagesNouvellesAmes.exportPDF()">
+          <button class="btn btn-outline" onclick="PagesNouvellesAmes.exportCSVAll()" title="Export CSV (toutes catégories)">
+            <i class="fas fa-file-csv"></i> CSV (tout)
+          </button>
+          <button class="btn btn-outline" onclick="PagesNouvellesAmes.exportPDF()" title="Export PDF (vue actuelle)">
             <i class="fas fa-file-pdf"></i> PDF
+          </button>
+          <button class="btn btn-outline" onclick="PagesNouvellesAmes.exportPDFAll()" title="Export PDF (toutes catégories)">
+            <i class="fas fa-file-pdf"></i> PDF (tout)
           </button>
           <button class="btn btn-primary" onclick="App.navigate('nouvelles-ames-add')">
             <i class="fas fa-user-plus"></i> Ajouter
@@ -873,6 +1032,69 @@ const PagesNouvellesAmes = {
           border-radius: 12px;
           color: white;
         }
+        .na-card-assign {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-xs);
+          margin-top: 6px;
+          flex-wrap: wrap;
+        }
+        .na-assign-select {
+          max-width: 160px;
+          font-size: 0.8rem;
+          padding: 2px 6px;
+          height: auto;
+        }
+        .na-stats-summary-grid {
+          display: flex;
+          flex-wrap: wrap;
+          gap: var(--spacing-lg);
+        }
+        .na-stats-summary-block {
+          flex: 1;
+          min-width: 200px;
+        }
+        .na-stats-summary-title {
+          display: block;
+          font-size: 0.8rem;
+          font-weight: 600;
+          color: var(--text-muted);
+          margin-bottom: var(--spacing-xs);
+        }
+        .na-stats-summary-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: var(--spacing-xs);
+        }
+        .na-stat-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 6px 12px;
+          border-radius: var(--radius-md);
+          border: 1px solid var(--border-color);
+          background: var(--bg-secondary);
+          cursor: pointer;
+          font-size: 0.85rem;
+          transition: all 0.2s;
+        }
+        .na-stat-chip:hover {
+          background: var(--bg-primary);
+          border-color: var(--primary);
+        }
+        .na-stat-chip.active {
+          background: var(--primary-light);
+          border-color: var(--primary);
+          color: var(--primary);
+        }
+        .na-stat-chip[style*="--chip-color"] {
+          border-color: var(--chip-color);
+          color: var(--chip-color);
+        }
+        .na-stat-chip[style*="--chip-color"]:hover,
+        .na-stat-chip[style*="--chip-color"].active { background: color-mix(in srgb, var(--chip-color) 15%, transparent); }
+        .na-stat-chip-na.active { background: #2196F320; border-color: #2196F3; color: #2196F3; }
+        .na-stat-chip-nc.active { background: #E91E6320; border-color: #E91E63; color: #E91E63; }
       </style>
     `;
   },
@@ -882,7 +1104,8 @@ const PagesNouvellesAmes = {
     const isAlerte = NouvellesAmes.getARelancer().some(a => a.id === na.id);
     const canal = CANAUX.find(c => c.value === na.canal) || {};
     const avatarBg = na.sexe === 'F' ? '#E91E63' : 'var(--primary)';
-    
+    const canEdit = (Permissions.hasRole('mentor') || Permissions.hasRole('adjoint_superviseur')) && na.statut !== 'integre';
+
     return `
       <div class="na-card ${isAlerte ? 'alerte' : ''}" onclick="App.navigate('nouvelle-ame-detail', {id: '${na.id}'})">
         <div class="na-avatar" style="background: ${avatarBg}">
@@ -896,8 +1119,21 @@ const PagesNouvellesAmes = {
             <span><i class="fas fa-phone"></i> ${Utils.escapeHtml(na.telephone || '-')}</span>
             <span><i class="fas fa-user"></i> ${Utils.escapeHtml(na.suivi_par_nom || '-')}</span>
           </div>
+          ${canEdit ? `
+          <div class="na-card-assign" onclick="event.stopPropagation()">
+            <select class="form-control form-control-sm na-assign-select" title="Affecter au canal" onchange="PagesNouvellesAmes.updateCanal('${na.id}', this.value)">
+              ${CANAUX.map(c => `<option value="${c.value}" ${(na.canal || '') === c.value ? 'selected' : ''}>${c.label}</option>`).join('')}
+            </select>
+            <select class="form-control form-control-sm na-assign-select" title="NA ou NC" onchange="PagesNouvellesAmes.updateCategorie('${na.id}', this.value)">
+              ${CATEGORIES_NA_NC.map(c => `<option value="${c.value}" ${(na.categorie || 'na') === c.value ? 'selected' : ''}>${c.shortLabel}</option>`).join('')}
+            </select>
+          </div>
+          ` : ''}
         </div>
         <div class="na-badges">
+          <span class="badge-categorie" style="background: ${(CATEGORIES_NA_NC.find(c => c.value === na.categorie) || {}).color || '#607D8B'}20; color: ${(CATEGORIES_NA_NC.find(c => c.value === na.categorie) || {}).color || '#607D8B'}; font-size: 0.7rem;">
+            ${NouvellesAmes.getCategorieShortLabel(na.categorie)}
+          </span>
           <span class="badge-canal" style="background: ${canal.color}20; color: ${canal.color}">
             <i class="fas ${canal.icon}"></i> ${canal.label || na.canal}
           </span>
@@ -912,6 +1148,60 @@ const PagesNouvellesAmes = {
         </div>
       </div>
     `;
+  },
+
+  async updateCanal(id, value) {
+    const ok = await NouvellesAmes.update(id, { canal: value }, true);
+    if (ok) {
+      Toast.success('Canal mis à jour');
+      this.applyFilters();
+      this.refreshStatsSummary();
+    }
+  },
+
+  async updateCategorie(id, value) {
+    const ok = await NouvellesAmes.update(id, { categorie: value === 'nc' ? 'nc' : 'na' }, true);
+    if (ok) {
+      Toast.success('Catégorie mise à jour');
+      this.applyFilters();
+      this.refreshStatsSummary();
+    }
+  },
+
+  refreshStatsSummary() {
+    const countNA = NouvellesAmes.getByCategorie('na').length;
+    const countNC = NouvellesAmes.getByCategorie('nc').length;
+    const statsAll = NouvellesAmes.getStats(null);
+    const cat = this.currentCategorieView;
+    const totalCanal = (statsAll.parCanal && (statsAll.parCanal.culte || 0) + (statsAll.parCanal.evangelisation || 0) + (statsAll.parCanal.exhortation || 0)) || 0;
+    const tabs = document.querySelectorAll('.na-categories-tabs button');
+    if (tabs.length >= 3) {
+      tabs[0].innerHTML = `<i class="fas fa-layer-group"></i> Toutes (${countNA + countNC})`;
+      tabs[1].innerHTML = `<i class="fas fa-user-plus"></i> Nouveaux Arrivants (NA) — ${countNA}`;
+      tabs[2].innerHTML = `<i class="fas fa-heart"></i> Nouveaux Convertis (NC) — ${countNC}`;
+    }
+    const chipsCategorie = document.querySelectorAll('.na-stats-summary-block:first-of-type .na-stat-chip');
+    if (chipsCategorie.length >= 3) {
+      chipsCategorie[0].innerHTML = `Toutes <strong>${countNA + countNC}</strong>`;
+      chipsCategorie[1].innerHTML = `NA <strong>${countNA}</strong>`;
+      chipsCategorie[2].innerHTML = `NC <strong>${countNC}</strong>`;
+    }
+    const chipsCanal = document.querySelectorAll('.na-stats-summary-block:last-of-type .na-stat-chip');
+    if (chipsCanal.length >= 1) {
+      chipsCanal[0].innerHTML = `Tous <strong>${totalCanal}</strong>`;
+      CANAUX.forEach((c, i) => {
+        if (chipsCanal[i + 1]) chipsCanal[i + 1].innerHTML = `<i class="fas ${c.icon}"></i> ${c.label} <strong>${(statsAll.parCanal && statsAll.parCanal[c.value]) || 0}</strong>`;
+      });
+    }
+    if (typeof PagesNouvellesAmes.initCharts === 'function') PagesNouvellesAmes.initCharts();
+  },
+
+  setCanalFilter(canalValue) {
+    const sel = document.getElementById('filter-canal');
+    if (sel) {
+      sel.value = canalValue || '';
+      this.applyFilters();
+    }
   },
 
   // Appliquer les filtres
@@ -929,7 +1219,8 @@ const PagesNouvellesAmes = {
       statut: statut || undefined,
       suivi_par_id: mentor || undefined,
       date_premier_contact_debut: dateDebut || undefined,
-      date_premier_contact_fin: dateFin || undefined
+      date_premier_contact_fin: dateFin || undefined,
+      categorie: this.currentCategorieView === 'all' ? undefined : this.currentCategorieView
     };
     
     const nouvellesAmes = NouvellesAmes.filterBy(this.currentFilters);
@@ -988,6 +1279,23 @@ const PagesNouvellesAmes = {
               <div class="form-group">
                 <label class="form-label">Ville / Quartier</label>
                 <input type="text" class="form-control" name="adresse_ville" placeholder="Ex: Abidjan, Cocody">
+              </div>
+            </div>
+            
+            <h4 class="section-title">Catégorie</h4>
+            <div class="form-group">
+              <label class="form-label required">Type de nouvelle âme</label>
+              <div class="radio-group">
+                ${CATEGORIES_NA_NC.map(c => `
+                  <label class="radio-card">
+                    <input type="radio" name="categorie" value="${c.value}" required>
+                    <span class="radio-content">
+                      <i class="fas ${c.icon}" style="color: ${c.color}"></i>
+                      <span>${c.label}</span>
+                      <small class="text-muted" style="font-size: 0.75rem;">${c.description}</small>
+                    </span>
+                  </label>
+                `).join('')}
               </div>
             </div>
             
@@ -1162,6 +1470,7 @@ const PagesNouvellesAmes = {
       nom: formData.get('nom'),
       telephone: formData.get('telephone'),
       email: formData.get('email') || null,
+      categorie: formData.get('categorie') === 'nc' ? 'nc' : 'na',
       sexe: formData.get('sexe') || null,
       adresse_ville: formData.get('adresse_ville') || null,
       canal: formData.get('canal'),
@@ -1205,6 +1514,9 @@ const PagesNouvellesAmes = {
         <div class="na-detail-info">
           <h2>${Utils.escapeHtml(na.prenom)} ${Utils.escapeHtml(na.nom)}</h2>
           <div class="na-detail-badges">
+            <span class="badge badge-secondary" style="background: ${(CATEGORIES_NA_NC.find(c => c.value === na.categorie) || {}).color || '#607D8B'}20; color: ${(CATEGORIES_NA_NC.find(c => c.value === na.categorie) || {}).color || '#607D8B'};">
+              ${NouvellesAmes.getCategorieLabel(na.categorie)}
+            </span>
             <span class="badge-canal" style="background: ${canal.color}20; color: ${canal.color}">
               <i class="fas ${canal.icon}"></i> ${canal.label}
             </span>
@@ -1215,6 +1527,11 @@ const PagesNouvellesAmes = {
           </div>
         </div>
         <div class="na-detail-actions">
+          ${(Permissions.hasRole('mentor') || Permissions.hasRole('adjoint_superviseur')) && na.statut !== 'integre' ? `
+          <button class="btn btn-outline-primary" onclick="PagesNouvellesAmes.showEditModal('${id}')" title="Modifier toutes les informations">
+            <i class="fas fa-edit"></i> Modifier
+          </button>
+          ` : ''}
           <button class="btn btn-primary" onclick="App.navigate('nouvelle-ame-suivi', {id: '${id}'})">
             <i class="fas fa-plus"></i> Ajouter un suivi
           </button>
@@ -1232,7 +1549,10 @@ const PagesNouvellesAmes = {
       <div class="na-detail-grid">
         <div class="na-detail-section">
           <div class="card">
-            <div class="card-header"><h3 class="card-title"><i class="fas fa-user"></i> Informations</h3></div>
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 class="card-title"><i class="fas fa-user"></i> Informations personnelles</h3>
+              ${(Permissions.hasRole('mentor') || Permissions.hasRole('adjoint_superviseur')) && na.statut !== 'integre' ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
+            </div>
             <div class="card-body">
               <div class="info-grid">
                 <div class="info-item">
@@ -1268,7 +1588,43 @@ const PagesNouvellesAmes = {
                   <span class="info-value">${Utils.escapeHtml(na.suivi_par_nom || '-')}</span>
                 </div>
               </div>
-              
+            </div>
+          </div>
+        </div>
+
+        <div class="na-detail-section">
+          <div class="card">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 class="card-title"><i class="fas fa-tag"></i> Catégorie, statut et canal</h3>
+              ${(Permissions.hasRole('mentor') || Permissions.hasRole('adjoint_superviseur')) && na.statut !== 'integre' ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
+            </div>
+            <div class="card-body">
+              <div class="info-grid">
+                <div class="info-item">
+                  <span class="info-label">Catégorie</span>
+                  <span class="info-value">${NouvellesAmes.getCategorieLabel(na.categorie)}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Statut</span>
+                  <span class="info-value">${NouvellesAmes.getStatutLabel(na.statut)}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Canal</span>
+                  <span class="info-value"><i class="fas ${canal.icon}" style="color: ${canal.color}"></i> ${canal.label}</span>
+                </div>
+                ${na.thematique ? `<div class="info-item"><span class="info-label">Thématique</span><span class="info-value">${NouvellesAmes.getThematiqueLabel(na.thematique)}</span></div>` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="na-detail-section">
+          <div class="card">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 class="card-title"><i class="fas fa-tasks"></i> Défis et commentaires</h3>
+              ${(Permissions.hasRole('mentor') || Permissions.hasRole('adjoint_superviseur')) && na.statut !== 'integre' ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
+            </div>
+            <div class="card-body">
               ${na.defis && na.defis.length > 0 ? `
               <div class="info-section">
                 <span class="info-label">Défis / Attentes</span>
@@ -1276,14 +1632,13 @@ const PagesNouvellesAmes = {
                   ${na.defis.map(d => `<span class="badge badge-warning">${NouvellesAmes.getThematiqueLabel(d)}</span>`).join('')}
                 </div>
               </div>
-              ` : ''}
-              
+              ` : '<p class="text-muted mb-0">Aucun défi renseigné.</p>'}
               ${na.commentaires ? `
-              <div class="info-section">
+              <div class="info-section mt-2">
                 <span class="info-label">Commentaires</span>
                 <p>${Utils.escapeHtml(na.commentaires)}</p>
               </div>
-              ` : ''}
+              ` : '<p class="text-muted mb-0 mt-2">Aucun commentaire.</p>'}
             </div>
           </div>
         </div>
@@ -1579,14 +1934,216 @@ const PagesNouvellesAmes = {
     );
   },
 
-  // Export CSV
-  exportCSV() {
-    const nouvellesAmes = NouvellesAmes.getAll();
-    if (nouvellesAmes.length === 0) {
-      Toast.warning('Aucune donnée à exporter');
-      return;
+  // Ouvrir la modal d'édition (détail) — tous les champs éditables
+  showEditModal(id) {
+    const na = NouvellesAmes.getById(id);
+    if (!na) return;
+    const mentors = Membres.getMentors();
+    const dateContact = na.date_premier_contact?.toDate ? na.date_premier_contact.toDate() : new Date(na.date_premier_contact || Date.now());
+    const dateStr = isNaN(dateContact.getTime()) ? '' : dateContact.toISOString().split('T')[0];
+
+    const modalId = 'modal-edit-na';
+    let existing = document.getElementById(modalId);
+    if (existing) existing.remove();
+
+    const defisChecked = (na.defis || []).reduce((acc, d) => { acc[d] = true; return acc; }, {});
+
+    const modalHtml = `
+      <div class="modal-overlay" id="${modalId}">
+        <div class="modal" style="max-width: 600px; max-height: 90vh; overflow: auto;">
+          <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-edit"></i> Modifier la nouvelle âme</h3>
+            <button class="modal-close" onclick="Modal.hide('${modalId}'); document.getElementById('${modalId}').remove();">&times;</button>
+          </div>
+          <div class="modal-body">
+            <form id="form-edit-na" onsubmit="PagesNouvellesAmes.submitEdit(event, '${id}')">
+              <h4 class="section-title">Informations personnelles</h4>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label required">Prénom</label>
+                  <input type="text" class="form-control" name="prenom" value="${Utils.escapeHtml(na.prenom || '')}" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label required">Nom</label>
+                  <input type="text" class="form-control" name="nom" value="${Utils.escapeHtml(na.nom || '')}" required>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label required">Téléphone</label>
+                  <input type="tel" class="form-control" name="telephone" value="${Utils.escapeHtml(na.telephone || '')}" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Email</label>
+                  <input type="email" class="form-control" name="email" value="${Utils.escapeHtml(na.email || '')}">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Sexe</label>
+                  <select class="form-control" name="sexe">
+                    <option value="">-- Sélectionner --</option>
+                    <option value="M" ${na.sexe === 'M' ? 'selected' : ''}>Homme</option>
+                    <option value="F" ${na.sexe === 'F' ? 'selected' : ''}>Femme</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Ville / Quartier</label>
+                  <input type="text" class="form-control" name="adresse_ville" value="${Utils.escapeHtml(na.adresse_ville || '')}" placeholder="Ex: Abidjan, Cocody">
+                </div>
+              </div>
+
+              <h4 class="section-title">Catégorie et statut</h4>
+              <div class="form-group">
+                <label class="form-label">Catégorie</label>
+                <div class="radio-group">
+                  ${CATEGORIES_NA_NC.map(c => `
+                    <label class="radio-card">
+                      <input type="radio" name="categorie" value="${c.value}" ${(na.categorie || 'na') === c.value ? 'checked' : ''}>
+                      <span class="radio-content"><i class="fas ${c.icon}" style="color: ${c.color}"></i> <span>${c.label}</span></span>
+                    </label>
+                  `).join('')}
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Statut</label>
+                <select class="form-control" name="statut">
+                  ${STATUTS.map(s => `<option value="${s.value}" ${(na.statut || 'nouveau') === s.value ? 'selected' : ''}>${s.label}</option>`).join('')}
+                </select>
+              </div>
+
+              <h4 class="section-title">Origine du contact</h4>
+              <div class="form-group">
+                <label class="form-label">Canal</label>
+                <div class="radio-group">
+                  ${CANAUX.map(c => `
+                    <label class="radio-card">
+                      <input type="radio" name="canal" value="${c.value}" ${(na.canal || '') === c.value ? 'checked' : ''} onchange="PagesNouvellesAmes.toggleThematiqueEdit()">
+                      <span class="radio-content"><i class="fas ${c.icon}" style="color: ${c.color}"></i> <span>${c.label}</span></span>
+                    </label>
+                  `).join('')}
+                </div>
+              </div>
+              <div class="form-group" id="thematique-group-edit" style="display: ${(na.canal || '') === 'exhortation' ? 'block' : 'none'};">
+                <label class="form-label">Thématique</label>
+                <select class="form-control" name="thematique">
+                  <option value="">-- Sélectionner --</option>
+                  ${THEMATIQUES.map(t => `<option value="${t.value}" ${(na.thematique || '') === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Date du premier contact</label>
+                  <input type="date" class="form-control" name="date_premier_contact" value="${dateStr}">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Lieu du contact</label>
+                  <input type="text" class="form-control" name="lieu_contact" value="${Utils.escapeHtml(na.lieu_contact || '')}" placeholder="Ex: Marché, Église">
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Contacté par</label>
+                <select class="form-control" name="contacte_par_id">
+                  ${mentors.map(m => `<option value="${m.id}" ${(na.contacte_par_id || '') === m.id ? 'selected' : ''}>${m.prenom} ${m.nom}</option>`).join('')}
+                </select>
+              </div>
+
+              <h4 class="section-title">Suivi</h4>
+              <div class="form-group">
+                <label class="form-label">Suivi par</label>
+                <select class="form-control" name="suivi_par_id">
+                  <option value="">Moi-même</option>
+                  ${mentors.map(m => `<option value="${m.id}" ${(na.suivi_par_id || '') === m.id ? 'selected' : ''}>${m.prenom} ${m.nom}</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Défis / Attentes</label>
+                <div class="checkbox-group">
+                  ${THEMATIQUES.map(t => `
+                    <label class="checkbox-item">
+                      <input type="checkbox" name="defis" value="${t.value}" ${defisChecked[t.value] ? 'checked' : ''}>
+                      <span>${t.label}</span>
+                    </label>
+                  `).join('')}
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Commentaires</label>
+                <textarea class="form-control" name="commentaires" rows="3">${Utils.escapeHtml(na.commentaires || '')}</textarea>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="Modal.hide('${modalId}'); document.getElementById('${modalId}').remove();">Annuler</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Enregistrer</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    Modal.show(modalId);
+    PagesNouvellesAmes.toggleThematiqueEdit();
+  },
+
+  toggleThematiqueEdit() {
+    const canal = document.querySelector('#modal-edit-na input[name="canal"]:checked')?.value;
+    const g = document.getElementById('thematique-group-edit');
+    if (g) g.style.display = canal === 'exhortation' ? 'block' : 'none';
+  },
+
+  async submitEdit(event, id) {
+    event.preventDefault();
+    const form = event.target;
+    const formData = new FormData(form);
+    const defis = [];
+    form.querySelectorAll('input[name="defis"]:checked').forEach(cb => defis.push(cb.value));
+
+    const contacteParId = formData.get('contacte_par_id');
+    let contacteParNom = '';
+    if (contacteParId) {
+      const m = Membres.getById(contacteParId);
+      if (m) contacteParNom = `${m.prenom} ${m.nom}`;
     }
-    
+    const suiviParId = formData.get('suivi_par_id');
+    let suiviParNom = `${AppState.user.prenom} ${AppState.user.nom}`;
+    if (suiviParId) {
+      const m = Membres.getById(suiviParId);
+      if (m) suiviParNom = `${m.prenom} ${m.nom}`;
+    }
+
+    const data = {
+      prenom: formData.get('prenom'),
+      nom: formData.get('nom'),
+      telephone: formData.get('telephone'),
+      email: formData.get('email') || null,
+      sexe: formData.get('sexe') || null,
+      adresse_ville: formData.get('adresse_ville') || null,
+      categorie: formData.get('categorie') === 'nc' ? 'nc' : 'na',
+      statut: formData.get('statut') || 'nouveau',
+      canal: formData.get('canal'),
+      thematique: formData.get('canal') === 'exhortation' ? (formData.get('thematique') || null) : null,
+      date_premier_contact: formData.get('date_premier_contact')
+        ? firebase.firestore.Timestamp.fromDate(new Date(formData.get('date_premier_contact')))
+        : null,
+      lieu_contact: formData.get('lieu_contact') || null,
+      contacte_par_id: contacteParId || null,
+      contacte_par_nom: contacteParNom || null,
+      suivi_par_id: suiviParId || AppState.user.id,
+      suivi_par_nom: suiviParNom,
+      defis,
+      commentaires: formData.get('commentaires') || null
+    };
+
+    const ok = await NouvellesAmes.update(id, data);
+    if (ok) {
+      Modal.hide('modal-edit-na');
+      const el = document.getElementById('modal-edit-na');
+      if (el) el.remove();
+      App.navigate('nouvelle-ame-detail', { id });
+    }
+  },
+
+  _buildCSVRows(nouvellesAmes) {
     const sep = ';';
     const escape = (val) => {
       if (val == null || val === '') return '';
@@ -1598,14 +2155,14 @@ const PagesNouvellesAmes = {
       const d = date.toDate ? date.toDate() : new Date(date);
       return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR');
     };
-    
-    const headers = ['Prénom', 'Nom', 'Téléphone', 'Email', 'Sexe', 'Canal', 'Thématique', 'Statut', 'Contacté par', 'Suivi par', 'Date premier contact', 'Commentaires'];
+    const headers = ['Prénom', 'Nom', 'Téléphone', 'Email', 'Sexe', 'Catégorie', 'Canal', 'Thématique', 'Statut', 'Contacté par', 'Suivi par', 'Date premier contact', 'Commentaires'];
     const rows = nouvellesAmes.map(na => [
       escape(na.prenom),
       escape(na.nom),
       escape(na.telephone),
       escape(na.email),
       escape(na.sexe === 'M' ? 'Homme' : na.sexe === 'F' ? 'Femme' : ''),
+      escape(NouvellesAmes.getCategorieLabel(na.categorie)),
       escape(NouvellesAmes.getCanalLabel(na.canal)),
       escape(na.thematique ? NouvellesAmes.getThematiqueLabel(na.thematique) : ''),
       escape(NouvellesAmes.getStatutLabel(na.statut)),
@@ -1614,19 +2171,46 @@ const PagesNouvellesAmes = {
       escape(formatDate(na.date_premier_contact)),
       escape(na.commentaires)
     ].join(sep));
-    
-    const csv = '\uFEFF' + headers.join(sep) + '\r\n' + rows.join('\r\n');
+    return { headers, rows };
+  },
+
+  // Export CSV (vue actuelle = filtre + catégorie sélectionnée)
+  exportCSV() {
+    const nouvellesAmes = NouvellesAmes.filterBy(this.currentFilters);
+    if (nouvellesAmes.length === 0) {
+      Toast.warning('Aucune donnée à exporter');
+      return;
+    }
+    const { headers, rows } = this._buildCSVRows(nouvellesAmes, true);
+    const csv = '\uFEFF' + headers.join(';') + '\r\n' + rows.join('\r\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `nouvelles_ames_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `nouvelles_ames_${this.currentCategorieView === 'all' ? 'toutes' : this.currentCategorieView}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
-    Toast.success(`Export de ${nouvellesAmes.length} nouvelle(s) âme(s) réussi`);
+    Toast.success(`Export de ${nouvellesAmes.length} ligne(s) réussi`);
   },
 
-  // Export PDF
-  exportPDF() {
+  exportCSVAll() {
+    const nouvellesAmes = NouvellesAmes.getAll();
+    if (nouvellesAmes.length === 0) {
+      Toast.warning('Aucune donnée à exporter');
+      return;
+    }
+    const { headers, rows } = this._buildCSVRows(nouvellesAmes);
+    const csv = '\uFEFF' + headers.join(';') + '\r\n' + rows.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `nouvelles_ames_toutes_categories_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    Toast.success(`Export de ${nouvellesAmes.length} ligne(s) (toutes catégories) réussi`);
+  },
+
+  // Export PDF (téléchargement direct)
+  async exportPDF() {
     const nouvellesAmes = NouvellesAmes.filterBy(this.currentFilters);
     if (nouvellesAmes.length === 0) {
       Toast.warning('Aucune donnée à exporter');
@@ -1653,6 +2237,7 @@ const PagesNouvellesAmes = {
     const tableRows = nouvellesAmes.map(na => `
       <tr>
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(na.prenom)} ${escape(na.nom)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(NouvellesAmes.getCategorieShortLabel(na.categorie))}</td>
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(na.telephone)}</td>
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(NouvellesAmes.getCanalLabel(na.canal))}</td>
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${getStatutBadge(na.statut)}</td>
@@ -1695,6 +2280,7 @@ const PagesNouvellesAmes = {
           <thead>
             <tr>
               <th>Nom</th>
+              <th>Catégorie</th>
               <th>Téléphone</th>
               <th>Canal</th>
               <th>Statut</th>
@@ -1713,21 +2299,68 @@ const PagesNouvellesAmes = {
     `;
     
     try {
-      const printWindow = window.open('about:blank', '_blank');
-      if (!printWindow) {
-        Toast.error('Fenêtre bloquée. Autorisez les popups pour ce site.');
+      if (typeof PDFExport === 'undefined' || !PDFExport.downloadHtmlAsPdf) {
+        Toast.error('Export PDF indisponible.');
         return;
       }
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-      setTimeout(() => {
-        printWindow.print();
-      }, 300);
-      Toast.info('Fenêtre d\'impression ouverte');
+      App.showLoading();
+      const filename = `nouvelles_ames_${this.currentCategorieView === 'all' ? 'toutes' : this.currentCategorieView}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      await PDFExport.downloadHtmlAsPdf(htmlContent, filename);
+      Toast.success('Téléchargement du PDF en cours.');
     } catch (error) {
       console.error('Erreur export PDF:', error);
-      Toast.error('Erreur lors de la génération du PDF');
+      Toast.error(error.message || 'Erreur lors de la génération du PDF');
+    } finally {
+      App.hideLoading();
     }
+  },
+
+  // Export PDF toutes catégories (téléchargement direct)
+  async exportPDFAll() {
+    const toutes = (NouvellesAmesData.cache || []).filter(na => na.statut !== 'integre');
+    if (toutes.length === 0) {
+      Toast.warning('Aucune donnée à exporter');
+      return;
+    }
+    const prevFilters = { ...this.currentFilters };
+    this.currentFilters = {};
+    try {
+      await this.exportPDF();
+    } finally {
+      this.currentFilters = prevFilters;
+    }
+    const filename = `nouvelles_ames_toutes_categories_${new Date().toISOString().slice(0, 10)}.pdf`;
+    if (typeof PDFExport !== 'undefined' && PDFExport.downloadHtmlAsPdf) {
+      const escape = (val) => (val == null || val === '') ? '-' : String(val).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const formatDate = (date) => !date ? '-' : (date.toDate ? date.toDate() : new Date(date)).toLocaleDateString('fr-FR');
+      const getStatutBadge = (statut) => {
+        const color = NouvellesAmes.getStatutColor(statut);
+        const label = NouvellesAmes.getStatutLabel(statut);
+        return `<span style="background: ${color}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px;">${label}</span>`;
+      };
+      const tableRows = toutes.map(na => `
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(na.prenom)} ${escape(na.nom)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(NouvellesAmes.getCategorieShortLabel(na.categorie))}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(na.telephone)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(NouvellesAmes.getCanalLabel(na.canal))}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${getStatutBadge(na.statut)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(na.suivi_par_nom)}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${formatDate(na.date_premier_contact)}</td>
+        </tr>
+      `).join('');
+      const htmlContent = `
+      <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Nouvelles Âmes - Toutes</title>
+      <style>body{font-family:Arial,sans-serif;margin:20px;font-size:12px;}h1{color:#2D5A7B;}table{width:100%;border-collapse:collapse;}th{background:#2D5A7B;color:white;padding:10px 8px;}tr:nth-child(even){background:#f9f9f9;}.no-print{display:none!important;}</style></head><body>
+      <h1>Liste des Nouvelles Âmes (toutes catégories)</h1>
+      <div class="subtitle">Famille ${escape(AppState.famille?.nom || '')} - Généré le ${new Date().toLocaleDateString('fr-FR')}</div>
+      <table><thead><tr><th>Nom</th><th>Catégorie</th><th>Téléphone</th><th>Canal</th><th>Statut</th><th>Suivi par</th><th>Premier contact</th></tr></thead><tbody>${tableRows}</tbody></table>
+      </body></html>`;
+      App.showLoading();
+      await PDFExport.downloadHtmlAsPdf(htmlContent, filename);
+      Toast.success('Téléchargement du PDF en cours.');
+    }
+    App.hideLoading();
   },
 
   // ============================================
@@ -1953,8 +2586,9 @@ const PagesNouvellesAmes = {
 
   initCharts() {
     if (typeof ChartsHelper === 'undefined') return;
-    const stats = NouvellesAmes.getStats();
-    const evolution = NouvellesAmes.getEvolutionMensuelle(6);
+    const cat = this.currentCategorieView === 'all' ? null : this.currentCategorieView;
+    const stats = NouvellesAmes.getStats(cat);
+    const evolution = NouvellesAmes.getEvolutionMensuelle(6, cat);
     const parCanal = Object.entries(stats.parCanal || {}).filter(([, v]) => v > 0);
     const canvasCanal = document.getElementById('chart-na-canal');
     const canvasEvol = document.getElementById('chart-na-evolution');
@@ -1963,7 +2597,10 @@ const PagesNouvellesAmes = {
         const canalLabels = parCanal.map(([k]) => (CANAUX.find(c => c.value === k) || {}).label || k);
         const canalData = parCanal.map(([, v]) => v);
         const canalColors = parCanal.map(([k]) => (CANAUX.find(c => c.value === k) || {}).color || '#607D8B');
-        ChartsHelper.createDoughnut('chart-na-canal', canalLabels, canalData, canalColors);
+        const canalValues = parCanal.map(([k]) => k);
+        ChartsHelper.createDoughnut('chart-na-canal', canalLabels, canalData, canalColors, (index) => {
+          if (canalValues[index] != null) this.setCanalFilter(canalValues[index]);
+        });
       }
     }
     if (canvasEvol && evolution.some(e => e.total > 0)) {

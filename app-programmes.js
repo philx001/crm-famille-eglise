@@ -373,7 +373,7 @@ const Presences = {
     try {
       // Obtenir les membres à pointer selon le rôle
       let membresAttendus = [];
-      if (Permissions.hasRole('superviseur')) {
+      if (Permissions.hasRole('adjoint_superviseur')) {
         membresAttendus = AppState.membres.filter(m => m.statut_compte === 'actif');
       } else if (Permissions.hasRole('mentor')) {
         membresAttendus = Membres.getDisciples(AppState.user.id);

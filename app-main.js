@@ -50,10 +50,14 @@ const App = {
     App.showLoading();
     const loadPromise = (async () => {
       try {
-        await Promise.all([
+        const promises = [
           ErrorHandler.wrap(Membres.loadAll(), 'Chargement membres'),
           ErrorHandler.wrap(Programmes.loadAll(), 'Chargement programmes')
-        ]);
+        ];
+        if (Permissions.hasRole('mentor')) {
+          promises.push(ErrorHandler.wrap(NouvellesAmes.loadAll(), 'Chargement nouvelles âmes'));
+        }
+        await Promise.all(promises);
       } catch (error) {
         console.error('Erreur lors du chargement des données:', error);
       } finally {
@@ -109,6 +113,35 @@ const App = {
   },
 
   currentParams: {},
+  previousPage: null,
+  previousParams: null,
+
+  getPreviousPageLabel() {
+    const labels = {
+      dashboard: 'Tableau de bord', membres: 'Membres', 'membres-add': 'Ajouter un membre', 'archives-membres': 'Archivage des membres',
+      profil: 'Mon profil', 'profil-edit': 'Modifier le profil', 'mon-compte': 'Mon compte', annuaire: 'Annuaire', 'mes-disciples': 'Mes disciples',
+      calendrier: 'Calendrier', programmes: 'Programmes', 'programmes-add': 'Nouveau programme', 'programmes-edit': 'Modifier le programme',
+      'programme-detail': 'Détails du programme', presences: 'Pointage des présences', 'historique-membre': 'Historique de présence',
+      statistiques: 'Statistiques', notifications: 'Notifications', 'sujets-priere': 'Sujets de prière', temoignages: 'Témoignages', documents: 'Documents',
+      'nouvelles-ames': 'Nouvelles âmes', 'nouvelles-ames-add': 'Ajouter une nouvelle âme', 'nouvelle-ame-detail': 'Détail nouvelle âme', 'nouvelle-ame-suivi': 'Ajouter un suivi',
+      evangelisation: 'Évangélisation', 'evangelisation-stats': 'Statistiques évangélisation', 'evangelisation-planning': 'Planning', 'evangelisation-add': 'Nouvelle session',
+      'evangelisation-detail': 'Détail session', secteurs: 'Secteurs', 'admin-familles': 'Gestion des familles', logs: 'Journal d\'activité'
+    };
+    return this.previousPage ? (labels[this.previousPage] || this.previousPage) : 'Tableau de bord';
+  },
+
+  goBack() {
+    if (this.previousPage) {
+      const p = this.previousPage, par = this.previousParams || {};
+      this._navigatingBack = true;
+      this.previousPage = null;
+      this.previousParams = null;
+      this.navigate(p, par);
+      this._navigatingBack = false;
+    } else {
+      this.navigate('dashboard');
+    }
+  },
 
   // Navigation par hash : #page ou #page/id (compatible liens directs et rafraîchissement)
   parseHash() {
@@ -133,6 +166,10 @@ const App = {
   },
 
   navigate(page, params = {}) {
+    if (!this._navigatingBack && AppState.currentPage && AppState.currentPage !== page) {
+      this.previousPage = AppState.currentPage;
+      this.previousParams = Object.assign({}, this.currentParams || {});
+    }
     AppState.currentPage = page;
     this.currentParams = params;
     this.updateHash(page, params);
@@ -503,10 +540,13 @@ const App = {
     let statsNouvellesAmes = { total: 0, aRelancer: 0 };
     let amesARelancer = [];
     let statsEvangelisation = { totalSessions: 0, totalContacts: 0, upcoming: 0 };
+    let countNA = 0, countNC = 0;
     if (Permissions.hasRole('mentor')) {
       try {
         await NouvellesAmes.loadAll();
         statsNouvellesAmes = NouvellesAmes.getStats();
+        countNA = NouvellesAmes.getByCategorie('na').length;
+        countNC = NouvellesAmes.getByCategorie('nc').length;
         amesARelancer = NouvellesAmes.getARelancer(7).slice(0, 5);
       } catch (error) {
         console.error('Erreur chargement stats nouvelles âmes:', error);
@@ -521,35 +561,51 @@ const App = {
     }
 
     return `
-      <div class="dashboard-grid">
-        <div class="stat-card clickable" onclick="App.navigate('membres')" title="Voir tous les membres" style="cursor: pointer;">
-          <div class="stat-icon primary" style="cursor: pointer;"><i class="fas fa-users"></i></div>
-          <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.total}</div><div class="stat-label" style="cursor: pointer;">Membres actifs</div></div>
+      ${Permissions.hasRole('mentor') ? `
+      <!-- Ligne 1 : 4 cartes (nouvelles âmes + évangélisation) -->
+      <div class="dashboard-section mb-3">
+        <div class="dashboard-grid dashboard-grid-4" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacing-md);">
+          <div class="stat-card clickable" onclick="App.navigate('nouvelles-ames', { categorie: 'na' });" title="Voir les Nouveaux Arrivants (NA)" style="cursor: pointer;">
+            <div class="stat-icon" style="background: #2196F320; color: #2196F3; cursor: pointer;"><i class="fas fa-user-plus"></i></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${countNA}</div><div class="stat-label" style="cursor: pointer;">Nouveaux Arrivants (NA)</div></div>
+          </div>
+          <div class="stat-card clickable" onclick="App.navigate('nouvelles-ames', { categorie: 'nc' });" title="Voir les Nouveaux Convertis (NC)" style="cursor: pointer;">
+            <div class="stat-icon" style="background: #E91E6320; color: #E91E63; cursor: pointer;"><i class="fas fa-heart"></i></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${countNC}</div><div class="stat-label" style="cursor: pointer;">Nouveaux Convertis (NC)</div></div>
+          </div>
+          <div class="stat-card clickable" onclick="App.navigate('nouvelles-ames')" title="Voir les nouvelles âmes" style="cursor: pointer;">
+            <div class="stat-icon" style="background: #8BC34A20; color: #8BC34A; cursor: pointer;"><i class="fas fa-seedling"></i></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${statsNouvellesAmes.total}</div><div class="stat-label" style="cursor: pointer;">Nouvelles âmes</div></div>
+          </div>
+          <div class="stat-card clickable" onclick="App.navigate('evangelisation')" title="Voir l'évangélisation" style="cursor: pointer;">
+            <div class="stat-icon" style="background: #00968820; color: #009688; cursor: pointer;"><i class="fas fa-bullhorn"></i></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${statsEvangelisation.totalContacts}</div><div class="stat-label" style="cursor: pointer;">Contacts évangélisation</div></div>
+          </div>
         </div>
-        ${Permissions.hasRole('mentor') ? `
-        <div class="stat-card clickable" onclick="App.navigate('mes-disciples')" title="Voir mes disciples" style="cursor: pointer;">
-          <div class="stat-icon success" style="cursor: pointer;"><i class="fas fa-user-friends"></i></div>
-          <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${mesDisciples.length}</div><div class="stat-label" style="cursor: pointer;">Mes disciples</div></div>
+      </div>
+      ` : ''}
+      <!-- Ligne 2 : 4 cartes (toujours affichée) -->
+      <div class="dashboard-section mb-3">
+        <div class="dashboard-grid dashboard-grid-4" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacing-md);">
+          <div class="stat-card clickable" onclick="App.navigate('membres')" title="Voir tous les membres" style="cursor: pointer;">
+            <div class="stat-icon primary" style="cursor: pointer;"><i class="fas fa-users"></i></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.total}</div><div class="stat-label" style="cursor: pointer;">Membres actifs</div></div>
+          </div>
+          ${Permissions.hasRole('mentor') ? `
+          <div class="stat-card clickable" onclick="App.navigate('mes-disciples')" title="Voir mes disciples" style="cursor: pointer;">
+            <div class="stat-icon success" style="cursor: pointer;"><i class="fas fa-user-friends"></i></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${mesDisciples.length}</div><div class="stat-label" style="cursor: pointer;">Mes disciples</div></div>
+          </div>
+          ` : '<div></div>'}
+          <div class="stat-card clickable" onclick="App.navigate('programmes')" title="Voir tous les programmes" style="cursor: pointer;">
+            <div class="stat-icon warning" style="cursor: pointer;"><i class="fas fa-calendar-alt"></i></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${AppState.programmes.length}</div><div class="stat-label" style="cursor: pointer;">Programmes</div></div>
+          </div>
+          <div class="stat-card clickable" onclick="App.navigate('annuaire')" title="Voir l'annuaire" style="cursor: pointer;">
+            <div class="stat-icon info" style="cursor: pointer;"><i class="fas fa-birthday-cake"></i></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.anniversairesAujourdhui.length}</div><div class="stat-label" style="cursor: pointer;">Anniversaires</div></div>
+          </div>
         </div>
-        ` : ''}
-        <div class="stat-card clickable" onclick="App.navigate('programmes')" title="Voir tous les programmes" style="cursor: pointer;">
-          <div class="stat-icon warning" style="cursor: pointer;"><i class="fas fa-calendar-alt"></i></div>
-          <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${AppState.programmes.length}</div><div class="stat-label" style="cursor: pointer;">Programmes</div></div>
-        </div>
-        <div class="stat-card clickable" onclick="App.navigate('annuaire')" title="Voir l'annuaire" style="cursor: pointer;">
-          <div class="stat-icon info" style="cursor: pointer;"><i class="fas fa-birthday-cake"></i></div>
-          <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.anniversairesAujourdhui.length}</div><div class="stat-label" style="cursor: pointer;">Anniversaires</div></div>
-        </div>
-        ${Permissions.hasRole('mentor') ? `
-        <div class="stat-card clickable" onclick="App.navigate('nouvelles-ames')" title="Voir les nouvelles âmes" style="cursor: pointer;">
-          <div class="stat-icon" style="background: #8BC34A20; color: #8BC34A; cursor: pointer;"><i class="fas fa-seedling"></i></div>
-          <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${statsNouvellesAmes.total}</div><div class="stat-label" style="cursor: pointer;">Nouvelles âmes</div></div>
-        </div>
-        <div class="stat-card clickable" onclick="App.navigate('evangelisation')" title="Voir l'évangélisation" style="cursor: pointer;">
-          <div class="stat-icon" style="background: #00968820; color: #009688; cursor: pointer;"><i class="fas fa-bullhorn"></i></div>
-          <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${statsEvangelisation.totalContacts}</div><div class="stat-label" style="cursor: pointer;">Contacts évangélisation</div></div>
-        </div>
-        ` : ''}
       </div>
       ${stats.anniversairesAujourdhui.length > 0 ? `<div class="alert alert-success mb-3"><i class="fas fa-birthday-cake"></i><div class="alert-content"><div class="alert-title">🎂 Joyeux anniversaire !</div><p class="mb-0">${stats.anniversairesAujourdhui.map(m => m.prenom + ' ' + m.nom).join(', ')}</p></div></div>` : ''}
       ${repartitionMentors && repartitionMentors.totalFamille > 0 ? (Permissions.hasRole('superviseur') || Permissions.isAdmin() ? `
@@ -670,7 +726,7 @@ const App = {
               <div class="nav-item ${AppState.currentPage === 'nouvelles-ames' || AppState.currentPage === 'nouvelles-ames-add' || AppState.currentPage === 'nouvelle-ame-detail' || AppState.currentPage === 'nouvelle-ame-suivi' ? 'active' : ''}" onclick="App.navigate('nouvelles-ames')"><i class="fas fa-seedling"></i><span>Nouvelles âmes</span></div>
               <div class="nav-item ${AppState.currentPage === 'evangelisation' || AppState.currentPage === 'evangelisation-add' || AppState.currentPage === 'evangelisation-detail' || AppState.currentPage === 'evangelisation-planning' || AppState.currentPage === 'evangelisation-stats' || AppState.currentPage === 'secteurs' ? 'active' : ''}" onclick="App.navigate('evangelisation')"><i class="fas fa-bullhorn"></i><span>Évangélisation</span></div>
             </div>` : ''}
-            ${Permissions.canViewAllMembers() ? `<div class="nav-section"><div class="nav-section-title">Administration</div>
+            ${(Permissions.canViewAllMembers() || Permissions.canViewMembersListReadOnly()) ? `<div class="nav-section"><div class="nav-section-title">Administration</div>
               <div class="nav-item ${AppState.currentPage === 'membres' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('membres')" onkeydown="App.navItemKeydown(event, 'membres')"><i class="fas fa-users"></i><span>Tous les membres</span></div>
               ${Permissions.canViewArchivesMembres() ? `<div class="nav-item ${AppState.currentPage === 'archives-membres' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('archives-membres')" onkeydown="App.navItemKeydown(event, 'archives-membres')"><i class="fas fa-archive"></i><span>Archivage des membres</span></div>` : ''}
               ${Permissions.isAdmin() ? `<div class="nav-item ${AppState.currentPage === 'admin-familles' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('admin-familles')" onkeydown="App.navItemKeydown(event, 'admin-familles')"><i class="fas fa-church"></i><span>Familles</span></div>
@@ -687,6 +743,10 @@ const App = {
         <main class="main-content">
           <header class="main-header">
             <div class="header-left">
+              <button type="button" class="btn-back" onclick="App.goBack()" title="Retour à ${Utils.escapeHtml(App.getPreviousPageLabel())}" aria-label="Retour à la page précédente">
+                <i class="fas fa-arrow-left"></i>
+                <span class="btn-back-text">Retour</span>
+              </button>
               <button type="button" class="mobile-menu-toggle" onclick="App.toggleSidebar()" aria-label="Ouvrir le menu">
                 <i class="fas fa-bars"></i>
               </button>
@@ -966,19 +1026,18 @@ const App = {
       return;
     }
     try {
+      App.showLoading();
       const pdfOptions = { 
         famille: AppState.famille?.nom || '',
         title: isMesDisciples ? 'Mes disciples' : 'Liste des membres'
       };
-      PDFExport.generateMembersReport(membres, pdfOptions);
-      Toast.info('Fenêtre d\'impression ouverte. Utilisez "Imprimer / Enregistrer en PDF" pour sauvegarder.');
+      await PDFExport.generateMembersReport(membres, pdfOptions);
+      Toast.success('Téléchargement du PDF en cours.');
     } catch (e) {
       console.error('Erreur export PDF membres:', e);
-      if (e.message && e.message.includes('Fenêtre bloquée')) {
-        Toast.error('Fenêtre bloquée. Autorisez les popups pour ce site (icône dans la barre d\'adresse) puis réessayez.');
-      } else {
-        Toast.error('Erreur lors de la génération du PDF.');
-      }
+      Toast.error(e.message || 'Erreur lors de la génération du PDF.');
+    } finally {
+      App.hideLoading();
     }
   },
 

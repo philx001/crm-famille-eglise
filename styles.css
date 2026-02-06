@@ -394,6 +394,32 @@ a:focus-visible {
   gap: var(--spacing-lg);
 }
 
+.btn-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.btn-back:hover {
+  color: var(--primary);
+  background: var(--bg-tertiary);
+  border-color: var(--primary);
+}
+.btn-back:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.btn-back .fa-arrow-left {
+  font-size: 0.85rem;
+}
+
 .page-title {
   font-family: var(--font-heading);
   font-size: 1.5rem;
@@ -1166,6 +1192,11 @@ select.form-control {
   margin-bottom: var(--spacing-xl);
 }
 
+/* Grille 4 colonnes du tableau de bord (2 lignes de 4 cartes) */
+.dashboard-grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .section-header {
   display: flex;
   align-items: center;
@@ -1390,6 +1421,13 @@ select.form-control {
   .header-search {
     display: none !important;
   }
+  
+  .btn-back .btn-back-text {
+    display: none;
+  }
+  .btn-back {
+    padding: var(--spacing-sm);
+  }
 }
 
 @media (max-width: 768px) {
@@ -1403,6 +1441,10 @@ select.form-control {
   
   .dashboard-grid {
     grid-template-columns: 1fr;
+  }
+  
+  .dashboard-grid-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
   }
   
   .members-header {

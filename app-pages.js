@@ -59,17 +59,36 @@ const Pages = {
   renderMembres() {
     let membres = AppState.membres.filter(m => m.statut_compte === 'actif');
     const isMesDisciples = AppState.currentPage === 'mes-disciples';
-    
-    if (!Permissions.canViewAllMembers()) {
-      // Mentor : ne voit que ses disciples (pas lui-même)
-      membres = membres.filter(m => m.mentor_id === AppState.user.id);
-    } else if (isMesDisciples) {
-      // Admin/Superviseur sur la page "Mes disciples" : ne voit que ses disciples (pas lui-même)
+    const canSeeFullList = Permissions.canViewAllMembers() || Permissions.canViewMembersListReadOnly();
+
+    if (canSeeFullList) {
+      if (isMesDisciples) {
+        membres = membres.filter(m => m.mentor_id === AppState.user.id);
+      }
+    } else {
       membres = membres.filter(m => m.mentor_id === AppState.user.id);
     }
 
-    // Afficher les boutons d'export si admin/superviseur OU si mentor sur "mes-disciples"
+    // Export : superviseur/admin sur "Tous les membres", ou mentor sur "Mes disciples"
     const showExportButtons = Permissions.canViewAllMembers() || (isMesDisciples && Permissions.hasRole('mentor'));
+
+    const integresParPeriode = (typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getIntegresParPeriode)
+      ? NouvellesAmes.getIntegresParPeriode()
+      : { semaine: 0, mois: 0, trimestre: 0 };
+    const statsIntegrationsSection = canSeeFullList && !isMesDisciples ? `
+      <div class="card" style="margin-bottom: var(--spacing-lg);">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-user-plus"></i> Nouvelles âmes intégrées</h3>
+        </div>
+        <div class="card-body">
+          <div class="stats-inline" style="display: flex; flex-wrap: wrap; gap: var(--spacing-lg); align-items: center;">
+            <div><strong>Cette semaine :</strong> <span class="badge badge-primary">${integresParPeriode.semaine}</span></div>
+            <div><strong>Ce mois :</strong> <span class="badge badge-primary">${integresParPeriode.mois}</span></div>
+            <div><strong>Ce trimestre :</strong> <span class="badge badge-primary">${integresParPeriode.trimestre}</span></div>
+          </div>
+        </div>
+      </div>
+    ` : '';
 
     const statsSection = isMesDisciples && membres.length > 0 ? `
       <div class="disciples-stats-section" style="margin-bottom: var(--spacing-lg);">
@@ -87,6 +106,7 @@ const Pages = {
     ` : '';
 
     return `
+      ${statsIntegrationsSection}
       ${statsSection}
       <div class="members-header">
         <div class="members-filters">
@@ -103,7 +123,7 @@ const Pages = {
             <option value="adjoint_superviseur">Adjoints</option>
             <option value="superviseur">Superviseurs</option>
           </select>
-          ${Permissions.canViewAllMembers() && !isMesDisciples ? `
+          ${(Permissions.canViewAllMembers() || Permissions.canViewMembersListReadOnly()) && !isMesDisciples ? `
           <select class="form-control" id="filter-mentor" onchange="App.filterMembres()" style="width: auto;">
             <option value="">Tous les mentors</option>
             <option value="none">Non affecté</option>
@@ -143,7 +163,7 @@ const Pages = {
   },
 
   getMentorLabelForMember(membre) {
-    if (!Permissions.canViewAllMembers()) return null;
+    if (!Permissions.canViewAllMembers() && !Permissions.canViewMembersListReadOnly()) return null;
     const role = membre.role;
     if (role === 'superviseur' || role === 'admin') return null;
     if (role === 'nouveau') return 'Non Affecté';
@@ -194,7 +214,7 @@ const Pages = {
           <div class="member-name">
             ${isBirthday ? '🎂 ' : ''}${Utils.escapeHtml(membre.prenom)} ${Utils.escapeHtml(membre.nom)}
           </div>
-          <div class="member-email">${Utils.escapeHtml(membre.email)}</div>
+          <div class="member-email">${Permissions.isAdjointSuperviseurOnly() && membre.id !== AppState.user.id ? '—' : Utils.escapeHtml(membre.email)}</div>
           ${reassignSelect}
         </div>
         <div class="member-meta">
@@ -411,7 +431,7 @@ const Pages = {
             </div>
           </div>
 
-          ${NotesSuivi.canAddNote() ? `
+          ${NotesSuivi.canAddNote() && !(Permissions.isAdjointSuperviseurOnly() && !isOwnProfil) ? `
           <hr style="margin: var(--spacing-lg) 0;">
           <div id="notes-section-membre-${membre.id}">
             <h4 class="mb-2"><i class="fas fa-sticky-note"></i> Notes de suivi</h4>

@@ -554,6 +554,16 @@ const Permissions = {
     return this.hasRole('superviseur');
   },
 
+  /** Adjoint peut voir la page "Tous les membres" en lecture seule (liste + filtres, pas d'édition/blocage/export). */
+  canViewMembersListReadOnly() {
+    return this.hasRole('adjoint_superviseur');
+  },
+
+  /** True si l'utilisateur est adjoint_superviseur (et pas superviseur/admin) — pour masquer champs personnels. */
+  isAdjointSuperviseurOnly() {
+    return AppState.user && AppState.user.role === 'adjoint_superviseur';
+  },
+
   canAddDisciple() {
     return this.hasRole('mentor');
   },

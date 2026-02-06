@@ -316,9 +316,6 @@ const App = {
     if (AppState.currentPage === 'nouvelles-ames' && typeof PagesNouvellesAmes.initCharts === 'function') {
       setTimeout(() => PagesNouvellesAmes.initCharts(), 50);
     }
-    if (AppState.currentPage === 'nouvelle-ame-detail' && typeof NotesSuivi !== 'undefined' && NotesSuivi.canAddNote() && this.currentParams.id) {
-      setTimeout(() => NotesSuivi.loadAndRender('nouvelle_ame', this.currentParams.id), 50);
-    }
     if (AppState.currentPage === 'statistiques' && typeof PagesStatistiques.initCharts === 'function') {
       setTimeout(() => PagesStatistiques.initCharts(), 50);
     }
@@ -1096,9 +1093,6 @@ const App = {
 
   viewMembre(id) {
     document.querySelector('.page-content').innerHTML = Pages.renderProfil(id);
-    if (typeof NotesSuivi !== 'undefined' && NotesSuivi.canAddNote()) {
-      setTimeout(() => NotesSuivi.loadAndRender('membre', id), 50);
-    }
   },
 
   async blockMembre(id) {

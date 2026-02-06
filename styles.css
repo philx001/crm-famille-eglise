@@ -1535,7 +1535,3 @@ select.form-control {
     grid-template-columns: 1fr;
   }
 }
-
-/* Notes de suivi */
-.notes-add { display: flex; gap: var(--spacing-sm); align-items: flex-start; margin-top: var(--spacing-sm); }
-.notes-add textarea { flex: 1; min-height: 60px; }

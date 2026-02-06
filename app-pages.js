@@ -430,20 +430,6 @@ const Pages = {
               <p><strong>Centres d'intérêt:</strong> ${membre.passions_centres_interet || '-'}</p>
             </div>
           </div>
-
-          ${NotesSuivi.canAddNote() && !(Permissions.isAdjointSuperviseurOnly() && !isOwnProfil) ? `
-          <hr style="margin: var(--spacing-lg) 0;">
-          <div id="notes-section-membre-${membre.id}">
-            <h4 class="mb-2"><i class="fas fa-sticky-note"></i> Notes de suivi</h4>
-            <div id="notes-list-membre-${membre.id}" class="notes-list" style="margin-bottom: var(--spacing-md);"></div>
-            <div class="notes-add">
-              <textarea class="form-control" id="note-input-membre-${membre.id}" rows="2" placeholder="Ajouter une note de suivi..."></textarea>
-              <button type="button" class="btn btn-primary btn-sm" onclick="NotesSuivi.addNote('membre', '${membre.id}', document.getElementById('note-input-membre-${membre.id}').value)">
-                <i class="fas fa-plus"></i> Ajouter
-              </button>
-            </div>
-          </div>
-          ` : ''}
         </div>
         <div class="card-footer text-muted" style="font-size: 0.85rem;">
           Inscrit le ${Utils.formatDate(membre.created_at, 'full')}

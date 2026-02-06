@@ -1678,23 +1678,6 @@ const PagesNouvellesAmes = {
               ${this.renderProgrammesInscrits(na)}
             </div>
           </div>
-
-          ${typeof NotesSuivi !== 'undefined' && NotesSuivi.canAddNote() ? `
-          <div class="card mt-3">
-            <div class="card-header">
-              <h3 class="card-title"><i class="fas fa-sticky-note"></i> Notes de suivi</h3>
-            </div>
-            <div class="card-body">
-              <div id="notes-list-nouvelle_ame-${id}" class="notes-list" style="margin-bottom: var(--spacing-md);"></div>
-              <div class="notes-add">
-                <textarea class="form-control" id="note-input-nouvelle_ame-${id}" rows="2" placeholder="Ajouter une note de suivi..."></textarea>
-                <button type="button" class="btn btn-primary btn-sm" onclick="NotesSuivi.addNote('nouvelle_ame', '${id}', document.getElementById('note-input-nouvelle_ame-${id}').value)">
-                  <i class="fas fa-plus"></i> Ajouter
-                </button>
-              </div>
-            </div>
-          </div>
-          ` : ''}
         </div>
       </div>
       

@@ -239,7 +239,7 @@ const App = {
     const validPages = ['dashboard', 'membres', 'membres-add', 'profil', 'profil-edit', 'mon-compte', 'annuaire',
       'mes-disciples', 'calendrier', 'programmes', 'programmes-add', 'programmes-edit', 'programme-detail',
       'presences', 'historique-membre', 'statistiques', 'notifications', 'sujets-priere', 'temoignages',
-      'documents', 'nouvelles-ames', 'nouvelles-ames-add', 'nouvelle-ame-detail', 'nouvelle-ame-suivi',
+      'documents', 'notes-personnelles', 'nouvelles-ames', 'nouvelles-ames-add', 'nouvelle-ame-detail', 'nouvelle-ame-suivi',
       'evangelisation', 'evangelisation-stats', 'evangelisation-planning', 'evangelisation-add',
       'evangelisation-detail', 'secteurs'];
     if (validPages.includes(page)) {
@@ -278,6 +278,7 @@ const App = {
       case 'sujets-priere': pageTitle = 'Sujets de prière'; pageContent = await PagesPriere.render(); break;
       case 'temoignages': pageTitle = 'Témoignages'; pageContent = await PagesTemoignages.render(); break;
       case 'documents': pageTitle = 'Documents'; pageContent = await PagesDocuments.render(); break;
+      case 'notes-personnelles': pageTitle = 'Notes personnelles'; pageContent = await PagesNotesPersonnelles.render(); break;
       case 'nouvelles-ames': pageTitle = 'Nouvelles âmes'; pageContent = await PagesNouvellesAmes.render(); break;
       case 'nouvelles-ames-add': pageTitle = 'Ajouter une nouvelle âme'; pageContent = PagesNouvellesAmes.renderAdd(); break;
       case 'nouvelle-ame-detail': pageTitle = 'Détail nouvelle âme'; pageContent = await PagesNouvellesAmes.renderDetail(this.currentParams.id); break;
@@ -620,20 +621,19 @@ const App = {
         </div>
       </div>
       ` : ''}
-      <!-- Ligne 2 : 4 cartes (toujours affichée) -->
+      <!-- Ligne 2 : 4 cartes (mentor+) ou 3 cartes (disciple/nouveau, sans case vide) -->
       <div class="dashboard-section mb-3">
-        <div class="dashboard-grid dashboard-grid-4" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacing-md);">
+        <div class="dashboard-grid" style="display: grid; grid-template-columns: repeat(${Permissions.hasRole('mentor') ? 4 : 3}, 1fr); gap: var(--spacing-md);">
+          ${Permissions.hasRole('mentor') ? `
           <div class="stat-card clickable" onclick="App.navigate('membres')" title="Voir tous les membres" style="cursor: pointer;">
             <div class="stat-icon primary" style="cursor: pointer;"><i class="fas fa-users"></i></div>
             <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.total}</div><div class="stat-label" style="cursor: pointer;">Membres actifs</div></div>
           </div>
-          ${Permissions.hasRole('mentor') ? `
           <div class="stat-card clickable" onclick="App.navigate('mes-disciples')" title="Voir mes disciples" style="cursor: pointer;">
             <div class="stat-icon success" style="cursor: pointer;"><i class="fas fa-user-friends"></i></div>
             <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${mesDisciples.length}</div><div class="stat-label" style="cursor: pointer;">Mes disciples</div></div>
           </div>
-          ` : '<div></div>'}
-          <div class="stat-card clickable" onclick="App.navigate('programmes')" title="Voir tous les programmes" style="cursor: pointer;">
+          <div class="stat-card clickable" onclick="App.navigate('programmes')" title="Voir les programmes" style="cursor: pointer;">
             <div class="stat-icon warning" style="cursor: pointer;"><i class="fas fa-calendar-alt"></i></div>
             <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${AppState.programmes.length}</div><div class="stat-label" style="cursor: pointer;">Programmes</div></div>
           </div>
@@ -641,6 +641,20 @@ const App = {
             <div class="stat-icon info" style="cursor: pointer;"><i class="fas fa-birthday-cake"></i></div>
             <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.anniversairesAujourdhui.length}</div><div class="stat-label" style="cursor: pointer;">Anniversaires</div></div>
           </div>
+          ` : `
+          <div class="stat-card clickable" onclick="App.navigate('programmes')" title="Voir les programmes" style="cursor: pointer;">
+            <div class="stat-icon warning" style="cursor: pointer;"><i class="fas fa-calendar-alt"></i></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${AppState.programmes.length}</div><div class="stat-label" style="cursor: pointer;">Programmes</div></div>
+          </div>
+          <div class="stat-card clickable" onclick="App.navigate('annuaire')" title="Voir l'annuaire" style="cursor: pointer;">
+            <div class="stat-icon info" style="cursor: pointer;"><i class="fas fa-address-book"></i></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.total}</div><div class="stat-label" style="cursor: pointer;">Annuaire famille</div></div>
+          </div>
+          <div class="stat-card clickable" onclick="App.navigate('annuaire')" title="Anniversaires du jour" style="cursor: pointer;">
+            <div class="stat-icon" style="background: #E91E6320; color: #E91E63; cursor: pointer;"><i class="fas fa-birthday-cake"></i></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.anniversairesAujourdhui.length}</div><div class="stat-label" style="cursor: pointer;">Anniversaires</div></div>
+          </div>
+          `}
         </div>
       </div>
       ${stats.anniversairesAujourdhui.length > 0 ? `<div class="alert alert-success mb-3"><i class="fas fa-birthday-cake"></i><div class="alert-content"><div class="alert-title">🎂 Joyeux anniversaire !</div><p class="mb-0">${stats.anniversairesAujourdhui.map(m => m.prenom + ' ' + m.nom).join(', ')}</p></div></div>` : ''}
@@ -746,6 +760,7 @@ const App = {
               <div class="nav-item ${AppState.currentPage === 'dashboard' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('dashboard')" onkeydown="App.navItemKeydown(event, 'dashboard')"><i class="fas fa-home"></i><span>Tableau de bord</span></div>
               <div class="nav-item ${AppState.currentPage === 'profil' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('profil')" onkeydown="App.navItemKeydown(event, 'profil')"><i class="fas fa-user"></i><span>Mon profil</span></div>
               <div class="nav-item ${AppState.currentPage === 'mon-compte' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('mon-compte')" onkeydown="App.navItemKeydown(event, 'mon-compte')"><i class="fas fa-user-cog"></i><span>Mon compte</span></div>
+              <div class="nav-item ${AppState.currentPage === 'notes-personnelles' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('notes-personnelles')" onkeydown="App.navItemKeydown(event, 'notes-personnelles')"><i class="fas fa-sticky-note"></i><span>Notes personnelles</span></div>
               <div class="nav-item ${AppState.currentPage === 'calendrier' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('calendrier')" onkeydown="App.navItemKeydown(event, 'calendrier')"><i class="fas fa-calendar-alt"></i><span>Calendrier</span></div>
               <div class="nav-item ${AppState.currentPage === 'annuaire' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('annuaire')" onkeydown="App.navItemKeydown(event, 'annuaire')"><i class="fas fa-address-book"></i><span>Annuaire</span></div>
             </div>

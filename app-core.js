@@ -68,6 +68,20 @@ const Utils = {
     return div.innerHTML;
   },
 
+  /** Première ligne du contenu (titre affiché si pas de champ titre), max 80 car. */
+  getTitleFromContent(text) {
+    if (!text || typeof text !== 'string') return 'Sans titre';
+    const firstLine = text.trim().split(/\n/)[0] || '';
+    return firstLine.length > 80 ? firstLine.slice(0, 77) + '...' : firstLine || 'Sans titre';
+  },
+
+  /** Premières maxLines lignes du contenu pour affichage condensé. */
+  getPreviewLines(text, maxLines) {
+    if (!text || typeof text !== 'string') return '';
+    const lines = text.trim().split(/\n/).filter(Boolean);
+    return lines.slice(0, maxLines).join('\n').slice(0, 200);
+  },
+
   generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   },

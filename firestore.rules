@@ -138,6 +138,13 @@ service cloud.firestore {
       allow read, create, update, delete: if isAuthenticated();
     }
 
+    // NOTES PERSONNELLES (strictement privées : seul l'auteur peut lire/écrire/supprimer)
+    match /notes_personnelles/{noteId} {
+      allow read: if isAuthenticated() && resource.data.auteur_id == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.auteur_id == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.auteur_id == request.auth.uid;
+    }
+
     // LOGS (admin uniquement en lecture)
     match /logs_connexion/{logId} {
       allow create: if isAuthenticated();

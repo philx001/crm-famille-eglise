@@ -57,6 +57,7 @@ const Notifications = {
   async create(data) {
     try {
       const notification = {
+        titre: (data.titre || '').trim() || null,
         contenu: data.contenu,
         priorite: data.priorite || 'normal',
         famille_id: AppState.famille.id,
@@ -90,6 +91,7 @@ const Notifications = {
       if (!canEdit) throw new Error('Permission refusée');
 
       const updates = {
+        titre: (data.titre || '').trim() || null,
         contenu: data.contenu,
         priorite: data.priorite || notif.priorite,
         updated_at: firebase.firestore.FieldValue.serverTimestamp(),
@@ -156,12 +158,18 @@ const Notifications = {
 // PAGES NOTIFICATIONS
 // ============================================
 
+const DEFAULT_PAGE_SIZE = 10;
+
 const PagesNotifications = {
   currentFilter: 'all',
+  showAll: false,
 
   async render() {
     await Notifications.loadAll();
     const notifications = this.filterNotifications();
+    const displayed = this.showAll ? notifications : notifications.slice(0, DEFAULT_PAGE_SIZE);
+    const hasMore = notifications.length > DEFAULT_PAGE_SIZE;
+    const restCount = notifications.length - DEFAULT_PAGE_SIZE;
 
     return `
       <div class="notif-header">
@@ -182,7 +190,7 @@ const PagesNotifications = {
       </div>
 
       <div class="notif-list" id="notif-list">
-        ${notifications.length > 0 ? notifications.map(n => this.renderNotificationCard(n)).join('') : `
+        ${notifications.length > 0 ? displayed.map(n => this.renderNotificationCardCondensed(n)).join('') : `
           <div class="empty-state">
             <i class="fas fa-bell-slash"></i>
             <h3>Aucune notification</h3>
@@ -190,6 +198,23 @@ const PagesNotifications = {
           </div>
         `}
       </div>
+      ${notifications.length > 0 ? `
+        <div class="notif-voir-tout-wrap" style="margin-top: var(--spacing-md); text-align: center;">
+          ${hasMore && !this.showAll ? `
+          <button type="button" class="btn btn-outline" onclick="PagesNotifications.toggleVoirTout()">
+            <i class="fas fa-chevron-down"></i> Voir tout (${notifications.length} au total)
+          </button>
+          <p class="mt-2 mb-0" style="font-size: 0.85rem; color: var(--text-muted);">${displayed.length} notifications affichées sur ${notifications.length}</p>
+          ` : hasMore && this.showAll ? `
+          <button type="button" class="btn btn-outline" onclick="PagesNotifications.toggleVoirTout()">
+            <i class="fas fa-chevron-up"></i> Réduire
+          </button>
+          <p class="mt-2 mb-0" style="font-size: 0.85rem; color: var(--text-muted);">${notifications.length} notifications affichées</p>
+          ` : `
+          <p class="mb-0" style="font-size: 0.85rem; color: var(--text-muted);">${notifications.length} notification(s) affichée(s) — 10 derniers par défaut quand il y en a plus</p>
+          `}
+        </div>
+      ` : ''}
 
       <!-- Modal ajout notification -->
       <div class="modal-overlay" id="modal-add-notif">
@@ -200,6 +225,10 @@ const PagesNotifications = {
           </div>
           <div class="modal-body">
             <form id="form-add-notif" onsubmit="PagesNotifications.submitNotification(event)">
+              <div class="form-group">
+                <label class="form-label">Titre</label>
+                <input type="text" class="form-control" id="notif-titre" placeholder="Titre court (optionnel)" maxlength="120">
+              </div>
               <div class="form-group">
                 <label class="form-label required">Message</label>
                 <textarea class="form-control" id="notif-contenu" rows="4" 
@@ -240,6 +269,10 @@ const PagesNotifications = {
             <form id="form-edit-notif" onsubmit="PagesNotifications.submitEditNotification(event)">
               <input type="hidden" id="notif-edit-id" value="">
               <div class="form-group">
+                <label class="form-label">Titre</label>
+                <input type="text" class="form-control" id="notif-titre-edit" placeholder="Titre court (optionnel)" maxlength="120">
+              </div>
+              <div class="form-group">
                 <label class="form-label required">Message</label>
                 <textarea class="form-control" id="notif-contenu-edit" rows="4" 
                           placeholder="Écrivez votre message..." required></textarea>
@@ -264,6 +297,26 @@ const PagesNotifications = {
             <button class="btn btn-primary" onclick="document.getElementById('form-edit-notif').requestSubmit()">
               <i class="fas fa-save"></i> Enregistrer
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal détail (lecture seule, ouvert au clic sur une carte condensée) -->
+      <div class="modal-overlay" id="modal-detail-notif">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 class="modal-title" id="modal-detail-notif-title"><i class="fas fa-bell"></i> Détail</h3>
+            <button class="modal-close" onclick="Modal.hide('modal-detail-notif')">&times;</button>
+          </div>
+          <div class="modal-body" id="modal-detail-notif-body"></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btn-detail-notif-edit" style="display: none;" onclick="PagesNotifications.editFromDetailModal()">
+              <i class="fas fa-edit"></i> Modifier
+            </button>
+            <button type="button" class="btn btn-outline btn-danger" id="btn-detail-notif-delete" style="display: none;" onclick="PagesNotifications.deleteFromDetailModal()">
+              <i class="fas fa-trash"></i> Supprimer
+            </button>
+            <button class="btn btn-secondary" onclick="Modal.hide('modal-detail-notif')">Fermer</button>
           </div>
         </div>
       </div>
@@ -369,8 +422,122 @@ const PagesNotifications = {
         .priorite-option:hover .priorite-badge {
           transform: scale(1.05);
         }
+        .notif-card-condensed {
+          cursor: pointer;
+          padding: var(--spacing-md);
+        }
+        .notif-card-condensed .notif-titre-condensed { font-weight: 600; margin-bottom: 4px; }
+        .notif-card-condensed .notif-preview { font-size: 0.9rem; color: var(--text-muted); line-height: 1.4; }
       </style>
     `;
+  },
+
+  renderNotificationCardCondensed(notif) {
+    const priorite = Notifications.getPriorite(notif.priorite);
+    const date = notif.created_at?.toDate ? notif.created_at.toDate() : new Date(notif.created_at);
+    const titre = (notif.titre && notif.titre.trim()) ? notif.titre.trim() : Utils.getTitleFromContent(notif.contenu || '');
+    const preview = Utils.getPreviewLines(notif.contenu || '', 2);
+    return `
+      <div class="notif-card notif-card-condensed" style="--notif-color: ${priorite.color}" onclick="PagesNotifications.showDetailModal('${notif.id}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); PagesNotifications.showDetailModal('${notif.id}'); }">
+        <div class="notif-header-card">
+          <div class="notif-priorite" style="background: ${priorite.bgColor}; color: ${priorite.color}">
+            <i class="fas ${priorite.icon}"></i> ${priorite.label}
+          </div>
+        </div>
+        <div class="notif-titre-condensed">${Utils.escapeHtml(titre)}</div>
+        ${preview ? `<div class="notif-preview">${Utils.escapeHtml(preview).replace(/\n/g, ' ')}</div>` : ''}
+        <div class="notif-footer" style="margin-top: 8px;">
+          <div class="notif-author">
+            <i class="fas fa-user"></i> ${Utils.escapeHtml(notif.auteur_prenom || 'Anonyme')}
+          </div>
+          <div class="notif-date"><i class="fas fa-clock"></i> ${Utils.formatRelativeDate(date)}</div>
+        </div>
+      </div>
+    `;
+  },
+
+  showDetailModal(notifId) {
+    const notif = Notifications.items.find(n => n.id === notifId);
+    if (!notif) return;
+    const modalEl = document.getElementById('modal-detail-notif');
+    if (modalEl) modalEl.dataset.notifId = notifId;
+    const canEdit = notif.auteur_id === AppState.user.id || Permissions.hasRole('adjoint_superviseur') || Permissions.isAdmin();
+    const canDelete = canEdit;
+    const editBtn = document.getElementById('btn-detail-notif-edit');
+    const deleteBtn = document.getElementById('btn-detail-notif-delete');
+    if (editBtn) editBtn.style.display = canEdit ? 'inline-flex' : 'none';
+    if (deleteBtn) deleteBtn.style.display = canDelete ? 'inline-flex' : 'none';
+    const priorite = Notifications.getPriorite(notif.priorite);
+    const date = notif.created_at?.toDate ? notif.created_at.toDate() : new Date(notif.created_at);
+    const titre = (notif.titre && notif.titre.trim()) ? notif.titre.trim() : Utils.getTitleFromContent(notif.contenu || '');
+    const titleEl = document.getElementById('modal-detail-notif-title');
+    const bodyEl = document.getElementById('modal-detail-notif-body');
+    if (titleEl) titleEl.innerHTML = `<i class="fas fa-bell"></i> ${Utils.escapeHtml(titre)}`;
+    if (bodyEl) {
+      bodyEl.innerHTML = `
+        <div class="notif-priorite" style="background: ${priorite.bgColor}; color: ${priorite.color}; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-full); font-size: 0.9rem; margin-bottom: var(--spacing-md);">
+          <i class="fas ${priorite.icon}"></i> ${priorite.label}
+        </div>
+        <div class="notif-contenu" style="white-space: pre-wrap;">${Utils.escapeHtml(notif.contenu || '').replace(/\n/g, '<br>')}</div>
+        <div class="notif-footer" style="margin-top: var(--spacing-lg); font-size: 0.9rem; color: var(--text-muted);">
+          <i class="fas fa-user"></i> ${Utils.escapeHtml(notif.auteur_prenom || 'Anonyme')} &nbsp; <i class="fas fa-clock"></i> ${Utils.formatDate(date, 'full')}
+        </div>
+      `;
+    }
+    Modal.show('modal-detail-notif');
+  },
+
+  editFromDetailModal() {
+    const modalEl = document.getElementById('modal-detail-notif');
+    const notifId = modalEl && modalEl.dataset.notifId;
+    if (notifId) {
+      Modal.hide('modal-detail-notif');
+      this.showEditModal(notifId);
+    }
+  },
+
+  deleteFromDetailModal() {
+    const modalEl = document.getElementById('modal-detail-notif');
+    const notifId = modalEl && modalEl.dataset.notifId;
+    if (notifId) {
+      Modal.hide('modal-detail-notif');
+      this.deleteNotification(notifId);
+    }
+  },
+
+  refreshNotifList() {
+    const listEl = document.getElementById('notif-list');
+    if (!listEl) return;
+    const notifications = this.filterNotifications();
+    const displayed = this.showAll ? notifications : notifications.slice(0, DEFAULT_PAGE_SIZE);
+    const hasMore = notifications.length > DEFAULT_PAGE_SIZE;
+    listEl.innerHTML = notifications.length > 0
+      ? displayed.map(n => this.renderNotificationCardCondensed(n)).join('')
+      : `<div class="empty-state"><i class="fas fa-bell-slash"></i><h3>Aucune notification</h3><p>Il n'y a pas encore de notification dans cette famille.</p></div>`;
+    let wrap = listEl.parentElement.querySelector('.notif-voir-tout-wrap');
+    if (notifications.length > 0) {
+      if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.className = 'notif-voir-tout-wrap';
+        wrap.style.marginTop = 'var(--spacing-md)';
+        wrap.style.textAlign = 'center';
+        listEl.parentElement.appendChild(wrap);
+      }
+      const caption = hasMore
+        ? `<p class="mt-2 mb-0" style="font-size: 0.85rem; color: var(--text-muted);">${this.showAll ? notifications.length + ' notifications affichées' : displayed.length + ' notifications affichées sur ' + notifications.length}</p>`
+        : `<p class="mb-0" style="font-size: 0.85rem; color: var(--text-muted);">${notifications.length} notification(s) affichée(s) — 10 derniers par défaut quand il y en a plus</p>`;
+      wrap.innerHTML = (hasMore ? `
+        <button type="button" class="btn btn-outline" onclick="PagesNotifications.toggleVoirTout()">
+          <i class="fas fa-chevron-${this.showAll ? 'up' : 'down'}"></i> ${this.showAll ? 'Réduire' : 'Voir tout (' + notifications.length + ' au total)'}
+        </button>
+        ${caption}
+      ` : caption);
+    } else if (wrap) wrap.remove();
+  },
+
+  toggleVoirTout() {
+    this.showAll = !this.showAll;
+    this.refreshNotifList();
   },
 
   renderNotificationCard(notif) {
@@ -421,21 +588,20 @@ const PagesNotifications = {
 
   setFilter(filter) {
     this.currentFilter = filter;
-    document.getElementById('notif-list').innerHTML = 
-      this.filterNotifications().length > 0 
-        ? this.filterNotifications().map(n => this.renderNotificationCard(n)).join('')
-        : `<div class="empty-state"><i class="fas fa-bell-slash"></i><h3>Aucune notification</h3></div>`;
-    
-    // Mettre à jour les boutons actifs
-    document.querySelectorAll('.notif-filters .btn').forEach(btn => {
-      btn.classList.remove('btn-primary');
-      btn.classList.add('btn-secondary');
-    });
-    event.target.classList.remove('btn-secondary');
-    event.target.classList.add('btn-primary');
+    this.refreshNotifList();
+    const target = event && event.target;
+    if (target) {
+      document.querySelectorAll('.notif-filters .btn').forEach(btn => {
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-secondary');
+      });
+      target.classList.remove('btn-secondary');
+      target.classList.add('btn-primary');
+    }
   },
 
   showAddModal() {
+    document.getElementById('notif-titre').value = '';
     document.getElementById('notif-contenu').value = '';
     document.querySelector('input[name="notif-priorite"][value="normal"]').checked = true;
     Modal.show('modal-add-notif');
@@ -445,6 +611,7 @@ const PagesNotifications = {
     const notif = Notifications.items.find(n => n.id === notifId);
     if (!notif) return;
     document.getElementById('notif-edit-id').value = notifId;
+    document.getElementById('notif-titre-edit').value = notif.titre || '';
     document.getElementById('notif-contenu-edit').value = notif.contenu || '';
     const prioriteRadio = document.querySelector(`input[name="notif-priorite-edit"][value="${notif.priorite || 'normal'}"]`);
     if (prioriteRadio) prioriteRadio.checked = true;
@@ -454,6 +621,7 @@ const PagesNotifications = {
   async submitEditNotification(event) {
     event.preventDefault();
     const id = document.getElementById('notif-edit-id').value;
+    const titre = document.getElementById('notif-titre-edit').value.trim();
     const contenu = document.getElementById('notif-contenu-edit').value.trim();
     const priorite = document.querySelector('input[name="notif-priorite-edit"]:checked').value;
 
@@ -462,20 +630,16 @@ const PagesNotifications = {
       return;
     }
 
-    const success = await Notifications.update(id, { contenu, priorite });
+    const success = await Notifications.update(id, { titre: titre || null, contenu, priorite });
     if (success) {
       Modal.hide('modal-edit-notif');
-      const notifications = this.filterNotifications();
-      document.getElementById('notif-list').innerHTML =
-        notifications.length > 0
-          ? notifications.map(n => this.renderNotificationCard(n)).join('')
-          : `<div class="empty-state"><i class="fas fa-bell-slash"></i><h3>Aucune notification</h3><p>Il n'y a pas encore de notification dans cette famille.</p></div>`;
+      this.refreshNotifList();
     }
   },
 
   async submitNotification(event) {
     event.preventDefault();
-    
+    const titre = document.getElementById('notif-titre').value.trim();
     const contenu = document.getElementById('notif-contenu').value.trim();
     const priorite = document.querySelector('input[name="notif-priorite"]:checked').value;
 
@@ -485,20 +649,10 @@ const PagesNotifications = {
     }
 
     try {
-      await Notifications.create({ contenu, priorite });
+      await Notifications.create({ titre: titre || null, contenu, priorite });
       Modal.hide('modal-add-notif');
-      
-      // Recharger depuis Firestore pour avoir les vraies données
       await Notifications.loadAll();
-      
-      // Rafraîchir la liste avec le filtre actuel
-      const notifications = this.filterNotifications();
-      document.getElementById('notif-list').innerHTML = 
-        notifications.length > 0 
-          ? notifications.map(n => this.renderNotificationCard(n)).join('')
-          : `<div class="empty-state"><i class="fas fa-bell-slash"></i><h3>Aucune notification</h3><p>Il n'y a pas encore de notification dans cette famille.</p></div>`;
-      
-      // Réinitialiser le formulaire
+      this.refreshNotifList();
       document.getElementById('form-add-notif').reset();
     } catch (error) {
       // Erreur déjà gérée par Notifications.create
@@ -511,12 +665,7 @@ const PagesNotifications = {
       'Êtes-vous sûr de vouloir supprimer cette notification ?',
       async () => {
         const success = await Notifications.delete(id);
-        if (success) {
-          document.getElementById('notif-list').innerHTML = 
-            this.filterNotifications().length > 0
-              ? this.filterNotifications().map(n => this.renderNotificationCard(n)).join('')
-              : `<div class="empty-state"><i class="fas fa-bell-slash"></i><h3>Aucune notification</h3></div>`;
-        }
+        if (success) this.refreshNotifList();
       }
     );
   }

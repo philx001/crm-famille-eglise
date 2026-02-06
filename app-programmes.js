@@ -427,9 +427,12 @@ const Presences = {
 // PAGES PROGRAMMES ET CALENDRIER
 // ============================================
 
+const DEFAULT_PAGE_SIZE_PROGRAMMES = 10;
+
 const PagesCalendrier = {
   currentYear: new Date().getFullYear(),
   currentMonth: new Date().getMonth(),
+  showAllProgrammes: false,
 
   // Page calendrier (unifié : programmes + sessions évangélisation)
   async renderCalendrier() {
@@ -716,13 +719,33 @@ const PagesCalendrier = {
     document.querySelector('.page-content').innerHTML = await this.renderCalendrier();
   },
 
-  // Liste des programmes
+  // Liste des programmes (10 par défaut + Voir tout / Réduire)
   renderProgrammes() {
-    const programmes = AppState.programmes.sort((a, b) => {
+    const programmes = (AppState.programmes || []).slice().sort((a, b) => {
       const da = a.date_debut?.toDate ? a.date_debut.toDate() : new Date(a.date_debut || 0);
       const db = b.date_debut?.toDate ? b.date_debut.toDate() : new Date(b.date_debut || 0);
       return db - da;
     });
+    const displayed = this.showAllProgrammes ? programmes : programmes.slice(0, DEFAULT_PAGE_SIZE_PROGRAMMES);
+    const hasMore = programmes.length > DEFAULT_PAGE_SIZE_PROGRAMMES;
+    const listHtml = programmes.length > 0
+      ? displayed.map(p => this.renderProgrammeCard(p)).join('')
+      : `
+              <div class="empty-state">
+                <i class="fas fa-calendar-alt"></i>
+                <h3>Aucun programme</h3>
+                <p>Aucun programme n'a été créé pour cette famille.</p>
+              </div>
+            `;
+    const voirToutHtml = programmes.length > 0
+      ? `<div id="programmes-voir-tout-wrap" style="text-align: center; padding: var(--spacing-md); border-top: 1px solid var(--border-color); font-size: 0.9rem; color: var(--text-muted); background: var(--bg-secondary, #f8f9fa);">
+           ${hasMore ? `<button type="button" class="btn btn-outline" onclick="PagesCalendrier.toggleVoirToutProgrammes()">
+             <i class="fas fa-chevron-${this.showAllProgrammes ? 'up' : 'down'}"></i>
+             ${this.showAllProgrammes ? 'Réduire' : `Voir tout (${programmes.length} au total)`}
+           </button>` : ''}
+           <p class="mt-2 mb-0" style="font-size: 0.85rem;">${displayed.length} programme(s) affiché(s)${programmes.length > displayed.length ? ` sur ${programmes.length}` : ''}${!hasMore && programmes.length > 0 ? ' (affichage limité à 10 par défaut lorsqu\'il y en a plus)' : ''}</p>
+         </div>`
+      : '';
 
     return `
       <div class="members-header">
@@ -747,17 +770,41 @@ const PagesCalendrier = {
       <div class="card">
         <div class="card-body" style="padding: 0;">
           <div id="programmes-list">
-            ${programmes.length > 0 ? programmes.map(p => this.renderProgrammeCard(p)).join('') : `
-              <div class="empty-state">
-                <i class="fas fa-calendar-alt"></i>
-                <h3>Aucun programme</h3>
-                <p>Aucun programme n'a été créé pour cette famille.</p>
-              </div>
-            `}
+            ${listHtml}
           </div>
+          ${voirToutHtml}
         </div>
       </div>
     `;
+  },
+
+  toggleVoirToutProgrammes() {
+    this.showAllProgrammes = !this.showAllProgrammes;
+    this.refreshProgrammesList();
+  },
+
+  refreshProgrammesList() {
+    const programmes = (AppState.programmes || []).slice().sort((a, b) => {
+      const da = a.date_debut?.toDate ? a.date_debut.toDate() : new Date(a.date_debut || 0);
+      const db = b.date_debut?.toDate ? b.date_debut.toDate() : new Date(b.date_debut || 0);
+      return db - da;
+    });
+    const displayed = this.showAllProgrammes ? programmes : programmes.slice(0, DEFAULT_PAGE_SIZE_PROGRAMMES);
+    const hasMore = programmes.length > DEFAULT_PAGE_SIZE_PROGRAMMES;
+    const listEl = document.getElementById('programmes-list');
+    if (listEl) {
+      listEl.innerHTML = programmes.length > 0
+        ? displayed.map(p => this.renderProgrammeCard(p)).join('')
+        : `<div class="empty-state"><i class="fas fa-calendar-alt"></i><h3>Aucun programme</h3><p>Aucun programme n'a été créé pour cette famille.</p></div>`;
+    }
+    const wrapEl = document.getElementById('programmes-voir-tout-wrap');
+    if (wrapEl) {
+      wrapEl.innerHTML = (hasMore ? `<button type="button" class="btn btn-outline" onclick="PagesCalendrier.toggleVoirToutProgrammes()">
+             <i class="fas fa-chevron-${this.showAllProgrammes ? 'up' : 'down'}"></i>
+             ${this.showAllProgrammes ? 'Réduire' : `Voir tout (${programmes.length} au total)`}
+           </button>` : '') + `<p class="mt-2 mb-0" style="font-size: 0.85rem;">${displayed.length} programme(s) affiché(s)${programmes.length > displayed.length ? ` sur ${programmes.length}` : ''}</p>`;
+    }
+    if (typeof App !== 'undefined' && App.filterProgrammes) App.filterProgrammes();
   },
 
   renderProgrammeCard(programme) {

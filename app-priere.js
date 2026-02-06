@@ -296,8 +296,11 @@ const Temoignages = {
 // PAGES SUJETS DE PRIÈRE
 // ============================================
 
+const DEFAULT_PAGE_SIZE_PRIERE = 10;
+
 const PagesPriere = {
   currentTab: 'attente',
+  showAllPriere: false,
 
   async render() {
     await SujetsPriere.loadAll();
@@ -432,6 +435,23 @@ const PagesPriere = {
         </div>
       </div>
 
+      <!-- Modal détail sujet (lecture complète au clic sur une carte condensée) -->
+      <div class="modal-overlay" id="modal-detail-priere">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-praying-hands"></i> Sujet de prière</h3>
+            <button class="modal-close" onclick="Modal.hide('modal-detail-priere')">&times;</button>
+          </div>
+          <div class="modal-body" id="modal-detail-priere-body"></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btn-detail-priere-exauce" style="display: none;">Marquer exaucé</button>
+            <button type="button" class="btn btn-outline" id="btn-detail-priere-edit" style="display: none;" onclick="PagesPriere.editFromDetailModalPriere()">Modifier</button>
+            <button type="button" class="btn btn-outline" id="btn-detail-priere-delete" style="display: none;" onclick="PagesPriere.deleteFromDetailModalPriere()">Supprimer</button>
+            <button type="button" class="btn btn-secondary" onclick="Modal.hide('modal-detail-priere')">Fermer</button>
+          </div>
+        </div>
+      </div>
+
       <style>
         .priere-header {
           display: flex;
@@ -493,6 +513,25 @@ const PagesPriere = {
         .priere-card.exauce {
           border-left-color: var(--success);
           background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(76, 175, 80, 0.05) 100%);
+        }
+        .priere-card-condensed {
+          cursor: pointer;
+          transition: background 0.15s ease;
+        }
+        .priere-card-condensed:hover {
+          background: var(--surface-hover, #f0f4f8);
+        }
+        .priere-titre-condensed {
+          font-weight: 600;
+          margin-bottom: 0.25rem;
+        }
+        .priere-preview {
+          color: var(--text-muted, #666);
+          font-size: 0.9rem;
+          white-space: pre-wrap;
+          max-height: 2.6em;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
         .priere-contenu {
           font-size: 1rem;
@@ -573,7 +612,116 @@ const PagesPriere = {
       `;
     }
 
-    return items.map(s => this.renderSujetCard(s)).join('');
+    const displayed = this.showAllPriere ? items : items.slice(0, DEFAULT_PAGE_SIZE_PRIERE);
+    const hasMore = items.length > DEFAULT_PAGE_SIZE_PRIERE;
+    const listHtml = displayed.map(s => this.renderSujetCardCondensed(s)).join('');
+    let voirToutHtml = '';
+    if (hasMore && !this.showAllPriere) {
+      voirToutHtml = `<div class="priere-voir-tout-wrap" style="margin-top: var(--spacing-md); text-align: center;">
+           <button type="button" class="btn btn-outline" onclick="PagesPriere.toggleVoirToutPriere()">
+             <i class="fas fa-chevron-down"></i> Voir tout (${items.length} au total)
+           </button>
+           <p class="mt-2 mb-0" style="font-size: 0.85rem; color: var(--text-muted);">${displayed.length} sujets affichés sur ${items.length}</p>
+         </div>`;
+    } else if (hasMore && this.showAllPriere) {
+      voirToutHtml = `<div class="priere-voir-tout-wrap" style="margin-top: var(--spacing-md); text-align: center;">
+           <button type="button" class="btn btn-outline" onclick="PagesPriere.toggleVoirToutPriere()">
+             <i class="fas fa-chevron-up"></i> Réduire
+           </button>
+           <p class="mt-2 mb-0" style="font-size: 0.85rem; color: var(--text-muted);">${items.length} sujets affichés</p>
+         </div>`;
+    } else if (items.length > 0) {
+      voirToutHtml = `<div class="priere-voir-tout-wrap" style="margin-top: var(--spacing-sm); text-align: center;">
+           <p class="mb-0" style="font-size: 0.85rem; color: var(--text-muted);">${items.length} sujet(s) affiché(s) — 10 derniers par défaut quand il y en a plus</p>
+         </div>`;
+    }
+    return listHtml + voirToutHtml;
+  },
+
+  renderSujetCardCondensed(sujet) {
+    const date = sujet.created_at?.toDate ? sujet.created_at.toDate() : new Date(sujet.created_at);
+    const catValue = sujet.sujet_categorie || 'autre';
+    const catLabel = SujetsPriere.getCategoriesSujet().find(c => c.value === catValue)?.label || 'Autre';
+    const titre = (sujet.titre && sujet.titre.trim()) ? sujet.titre.trim() : (Utils.getTitleFromContent(sujet.contenu || '') || catLabel);
+    const preview = Utils.getPreviewLines(sujet.contenu || '', 2);
+    return `
+      <div class="priere-card priere-card-condensed ${sujet.est_exauce ? 'exauce' : ''}" onclick="PagesPriere.showDetailModalPriere('${sujet.id}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();PagesPriere.showDetailModalPriere('${sujet.id}');}">
+        <div class="priere-categorie-badge"><span class="badge badge-secondary">${Utils.escapeHtml(catLabel)}</span></div>
+        <div class="priere-titre-condensed">${Utils.escapeHtml(titre)}</div>
+        ${preview ? `<div class="priere-preview">${Utils.escapeHtml(preview).replace(/\n/g, ' ')}</div>` : ''}
+        <div class="priere-footer">
+          <div class="priere-meta">
+            <span><i class="fas fa-user"></i> ${sujet.auteur_prenom ? Utils.escapeHtml(sujet.auteur_prenom) : 'Anonyme'}</span>
+            <span><i class="fas fa-clock"></i> ${Utils.formatRelativeDate(date)}</span>
+            ${sujet.est_exauce ? '<span class="exauce-badge"><i class="fas fa-check"></i> Exaucé</span>' : '<span class="attente-badge">En attente</span>'}
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  toggleVoirToutPriere() {
+    this.showAllPriere = !this.showAllPriere;
+    const listEl = document.getElementById('priere-list');
+    if (listEl) listEl.innerHTML = this.renderList();
+  },
+
+  showDetailModalPriere(sujetId) {
+    const sujet = SujetsPriere.items.find(s => s.id === sujetId);
+    if (!sujet) return;
+    const date = sujet.created_at?.toDate ? sujet.created_at.toDate() : new Date(sujet.created_at);
+    const catLabel = SujetsPriere.getCategoriesSujet().find(c => c.value === (sujet.sujet_categorie || 'autre'))?.label || 'Autre';
+    const canEdit = sujet.auteur_id === AppState.user.id || Permissions.isAdmin();
+    const canDelete = canEdit;
+    const canMarkExauce = canEdit;
+    const modalBody = document.getElementById('modal-detail-priere-body');
+    const modalEditBtn = document.getElementById('btn-detail-priere-edit');
+    const modalDeleteBtn = document.getElementById('btn-detail-priere-delete');
+    const modalExauceBtn = document.getElementById('btn-detail-priere-exauce');
+    if (modalBody) {
+      modalBody.innerHTML = `
+        <div class="priere-categorie-badge mb-2"><span class="badge badge-secondary">${Utils.escapeHtml(catLabel)}</span></div>
+        <div class="priere-contenu">${Utils.escapeHtml(sujet.contenu || '').replace(/\n/g, '<br>')}</div>
+        <div class="priere-footer mt-3">
+          <div class="priere-meta">
+            <span><i class="fas fa-user"></i> ${sujet.auteur_prenom ? Utils.escapeHtml(sujet.auteur_prenom) : 'Anonyme'}</span>
+            <span><i class="fas fa-clock"></i> ${Utils.formatDate(date, 'full')}</span>
+            ${sujet.est_exauce ? '<span class="exauce-badge"><i class="fas fa-check"></i> Exaucé</span>' : ''}
+          </div>
+        </div>
+      `;
+    }
+    if (modalEditBtn) modalEditBtn.style.display = canEdit ? 'inline-flex' : 'none';
+    if (modalDeleteBtn) modalDeleteBtn.style.display = canDelete ? 'inline-flex' : 'none';
+    if (modalExauceBtn) {
+      modalExauceBtn.style.display = canMarkExauce ? 'inline-flex' : 'none';
+      modalExauceBtn.textContent = sujet.est_exauce ? 'Annuler exaucement' : 'Marquer exaucé';
+      modalExauceBtn.onclick = async () => {
+        if (sujet.est_exauce) await PagesPriere.unmarkExauce(sujetId); else await PagesPriere.markExauce(sujetId);
+        Modal.hide('modal-detail-priere');
+        const listEl = document.getElementById('priere-list');
+        if (listEl) listEl.innerHTML = PagesPriere.renderList();
+      };
+    }
+    const modal = document.getElementById('modal-detail-priere');
+    if (modal) modal.dataset.sujetId = sujetId;
+    Modal.show('modal-detail-priere');
+  },
+
+  editFromDetailModalPriere() {
+    const modal = document.getElementById('modal-detail-priere');
+    const id = modal && modal.dataset.sujetId;
+    Modal.hide('modal-detail-priere');
+    if (id) PagesPriere.showEditModal(id);
+  },
+
+  async deleteFromDetailModalPriere() {
+    const modal = document.getElementById('modal-detail-priere');
+    const id = modal && modal.dataset.sujetId;
+    if (!id) return;
+    Modal.hide('modal-detail-priere');
+    await PagesPriere.deleteSujet(id);
+    document.getElementById('priere-list').innerHTML = PagesPriere.renderList();
   },
 
   renderSujetCard(sujet) {
@@ -627,9 +775,12 @@ const PagesPriere = {
 
   setTab(tab) {
     this.currentTab = tab;
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    event.target.closest('.tab-btn').classList.add('active');
-    document.getElementById('priere-list').innerHTML = this.renderList();
+    document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+      btn.classList.remove('active');
+      if ((tab === 'attente' && i === 0) || (tab === 'exauces' && i === 1)) btn.classList.add('active');
+    });
+    const listEl = document.getElementById('priere-list');
+    if (listEl) listEl.innerHTML = this.renderList();
   },
 
   showAddModal() {
@@ -721,7 +872,11 @@ const PagesPriere = {
 // PAGES TÉMOIGNAGES
 // ============================================
 
+const DEFAULT_PAGE_SIZE_TEMOIGNAGES = 10;
+
 const PagesTemoignages = {
+  showAllTemoignages: false,
+
   async render() {
     try {
       await Temoignages.loadAll();
@@ -746,13 +901,17 @@ const PagesTemoignages = {
       </div>
 
       <div class="temoignages-list" id="temoignages-list">
-        ${Temoignages.items.length > 0 ? Temoignages.items.map(t => this.renderTemoignageCard(t)).join('') : `
+        ${Temoignages.items.length > 0 ? this.renderListTemoignages() : `
           <div class="empty-state">
             <i class="fas fa-comment-dots"></i>
             <h3>Aucun témoignage</h3>
             <p>Soyez le premier à partager ce que Dieu fait dans votre vie !</p>
           </div>
         `}
+      </div>
+      <div id="temoignages-voir-tout-wrap" style="display: ${Temoignages.items.length > 0 ? 'block' : 'none'}; text-align: center; margin-top: var(--spacing-md); font-size: 0.9rem;">
+        ${Temoignages.items.length > DEFAULT_PAGE_SIZE_TEMOIGNAGES ? `<button type="button" class="btn btn-outline" id="btn-voir-tout-temoignages" onclick="PagesTemoignages.toggleVoirToutTemoignages()">${this.showAllTemoignages ? 'Réduire' : `Voir tout (${Temoignages.items.length} au total)`}</button>` : ''}
+        <p class="mt-2 mb-0" style="font-size: 0.85rem; color: var(--text-muted);">${Temoignages.items.length > 0 ? (Temoignages.items.length > DEFAULT_PAGE_SIZE_TEMOIGNAGES ? (this.showAllTemoignages ? `${Temoignages.items.length} témoignages affichés` : `${Math.min(DEFAULT_PAGE_SIZE_TEMOIGNAGES, Temoignages.items.length)} témoignage(s) affiché(s) sur ${Temoignages.items.length}`) : `${Temoignages.items.length} témoignage(s) affiché(s) — 10 derniers par défaut quand il y en a plus`) : ''}</p>
       </div>
 
       <!-- Modal ajout -->
@@ -830,6 +989,22 @@ const PagesTemoignages = {
             <button class="btn btn-primary" onclick="document.getElementById('form-edit-temoignage').requestSubmit()">
               <i class="fas fa-save"></i> Enregistrer
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal détail témoignage (lecture complète au clic sur une carte condensée) -->
+      <div class="modal-overlay" id="modal-detail-temoignage">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-quote-left"></i> Témoignage</h3>
+            <button class="modal-close" onclick="Modal.hide('modal-detail-temoignage')">&times;</button>
+          </div>
+          <div class="modal-body" id="modal-detail-temoignage-body"></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btn-detail-temoignage-edit" style="display: none;" onclick="PagesTemoignages.editFromDetailModalTemoignage()">Modifier</button>
+            <button type="button" class="btn btn-outline" id="btn-detail-temoignage-delete" style="display: none;" onclick="PagesTemoignages.deleteFromDetailModalTemoignage()">Supprimer</button>
+            <button type="button" class="btn btn-secondary" onclick="Modal.hide('modal-detail-temoignage')">Fermer</button>
           </div>
         </div>
       </div>
@@ -922,8 +1097,118 @@ const PagesTemoignages = {
           width: 100%;
           max-width: 400px;
         }
+        .temoignage-card-condensed {
+          cursor: pointer;
+          transition: background 0.15s ease;
+        }
+        .temoignage-card-condensed:hover {
+          background: var(--surface-hover, #f0f4f8);
+        }
+        .temoignage-titre-condensed { font-weight: 600; margin-bottom: 0.25rem; }
+        .temoignage-preview {
+          color: var(--text-muted, #666);
+          font-size: 0.9rem;
+          white-space: pre-wrap;
+          max-height: 2.6em;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
       </style>
     `;
+  },
+
+  renderListTemoignages() {
+    const items = Temoignages.items || [];
+    const displayed = this.showAllTemoignages ? items : items.slice(0, DEFAULT_PAGE_SIZE_TEMOIGNAGES);
+    return displayed.map(t => this.renderTemoignageCardCondensed(t)).join('');
+  },
+
+  renderTemoignageCardCondensed(t) {
+    const contenu = t.contenu || '';
+    const titre = (typeof Utils.getTitleFromContent === 'function' ? Utils.getTitleFromContent(contenu) : contenu.trim().split('\n')[0] || '').trim() || (Temoignages.getCategoriesSujet().find(c => c.value === (t.sujet_categorie || 'autre'))?.label || 'Témoignage');
+    const preview = typeof Utils.getPreviewLines === 'function' ? Utils.getPreviewLines(contenu, 2) : contenu.trim().split('\n').slice(0, 2).join(' ').slice(0, 120);
+    const date = t.created_at?.toDate ? t.created_at.toDate() : new Date(t.created_at);
+    const author = t.auteur_nom_complet ? Utils.escapeHtml(t.auteur_nom_complet) : 'Anonyme';
+    return `
+      <div class="temoignage-card temoignage-card-condensed" onclick="PagesTemoignages.showDetailModalTemoignage('${t.id}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();PagesTemoignages.showDetailModalTemoignage('${t.id}');}">
+        <div class="temoignage-titre-condensed">${Utils.escapeHtml(titre)}</div>
+        ${preview ? `<div class="temoignage-preview">${Utils.escapeHtml(preview).replace(/\n/g, ' ')}</div>` : ''}
+        <div class="temoignage-footer" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
+          <span><i class="fas fa-user"></i> ${author}</span>
+          <span><i class="fas fa-clock"></i> ${Utils.formatRelativeDate(date)}</span>
+        </div>
+      </div>
+    `;
+  },
+
+  toggleVoirToutTemoignages() {
+    this.showAllTemoignages = !this.showAllTemoignages;
+    const listEl = document.getElementById('temoignages-list');
+    if (listEl) listEl.innerHTML = this.renderListTemoignages();
+    const btn = document.getElementById('btn-voir-tout-temoignages');
+    if (btn) btn.textContent = this.showAllTemoignages ? 'Réduire' : `Voir tout (${(Temoignages.items || []).length} au total)`;
+  },
+
+  showDetailModalTemoignage(temoignageId) {
+    const t = Temoignages.items.find(x => x.id === temoignageId);
+    if (!t) return;
+    const date = t.created_at?.toDate ? t.created_at.toDate() : new Date(t.created_at);
+    const catLabel = Temoignages.getCategoriesSujet().find(c => c.value === (t.sujet_categorie || 'autre'))?.label || 'Autre';
+    const canEdit = t.auteur_id === AppState.user.id;
+    const canDelete = t.auteur_id === AppState.user.id || Permissions.isAdmin();
+    const mediaHtml = t.media_url ? (t.media_type === 'audio'
+      ? `<div class="temoignage-media"><audio controls src="${Utils.escapeHtml(t.media_url)}" preload="metadata"></audio></div>`
+      : `<div class="temoignage-media"><video controls src="${Utils.escapeHtml(t.media_url)}" preload="metadata" style="max-width:100%; max-height:240px;"></video></div>`
+    ) : '';
+    const modalBody = document.getElementById('modal-detail-temoignage-body');
+    if (modalBody) {
+      modalBody.innerHTML = `
+        <div class="temoignage-categorie-badge mb-2"><span class="badge badge-secondary">${Utils.escapeHtml(catLabel)}</span></div>
+        <div class="temoignage-contenu">${Utils.escapeHtml(t.contenu || '').replace(/\n/g, '<br>')}</div>
+        ${mediaHtml}
+        <div class="temoignage-footer mt-3">
+          <span><i class="fas fa-user"></i> ${t.auteur_nom_complet ? Utils.escapeHtml(t.auteur_nom_complet) : 'Anonyme'}</span>
+          <span><i class="fas fa-clock"></i> ${Utils.formatDate(date, 'full')}</span>
+        </div>
+      `;
+    }
+    const editBtn = document.getElementById('btn-detail-temoignage-edit');
+    const deleteBtn = document.getElementById('btn-detail-temoignage-delete');
+    if (editBtn) editBtn.style.display = canEdit ? 'inline-flex' : 'none';
+    if (deleteBtn) deleteBtn.style.display = canDelete ? 'inline-flex' : 'none';
+    const modal = document.getElementById('modal-detail-temoignage');
+    if (modal) modal.dataset.temoignageId = temoignageId;
+    Modal.show('modal-detail-temoignage');
+  },
+
+  editFromDetailModalTemoignage() {
+    const modal = document.getElementById('modal-detail-temoignage');
+    const id = modal && modal.dataset.temoignageId;
+    Modal.hide('modal-detail-temoignage');
+    if (id) PagesTemoignages.showEditModal(id);
+  },
+
+  async deleteFromDetailModalTemoignage() {
+    const modal = document.getElementById('modal-detail-temoignage');
+    const id = modal && modal.dataset.temoignageId;
+    if (!id) return;
+    Modal.hide('modal-detail-temoignage');
+    await PagesTemoignages.deleteTemoignage(id);
+    PagesTemoignages.refreshTemoignagesList();
+  },
+
+  refreshTemoignagesList() {
+    const items = Temoignages.items || [];
+    const listEl = document.getElementById('temoignages-list');
+    if (listEl) listEl.innerHTML = items.length > 0 ? this.renderListTemoignages() : `<div class="empty-state"><i class="fas fa-comment-dots"></i><h3>Aucun témoignage</h3><p>Soyez le premier à partager ce que Dieu fait dans votre vie !</p></div>`;
+    const wrap = document.getElementById('temoignages-voir-tout-wrap');
+    if (wrap) {
+      wrap.style.display = items.length > 0 ? 'block' : 'none';
+      const hasMore = items.length > DEFAULT_PAGE_SIZE_TEMOIGNAGES;
+      const displayedCount = this.showAllTemoignages ? items.length : Math.min(DEFAULT_PAGE_SIZE_TEMOIGNAGES, items.length);
+      const caption = hasMore ? (this.showAllTemoignages ? `${items.length} témoignages affichés` : `${displayedCount} témoignage(s) affiché(s) sur ${items.length}`) : `${items.length} témoignage(s) affiché(s) — 10 derniers par défaut quand il y en a plus`;
+      wrap.innerHTML = (hasMore ? `<button type="button" class="btn btn-outline" id="btn-voir-tout-temoignages" onclick="PagesTemoignages.toggleVoirToutTemoignages()">${this.showAllTemoignages ? 'Réduire' : `Voir tout (${items.length} au total)`}</button>` : '') + `<p class="mt-2 mb-0" style="font-size: 0.85rem; color: var(--text-muted);">${caption}</p>`;
+    }
   },
 
   renderTemoignageCard(temoignage) {
@@ -1030,10 +1315,7 @@ const PagesTemoignages = {
     const success = await Temoignages.update(id, payload);
     if (success) {
       Modal.hide('modal-edit-temoignage');
-      document.getElementById('temoignages-list').innerHTML =
-        Temoignages.items.length > 0
-          ? Temoignages.items.map(t => this.renderTemoignageCard(t)).join('')
-          : `<div class="empty-state"><i class="fas fa-comment-dots"></i><h3>Aucun témoignage</h3><p>Soyez le premier à partager ce que Dieu fait dans votre vie !</p></div>`;
+      PagesTemoignages.refreshTemoignagesList();
     }
   },
 
@@ -1075,9 +1357,9 @@ const PagesTemoignages = {
           }
         }
       }
+      await Temoignages.loadAll();
       Modal.hide('modal-add-temoignage');
-      document.getElementById('temoignages-list').innerHTML = 
-        Temoignages.items.map(t => this.renderTemoignageCard(t)).join('');
+      PagesTemoignages.refreshTemoignagesList();
     } catch (error) {}
   },
 
@@ -1087,10 +1369,7 @@ const PagesTemoignages = {
       'Êtes-vous sûr de vouloir supprimer ce témoignage ?',
       async () => {
         if (await Temoignages.delete(id)) {
-          document.getElementById('temoignages-list').innerHTML = 
-            Temoignages.items.length > 0 
-              ? Temoignages.items.map(t => this.renderTemoignageCard(t)).join('')
-              : `<div class="empty-state"><i class="fas fa-comment-dots"></i><h3>Aucun témoignage</h3></div>`;
+          PagesTemoignages.refreshTemoignagesList();
         }
       }
     );

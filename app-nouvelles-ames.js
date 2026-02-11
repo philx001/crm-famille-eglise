@@ -2239,19 +2239,25 @@ const PagesNouvellesAmes = {
         <title>Nouvelles Âmes - ${AppState.famille?.nom || ''}</title>
         <style>
           body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; overflow: visible; }
+          .no-print { display: none !important; }
+          @media print { body { margin: 15px; } .no-print { display: none !important; } }
           h1 { color: #2D5A7B; font-size: 20px; margin-bottom: 5px; }
           .subtitle { color: #666; margin-bottom: 20px; }
           table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-          th { background: #2D5A7B; color: white; padding: 10px 8px; text-align: left; font-size: 11px; }
+          th, td { padding: 8px; border-bottom: 1px solid #ddd; text-align: left; }
+          th { background: #2D5A7B; color: white; font-size: 11px; }
           tr:nth-child(even) { background: #f9f9f9; }
           .stats { display: flex; gap: 20px; margin-bottom: 15px; }
           .stat { background: #f5f5f5; padding: 10px 15px; border-radius: 5px; }
           .stat-value { font-size: 18px; font-weight: bold; color: #2D5A7B; }
           .stat-label { font-size: 11px; color: #666; }
           .footer { margin-top: 20px; font-size: 10px; color: #999; text-align: center; }
+          .btn-print { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; background: #2D5A7B; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
+          .btn-print:hover { background: #1E3D5C; }
         </style>
       </head>
       <body>
+        <button class="btn-print no-print" onclick="window.print()">Imprimer / PDF</button>
         <h1>Liste des Nouvelles Âmes</h1>
         <div class="subtitle">Famille ${escape(AppState.famille?.nom || '')} - Généré le ${new Date().toLocaleDateString('fr-FR')}</div>
         
@@ -2282,76 +2288,63 @@ const PagesNouvellesAmes = {
       </body>
       </html>
     `;
-    
-    try {
-      if (typeof PDFExport === 'undefined' || !PDFExport.downloadHtmlAsPdf) {
-        Toast.error('Export PDF indisponible.');
-        return;
-      }
-      App.showLoading();
-      const filename = `nouvelles_ames_${this.currentCategorieView === 'all' ? 'toutes' : this.currentCategorieView}_${new Date().toISOString().slice(0, 10)}.pdf`;
-      await PDFExport.downloadHtmlAsPdf(htmlContent, filename, { delay: 800 });
-      Toast.success('Téléchargement du PDF en cours.');
-    } catch (error) {
-      console.error('Erreur export PDF:', error);
-      Toast.error(error.message || 'Erreur lors de la génération du PDF');
-      try {
-        if (typeof PDFExport !== 'undefined' && PDFExport.openForPrint && htmlContent) {
-          PDFExport.openForPrint(htmlContent, 'Liste des Nouvelles Âmes');
-          Toast.info('Fenêtre ouverte : utilisez Imprimer puis « Enregistrer au format PDF ».');
-        }
-      } catch (_) {}
-    } finally {
-      App.hideLoading();
+
+    if (typeof PDFExport === 'undefined' || !PDFExport.openForPrint) {
+      Toast.error('Export PDF indisponible.');
+      return;
+    }
+    const opened = PDFExport.openForPrint(htmlContent, 'Liste des Nouvelles Âmes');
+    if (opened) {
+      Toast.success('Rapport ouvert : cliquez sur « Imprimer / PDF » ou utilisez Ctrl+P, puis choisissez « Enregistrer au format PDF ».');
+    } else {
+      Toast.error('Autorisez les popups pour ce site pour ouvrir le rapport.');
     }
   },
 
-  // Export PDF toutes catégories (téléchargement direct)
-  async exportPDFAll() {
+  // Export PDF toutes catégories (fenêtre d'impression, affichage complet)
+  exportPDFAll() {
     const toutes = (NouvellesAmesData.cache || []).filter(na => na.statut !== 'integre');
     if (toutes.length === 0) {
       Toast.warning('Aucune donnée à exporter');
       return;
     }
-    const prevFilters = { ...this.currentFilters };
-    this.currentFilters = {};
-    try {
-      await this.exportPDF();
-    } finally {
-      this.currentFilters = prevFilters;
+    const escape = (val) => (val == null || val === '') ? '-' : String(val).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const formatDate = (date) => !date ? '-' : (date.toDate ? date.toDate() : new Date(date)).toLocaleDateString('fr-FR');
+    const getStatutBadge = (statut) => {
+      const color = NouvellesAmes.getStatutColor(statut);
+      const label = NouvellesAmes.getStatutLabel(statut);
+      return `<span style="background: ${color}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px;">${label}</span>`;
+    };
+    const tableRows = toutes.map(na => `
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(na.prenom)} ${escape(na.nom)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(NouvellesAmes.getCategorieShortLabel(na.categorie))}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(na.telephone)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(NouvellesAmes.getCanalLabel(na.canal))}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${getStatutBadge(na.statut)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(na.suivi_par_nom)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${formatDate(na.date_premier_contact)}</td>
+      </tr>
+    `).join('');
+    const htmlContent = `
+<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Nouvelles Âmes - Toutes</title>
+<style>body{font-family:Arial,sans-serif;margin:20px;font-size:12px;overflow:visible;}.no-print{display:none!important;}@media print{.no-print{display:none!important;}}h1{color:#2D5A7B;}table{width:100%;border-collapse:collapse;}th,td{padding:8px;border-bottom:1px solid #ddd;}th{background:#2D5A7B;color:white;}tr:nth-child(even){background:#f9f9f9;}.btn-print{position:fixed;bottom:20px;right:20px;padding:12px 24px;background:#2D5A7B;color:white;border:none;border-radius:8px;cursor:pointer;}</style></head><body>
+<button class="btn-print no-print" onclick="window.print()">Imprimer / PDF</button>
+<h1>Liste des Nouvelles Âmes (toutes catégories)</h1>
+<div class="subtitle">Famille ${escape(AppState.famille?.nom || '')} - Généré le ${new Date().toLocaleDateString('fr-FR')}</div>
+<table><thead><tr><th>Nom</th><th>Catégorie</th><th>Téléphone</th><th>Canal</th><th>Statut</th><th>Suivi par</th><th>Premier contact</th></tr></thead><tbody>${tableRows}</tbody></table>
+<div class="footer" style="margin-top:20px;font-size:10px;color:#999;text-align:center;">CRM Famille - ${new Date().toLocaleDateString('fr-FR')}</div>
+</body></html>`;
+    if (typeof PDFExport !== 'undefined' && PDFExport.openForPrint) {
+      const opened = PDFExport.openForPrint(htmlContent, 'Liste des Nouvelles Âmes (toutes)');
+      if (opened) {
+        Toast.success('Rapport ouvert : cliquez sur « Imprimer / PDF » ou Ctrl+P, puis « Enregistrer au format PDF ».');
+      } else {
+        Toast.error('Autorisez les popups pour ouvrir le rapport.');
+      }
+    } else {
+      Toast.error('Export PDF indisponible.');
     }
-    const filename = `nouvelles_ames_toutes_categories_${new Date().toISOString().slice(0, 10)}.pdf`;
-    if (typeof PDFExport !== 'undefined' && PDFExport.downloadHtmlAsPdf) {
-      const escape = (val) => (val == null || val === '') ? '-' : String(val).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const formatDate = (date) => !date ? '-' : (date.toDate ? date.toDate() : new Date(date)).toLocaleDateString('fr-FR');
-      const getStatutBadge = (statut) => {
-        const color = NouvellesAmes.getStatutColor(statut);
-        const label = NouvellesAmes.getStatutLabel(statut);
-        return `<span style="background: ${color}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px;">${label}</span>`;
-      };
-      const tableRows = toutes.map(na => `
-        <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(na.prenom)} ${escape(na.nom)}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(NouvellesAmes.getCategorieShortLabel(na.categorie))}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(na.telephone)}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(NouvellesAmes.getCanalLabel(na.canal))}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${getStatutBadge(na.statut)}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${escape(na.suivi_par_nom)}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${formatDate(na.date_premier_contact)}</td>
-        </tr>
-      `).join('');
-      const htmlContent = `
-      <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Nouvelles Âmes - Toutes</title>
-      <style>body{font-family:Arial,sans-serif;margin:20px;font-size:12px;}h1{color:#2D5A7B;}table{width:100%;border-collapse:collapse;}th{background:#2D5A7B;color:white;padding:10px 8px;}tr:nth-child(even){background:#f9f9f9;}.no-print{display:none!important;}</style></head><body>
-      <h1>Liste des Nouvelles Âmes (toutes catégories)</h1>
-      <div class="subtitle">Famille ${escape(AppState.famille?.nom || '')} - Généré le ${new Date().toLocaleDateString('fr-FR')}</div>
-      <table><thead><tr><th>Nom</th><th>Catégorie</th><th>Téléphone</th><th>Canal</th><th>Statut</th><th>Suivi par</th><th>Premier contact</th></tr></thead><tbody>${tableRows}</tbody></table>
-      </body></html>`;
-      App.showLoading();
-      await PDFExport.downloadHtmlAsPdf(htmlContent, filename, { delay: 800 });
-      Toast.success('Téléchargement du PDF en cours.');
-    }
-    App.hideLoading();
   },
 
   // ============================================

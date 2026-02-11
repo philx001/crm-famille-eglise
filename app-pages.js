@@ -450,17 +450,7 @@ const Pages = {
     const formations = ['BDR', '101', '201', 'IEBI', 'Poimano', 'RTT_301'];
     const formationLabels = { 'RTT_301': 'RTT (301)' };
     const membreFormations = membre.formations || [];
-    const today = new Date().toISOString().split('T')[0];
-    const minDate = '1900-01-01';
-
-    const getDateValue = (date) => {
-      if (!date) return '';
-      const d = date.toDate ? date.toDate() : new Date(date);
-      if (isNaN(d.getTime())) return '';
-      const y = d.getFullYear();
-      if (y < 1900 || y > 2100) return '';
-      return d.toISOString().split('T')[0];
-    };
+    const datePastBounds = Utils.getDatePastBounds();
 
     return `
       <div class="card" style="max-width: 700px; margin: 0 auto;">
@@ -522,7 +512,7 @@ const Pages = {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);">
               <div class="form-group">
                 <label class="form-label">Date de naissance</label>
-                <input type="date" class="form-control" id="edit-date-naissance" min="${minDate}" max="${today}" value="${getDateValue(membre.date_naissance)}">
+                <input type="date" class="form-control input-date" id="edit-date-naissance" min="${datePastBounds.min}" max="${datePastBounds.max}" value="${Utils.toDateInputValue(membre.date_naissance)}" title="Cliquez pour ouvrir le calendrier">
               </div>
               <div class="form-group">
                 <label class="form-label">Téléphone</label>
@@ -550,7 +540,7 @@ const Pages = {
             
             <div class="form-group">
               <label class="form-label">Date d'arrivée à ICC</label>
-              <input type="date" class="form-control" id="edit-date-icc" min="${minDate}" max="${today}" value="${getDateValue(membre.date_arrivee_icc)}">
+              <input type="date" class="form-control input-date" id="edit-date-icc" min="${datePastBounds.min}" max="${datePastBounds.max}" value="${Utils.toDateInputValue(membre.date_arrivee_icc)}" title="Cliquez pour ouvrir le calendrier">
             </div>
             
             <div class="form-group">
@@ -580,7 +570,7 @@ const Pages = {
             </div>
             <div class="form-group" id="edit-date-bapteme-group" style="display: ${membre.baptise_immersion === true ? 'block' : 'none'};">
               <label class="form-label">Date du baptême</label>
-              <input type="date" class="form-control" id="edit-date-bapteme" min="${minDate}" max="${today}" value="${getDateValue(membre.date_bapteme)}">
+              <input type="date" class="form-control input-date" id="edit-date-bapteme" min="${datePastBounds.min}" max="${datePastBounds.max}" value="${Utils.toDateInputValue(membre.date_bapteme)}" title="Cliquez pour ouvrir le calendrier">
             </div>
             
             <hr style="margin: var(--spacing-lg) 0;">

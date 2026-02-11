@@ -406,13 +406,15 @@ const PagesStatistiques = {
             <option value="annee" ${this.currentPeriode === 'annee' ? 'selected' : ''}>Cette année</option>
             <option value="custom" ${this.currentPeriode === 'custom' ? 'selected' : ''}>Personnalisé</option>
           </select>
-          <div id="custom-dates" style="display: ${this.currentPeriode === 'custom' ? 'flex' : 'none'}; gap: var(--spacing-sm);">
-            <input type="date" class="form-control" id="stats-date-debut" 
+          <div id="custom-dates" style="display: ${this.currentPeriode === 'custom' ? 'flex' : 'none'}; gap: var(--spacing-sm); align-items: center;">
+            <input type="date" class="form-control input-date" id="stats-date-debut" 
+                   min="${Utils.getDateFilterBounds().min}" max="${Utils.getDateFilterBounds().max}"
                    value="${this.currentDateDebut ? this.currentDateDebut.toISOString().split('T')[0] : ''}"
-                   onchange="PagesStatistiques.updateStats()">
-            <input type="date" class="form-control" id="stats-date-fin"
+                   title="Cliquez pour ouvrir le calendrier" onchange="PagesStatistiques.updateStats()">
+            <input type="date" class="form-control input-date" id="stats-date-fin"
+                   min="${Utils.getDateFilterBounds().min}" max="${Utils.getDateFilterBounds().max}"
                    value="${this.currentDateFin ? this.currentDateFin.toISOString().split('T')[0] : ''}"
-                   onchange="PagesStatistiques.updateStats()">
+                   title="Cliquez pour ouvrir le calendrier" onchange="PagesStatistiques.updateStats()">
           </div>
         </div>
         ${Permissions.canExportPDF() ? `

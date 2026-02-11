@@ -592,6 +592,23 @@ const Permissions = {
     return this.hasRole('adjoint_superviseur');
   },
 
+  /** Disciple ou Nouveau : accès à la page Programmes en lecture seule. */
+  canViewProgrammesReadOnly() {
+    if (!AppState.user) return false;
+    return AppState.user.role === 'disciple' || AppState.user.role === 'nouveau';
+  },
+
+  /** Mentor+ : accès à la page de pointage des présences (liste des disciples à pointer). */
+  canAccessPresencesPage() {
+    return this.hasRole('mentor');
+  },
+
+  /** Disciple ou Nouveau : peut pointer uniquement sa propre présence à un programme. */
+  canMarkOwnPresence() {
+    if (!AppState.user) return false;
+    return AppState.user.role === 'disciple' || AppState.user.role === 'nouveau';
+  },
+
   canManageDocuments() {
     return this.hasRole('adjoint_superviseur');
   },

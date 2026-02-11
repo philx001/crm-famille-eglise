@@ -15,6 +15,30 @@ const PagesPresences = {
       return '<div class="alert alert-danger">Programme non trouvé</div>';
     }
 
+    // Disciple/Nouveau : ils ne peuvent pointer que leur propre présence depuis le détail du programme
+    if (Permissions.canMarkOwnPresence() && !Permissions.canAccessPresencesPage()) {
+      const dateDebut = programme.date_debut?.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);
+      return `
+        <div class="card" style="max-width: 500px; margin: 0 auto;">
+          <div class="card-body text-center">
+            <h3><i class="fas fa-clipboard-check"></i> Pointage des présences</h3>
+            <p class="text-muted mt-2">Vous ne pouvez pointer que votre propre présence.</p>
+            <p class="mb-0">Utilisez la page de détail du programme pour indiquer votre présence.</p>
+            <div class="mt-4">
+              <a href="#" onclick="App.navigate('programme-detail', { programmeId: '${programmeId}' }); return false;" class="btn btn-primary">
+                <i class="fas fa-arrow-right"></i> Voir le programme « ${Utils.escapeHtml(programme.nom)} » et pointer ma présence
+              </a>
+            </div>
+            <div class="mt-3">
+              <button type="button" class="btn btn-outline" onclick="App.navigate('programmes')">
+                <i class="fas fa-list"></i> Retour à la liste des programmes
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     // Charger les présences existantes
     const presences = await Presences.loadByProgramme(programmeId);
     

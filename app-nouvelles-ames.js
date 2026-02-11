@@ -915,10 +915,12 @@ const PagesNouvellesAmes = {
           <option value="">Tous les mentors</option>
           ${mentors.map(m => `<option value="${m.id}">${m.prenom} ${m.nom}</option>`).join('')}
         </select>
-        <input type="date" class="form-control" id="filter-date-contact-debut" placeholder="1er contact du" 
-               title="Date premier contact (du)" onchange="PagesNouvellesAmes.applyFilters()">
-        <input type="date" class="form-control" id="filter-date-contact-fin" placeholder="au" 
-               title="Date premier contact (au)" onchange="PagesNouvellesAmes.applyFilters()">
+        <input type="date" class="form-control input-date" id="filter-date-contact-debut"
+               min="${Utils.getDateFilterBounds().min}" max="${Utils.getDateFilterBounds().max}"
+               title="1er contact du (cliquez pour ouvrir le calendrier)" onchange="PagesNouvellesAmes.applyFilters()">
+        <input type="date" class="form-control input-date" id="filter-date-contact-fin"
+               min="${Utils.getDateFilterBounds().min}" max="${Utils.getDateFilterBounds().max}"
+               title="1er contact au (cliquez pour ouvrir le calendrier)" onchange="PagesNouvellesAmes.applyFilters()">
       </div>
       
       <div class="card">
@@ -1326,7 +1328,7 @@ const PagesNouvellesAmes = {
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label">Date du premier contact</label>
-                <input type="date" class="form-control" name="date_premier_contact" value="${today}">
+                <input type="date" class="form-control input-date" name="date_premier_contact" min="${Utils.getDateFilterBounds().min}" max="${Utils.getDateFilterBounds().max}" value="${today}" title="Cliquez pour ouvrir le calendrier">
               </div>
               <div class="form-group">
                 <label class="form-label">Lieu du contact</label>
@@ -1859,7 +1861,7 @@ const PagesNouvellesAmes = {
             
             <div class="form-group">
               <label class="form-label required">Date du contact</label>
-              <input type="date" class="form-control" name="date_suivi" value="${today}" required>
+              <input type="date" class="form-control input-date" name="date_suivi" min="${Utils.getDateFilterBounds().min}" max="${Utils.getDateFilterBounds().max}" value="${today}" title="Cliquez pour ouvrir le calendrier" required>
             </div>
             
             <div class="form-group">
@@ -2017,7 +2019,7 @@ const PagesNouvellesAmes = {
               <div class="form-row">
                 <div class="form-group">
                   <label class="form-label">Date du premier contact</label>
-                  <input type="date" class="form-control" name="date_premier_contact" value="${dateStr}">
+                  <input type="date" class="form-control input-date" name="date_premier_contact" min="${Utils.getDateFilterBounds().min}" max="${Utils.getDateFilterBounds().max}" value="${dateStr}" title="Cliquez pour ouvrir le calendrier">
                 </div>
                 <div class="form-group">
                   <label class="form-label">Lieu du contact</label>

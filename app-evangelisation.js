@@ -1102,7 +1102,7 @@ const PagesEvangelisation = {
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label required">Date</label>
-                <input type="date" class="form-control" name="date" value="${today}" required>
+                <input type="date" class="form-control input-date" name="date" min="${Utils.getDateFilterBounds().min}" max="${Utils.getDateFilterBounds().max}" value="${today}" title="Cliquez pour ouvrir le calendrier" required>
               </div>
               <div class="form-group">
                 <label class="form-label required">Heure de début</label>
@@ -1793,7 +1793,7 @@ const PagesEvangelisation = {
               <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);">
                 <div class="form-group">
                   <label class="form-label required">Date</label>
-                  <input type="date" class="form-control" name="date" value="${dateStr}" required>
+                  <input type="date" class="form-control input-date" name="date" min="${Utils.getDateFilterBounds().min}" max="${Utils.getDateFilterBounds().max}" value="${dateStr}" title="Cliquez pour ouvrir le calendrier" required>
                 </div>
                 <div class="form-group">
                   <label class="form-label required">Heure de début</label>

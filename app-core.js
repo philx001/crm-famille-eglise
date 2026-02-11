@@ -48,6 +48,36 @@ const Utils = {
     return d.toLocaleDateString('fr-FR', options);
   },
 
+  /** Valeur pour input type="date" (YYYY-MM-DD), vide si date invalide ou hors 1900–2100. */
+  toDateInputValue(date) {
+    if (!date) return '';
+    const d = date.toDate ? date.toDate() : new Date(date);
+    if (isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    if (y < 1900 || y > 2100) return '';
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  },
+
+  /** Bornes min/max pour filtres par date (Programmes, Stats, Nouvelles âmes). Évite années aberrantes. */
+  getDateFilterBounds() {
+    const today = new Date();
+    const min = new Date(2000, 0, 1);
+    const max = new Date(today);
+    max.setFullYear(max.getFullYear() + 2);
+    return {
+      min: min.toISOString().split('T')[0],
+      max: max.toISOString().split('T')[0]
+    };
+  },
+
+  /** Bornes pour champs "passé" (date naissance, arrivée ICC, baptême) : 1900 → aujourd'hui. */
+  getDatePastBounds() {
+    const today = new Date().toISOString().split('T')[0];
+    return { min: '1900-01-01', max: today };
+  },
+
   formatRelativeDate(date) {
     if (!date) return '';
     const d = date.toDate ? date.toDate() : new Date(date);

@@ -166,6 +166,7 @@ const PagesNotifications = {
 
   async render() {
     await Notifications.loadAll();
+    const dateBounds = typeof Utils !== 'undefined' ? Utils.getDateFilterBounds() : { min: '2000-01-01', max: new Date(Date.now() + 2 * 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] };
     const notifications = this.filterNotifications();
     const displayed = this.showAll ? notifications : notifications.slice(0, DEFAULT_PAGE_SIZE);
     const hasMore = notifications.length > DEFAULT_PAGE_SIZE;
@@ -173,16 +174,26 @@ const PagesNotifications = {
 
     return `
       <div class="notif-header">
-        <div class="notif-filters">
-          <button class="btn ${this.currentFilter === 'all' ? 'btn-primary' : 'btn-secondary'}" 
-                  onclick="PagesNotifications.setFilter('all')">Toutes</button>
-          ${Notifications.getPriorites().map(p => `
-            <button class="btn ${this.currentFilter === p.value ? 'btn-primary' : 'btn-secondary'}"
-                    onclick="PagesNotifications.setFilter('${p.value}')"
-                    style="${this.currentFilter === p.value ? '' : `color: ${p.color}; border-color: ${p.color}`}">
-              <i class="fas ${p.icon}"></i> ${p.label}
-            </button>
-          `).join('')}
+        <div class="notif-filters" style="display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-md);">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-xs);">
+            <span class="text-muted" style="font-size: 0.9rem; margin-right: 4px;">Type :</span>
+            <button class="btn btn-sm ${this.currentFilter === 'all' ? 'btn-primary' : 'btn-secondary'}" 
+                    onclick="PagesNotifications.setFilter('all')">Toutes</button>
+            ${Notifications.getPriorites().map(p => `
+              <button class="btn btn-sm ${this.currentFilter === p.value ? 'btn-primary' : 'btn-secondary'}"
+                      onclick="PagesNotifications.setFilter('${p.value}')"
+                      style="${this.currentFilter === p.value ? '' : `color: ${p.color}; border-color: ${p.color}`}">
+                <i class="fas ${p.icon}"></i> ${p.label}
+              </button>
+            `).join('')}
+          </div>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-xs);">
+            <span class="text-muted" style="font-size: 0.9rem;">Date :</span>
+            <label class="form-label small text-muted mb-0" style="align-self: center;">Du</label>
+            <input type="date" class="form-control input-date" id="filter-notif-date-from" min="${dateBounds.min}" max="${dateBounds.max}" title="Cliquez pour ouvrir le calendrier" onchange="PagesNotifications.refreshNotifList()">
+            <label class="form-label small text-muted mb-0" style="align-self: center;">Au</label>
+            <input type="date" class="form-control input-date" id="filter-notif-date-to" min="${dateBounds.min}" max="${dateBounds.max}" title="Cliquez pour ouvrir le calendrier" onchange="PagesNotifications.refreshNotifList()">
+          </div>
         </div>
         <button class="btn btn-primary" onclick="PagesNotifications.showAddModal()">
           <i class="fas fa-plus"></i> Nouvelle notification
@@ -580,10 +591,23 @@ const PagesNotifications = {
   },
 
   filterNotifications() {
-    if (this.currentFilter === 'all') {
-      return Notifications.items;
+    let list = this.currentFilter === 'all'
+      ? Notifications.items
+      : Notifications.items.filter(n => n.priorite === this.currentFilter);
+
+    const dateFrom = document.getElementById('filter-notif-date-from')?.value || '';
+    const dateTo = document.getElementById('filter-notif-date-to')?.value || '';
+    if (dateFrom || dateTo) {
+      list = list.filter(n => {
+        const d = n.created_at?.toDate ? n.created_at.toDate() : new Date(n.created_at || 0);
+        if (isNaN(d.getTime())) return false;
+        const dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        if (dateFrom && dateStr < dateFrom) return false;
+        if (dateTo && dateStr > dateTo) return false;
+        return true;
+      });
     }
-    return Notifications.items.filter(n => n.priorite === this.currentFilter);
+    return list;
   },
 
   setFilter(filter) {

@@ -348,6 +348,43 @@ const Presences = {
     return presences.find(p => p.disciple_id === membreId);
   },
 
+  /** Enregistrer ou mettre à jour la présence du seul utilisateur connecté (disciple/nouveau). */
+  async saveOwnPresence(programmeId, statut, commentaire = '') {
+    if (!AppState.user || !Permissions.canMarkOwnPresence()) return false;
+    try {
+      const presences = await this.loadByProgramme(programmeId);
+      const existing = presences.find(p => p.disciple_id === AppState.user.id);
+      const comment = (commentaire || '').trim() || null;
+
+      if (existing) {
+        await db.collection('presences').doc(existing.id).update({
+          statut,
+          commentaire: comment,
+          updated_at: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        await db.collection('presences').add({
+          programme_id: programmeId,
+          disciple_id: AppState.user.id,
+          mentor_id: AppState.user.mentor_id || AppState.user.id,
+          statut,
+          commentaire: comment,
+          date_pointage: firebase.firestore.FieldValue.serverTimestamp(),
+          created_at: firebase.firestore.FieldValue.serverTimestamp(),
+          updated_at: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
+      delete this.cache[programmeId];
+      Toast.success('Votre présence a été enregistrée');
+      return true;
+    } catch (error) {
+      console.error('Erreur enregistrement présence:', error);
+      Toast.error('Erreur lors de l\'enregistrement');
+      return false;
+    }
+  },
+
   // Statuts possibles
   getStatuts() {
     return [
@@ -366,6 +403,53 @@ const Presences = {
   getStatutColor(statut) {
     const found = this.getStatuts().find(s => s.value === statut);
     return found ? found.color : '#9E9E9E';
+  },
+
+  /** Période en jours pour le calcul des stats (semaine, mois, trimestre, année). */
+  getPeriodDays(period) {
+    const map = { week: 7, month: 30, quarter: 90, year: 365 };
+    return map[period] || 30;
+  },
+
+  /** Libellé de la période pour l'affichage. */
+  getPeriodLabel(period) {
+    const map = { week: 'Semaine', month: 'Mois', quarter: 'Trimestre', year: 'Année' };
+    return map[period] || 'Mois';
+  },
+
+  /** Statistiques de présence de l'utilisateur connecté sur une période (disciple/nouveau). */
+  async getOwnPresenceStatsForPeriod(period) {
+    if (!AppState.user || !Permissions.canMarkOwnPresence()) return null;
+    const days = this.getPeriodDays(period);
+    const dateFin = new Date();
+    const dateDebut = new Date(dateFin.getTime() - days * 24 * 60 * 60 * 1000);
+    const presences = await this.loadByMembre(AppState.user.id, dateDebut, dateFin);
+    const total = presences.length;
+    const present = presences.filter(p => p.statut === 'present').length;
+    const absent = presences.filter(p => p.statut === 'absent').length;
+    const excuse = presences.filter(p => p.statut === 'excuse').length;
+    const non_renseigne = presences.filter(p => p.statut === 'non_renseigne').length;
+    const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+    return { present, absent, excuse, non_renseigne, total, rate };
+  },
+
+  /** Liste des présences de l'utilisateur par programme sur une période (pour affichage détaillé). */
+  async getOwnPresenceByProgrammeInPeriod(period) {
+    if (!AppState.user || !Permissions.canMarkOwnPresence()) return [];
+    const days = this.getPeriodDays(period);
+    const dateFin = new Date();
+    const dateDebut = new Date(dateFin.getTime() - days * 24 * 60 * 60 * 1000);
+    const presences = await this.loadByMembre(AppState.user.id, dateDebut, dateFin);
+    const withProgramme = presences.map(p => {
+      const programme = Programmes.getById(p.programme_id);
+      return programme ? { programme, presence: p } : null;
+    }).filter(Boolean);
+    withProgramme.sort((a, b) => {
+      const da = a.programme.date_debut?.toDate ? a.programme.date_debut.toDate() : new Date(0);
+      const db = b.programme.date_debut?.toDate ? b.programme.date_debut.toDate() : new Date(0);
+      return db - da;
+    });
+    return withProgramme;
   },
 
   // Vérifier si un programme est complètement pointé
@@ -721,6 +805,7 @@ const PagesCalendrier = {
 
   // Liste des programmes (10 par défaut + Voir tout / Réduire)
   renderProgrammes() {
+    const dateBounds = Utils.getDateFilterBounds();
     const programmes = (AppState.programmes || []).slice().sort((a, b) => {
       const da = a.date_debut?.toDate ? a.date_debut.toDate() : new Date(a.date_debut || 0);
       const db = b.date_debut?.toDate ? b.date_debut.toDate() : new Date(b.date_debut || 0);
@@ -759,6 +844,10 @@ const PagesCalendrier = {
             <option value="">Tous les types</option>
             ${Programmes.getTypes().map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
           </select>
+          <label class="form-label small text-muted mb-0" style="align-self: center;">Du</label>
+          <input type="date" class="form-control input-date" id="filter-date-from" min="${dateBounds.min}" max="${dateBounds.max}" onchange="App.filterProgrammes()" title="Date de début (cliquez pour ouvrir le calendrier)">
+          <label class="form-label small text-muted mb-0" style="align-self: center;">Au</label>
+          <input type="date" class="form-control input-date" id="filter-date-to" min="${dateBounds.min}" max="${dateBounds.max}" onchange="App.filterProgrammes()" title="Date de fin (cliquez pour ouvrir le calendrier)">
         </div>
         ${Permissions.canManagePrograms() ? `
         <button class="btn btn-primary" onclick="App.navigate('programmes-add')">
@@ -782,6 +871,79 @@ const PagesCalendrier = {
     this.showAllProgrammes = !this.showAllProgrammes;
     this.refreshProgrammesList();
   },
+
+  /** Génère le HTML du bloc statistiques (tous confondus + tableau par programme). */
+  renderOwnPresenceStatsInner(stats, byProgramme) {
+    if (!stats) stats = { present: 0, absent: 0, excuse: 0, non_renseigne: 0, total: 0, rate: 0 };
+    if (!byProgramme) byProgramme = [];
+    const total = stats.total || 0;
+    return `
+      <div class="stats-summary mb-3" style="display: flex; flex-wrap: wrap; gap: var(--spacing-md);">
+        <div class="stat-mini" style="padding: var(--spacing-sm) var(--spacing-md); background: rgba(76,175,80,0.15); border-radius: var(--radius-sm);">
+          <span style="font-weight: 700; color: #4CAF50;">${stats.present}</span> Présent${stats.present !== 1 ? 's' : ''}
+        </div>
+        <div class="stat-mini" style="padding: var(--spacing-sm) var(--spacing-md); background: rgba(244,67,54,0.15); border-radius: var(--radius-sm);">
+          <span style="font-weight: 700; color: #F44336;">${stats.absent}</span> Absent${stats.absent !== 1 ? 's' : ''}
+        </div>
+        <div class="stat-mini" style="padding: var(--spacing-sm) var(--spacing-md); background: rgba(255,152,0,0.15); border-radius: var(--radius-sm);">
+          <span style="font-weight: 700; color: #FF9800;">${stats.excuse}</span> Excusé${stats.excuse !== 1 ? 's' : ''}
+        </div>
+        <div class="stat-mini" style="padding: var(--spacing-sm) var(--spacing-md); background: var(--bg-secondary); border-radius: var(--radius-sm);">
+          <span style="font-weight: 700;">${stats.rate}%</span> Taux
+        </div>
+        <div class="stat-mini text-muted" style="padding: var(--spacing-sm) var(--spacing-md);">
+          <span style="font-weight: 700;">${total}</span> programme${total !== 1 ? 's' : ''} pointé${total !== 1 ? 's' : ''}
+        </div>
+      </div>
+      <h5 class="mb-2" style="font-size: 0.95rem;">Par programme</h5>
+      ${byProgramme.length > 0 ? `
+      <div class="table-responsive">
+        <table class="table" style="font-size: 0.9rem;">
+          <thead><tr><th>Date</th><th>Programme</th><th>Type</th><th>Statut</th><th>Commentaire</th></tr></thead>
+          <tbody>
+            ${byProgramme.map(({ programme, presence }) => {
+              const date = programme.date_debut?.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);
+              const statutLabel = Presences.getStatutLabel(presence.statut);
+              const statutColor = Presences.getStatutColor(presence.statut);
+              return `<tr>
+                <td>${Utils.formatDate(date, 'short')}</td>
+                <td>${Utils.escapeHtml(programme.nom)}</td>
+                <td><span style="color: ${Programmes.getTypeColor(programme.type)}">${Programmes.getTypeLabel(programme.type)}</span></td>
+                <td><span style="color: ${statutColor}">${statutLabel}</span></td>
+                <td class="text-muted" style="max-width: 180px; overflow: hidden; text-overflow: ellipsis;">${presence.commentaire ? Utils.escapeHtml(presence.commentaire) : '—'}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      ` : '<p class="text-muted mb-0">Aucun programme pointé sur cette période.</p>'}
+    `;
+  },
+
+  /** Rafraîchit le bloc statistiques pour la période choisie (disciple/nouveau). */
+  async refreshOwnPresenceStats(period, clickedButton) {
+    const container = document.getElementById('own-presence-stats-content');
+    if (!container) return;
+    const tabs = document.querySelectorAll('.period-tabs button');
+    tabs.forEach(btn => { btn.classList.remove('btn-primary'); btn.classList.add('btn-outline'); });
+    if (clickedButton) { clickedButton.classList.remove('btn-outline'); clickedButton.classList.add('btn-primary'); }
+    const stats = await Presences.getOwnPresenceStatsForPeriod(period);
+    const byProgramme = await Presences.getOwnPresenceByProgrammeInPeriod(period);
+    container.innerHTML = this.renderOwnPresenceStatsInner(stats, byProgramme);
+  },
+
+  /** Appelé par les disciples/nouveaux pour enregistrer leur propre présence (lecture du select + commentaire + Presences.saveOwnPresence). */
+  async saveOwnPresence(programmeId) {
+    const selectEl = document.getElementById(`own-presence-statut-${programmeId}`);
+    const commentEl = document.getElementById(`own-presence-comment-${programmeId}`);
+    const statut = selectEl ? selectEl.value : 'non_renseigne';
+    const commentaire = commentEl ? commentEl.value : '';
+    const success = await Presences.saveOwnPresence(programmeId, statut, commentaire);
+    if (success) {
+      document.querySelector('.page-content').innerHTML = await this.renderProgrammeDetail(programmeId);
+    }
+  },
+
 
   refreshProgrammesList() {
     const programmes = (AppState.programmes || []).slice().sort((a, b) => {
@@ -811,9 +973,10 @@ const PagesCalendrier = {
     const date = programme.date_debut?.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);
     const isPast = date < new Date();
 
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     return `
       <div class="programme-card ${isPast ? 'past' : ''}" data-id="${programme.id}" 
-           data-type="${programme.type}" data-name="${programme.nom.toLowerCase()}">
+           data-type="${programme.type}" data-name="${programme.nom.toLowerCase()}" data-date="${dateStr}">
         <div class="programme-date">
           <div class="date-day">${date.getDate()}</div>
           <div class="date-month">${date.toLocaleString('fr-FR', { month: 'short' })}</div>
@@ -833,7 +996,7 @@ const PagesCalendrier = {
           <button class="btn btn-sm btn-secondary" onclick="App.viewProgramme('${programme.id}')" title="Voir">
             <i class="fas fa-eye"></i>
           </button>
-          ${Permissions.canMarkPresence() ? `
+          ${Permissions.canAccessPresencesPage() ? `
           <button class="btn btn-sm btn-primary" onclick="App.navigate('presences', {programmeId: '${programme.id}'})" title="Présences">
             <i class="fas fa-clipboard-check"></i>
           </button>
@@ -850,6 +1013,18 @@ const PagesCalendrier = {
 
   // Formulaire ajout/édition programme
   renderProgrammeForm(programmeId = null) {
+    if (!Permissions.canManagePrograms()) {
+      return `
+        <div class="card" style="max-width: 500px; margin: 0 auto;">
+          <div class="card-body text-center">
+            <p class="text-muted">Vous n'avez pas les droits pour créer ou modifier un programme.</p>
+            <button type="button" class="btn btn-primary" onclick="App.navigate('programmes')">
+              <i class="fas fa-arrow-left"></i> Retour à la liste des programmes
+            </button>
+          </div>
+        </div>
+      `;
+    }
     const programme = programmeId ? Programmes.getById(programmeId) : null;
     const isEdit = !!programme;
 
@@ -899,12 +1074,12 @@ const PagesCalendrier = {
               <div class="form-group">
                 <label class="form-label required">Date et heure de début</label>
                 <input type="datetime-local" class="form-control" id="prog-debut" 
-                       min="${minDateTime}" max="${maxDateTime}" value="${getDateTimeValue(programme?.date_debut)}" required>
+                       min="${minDateTime}" max="${maxDateTime}" value="${getDateTimeValue(programme?.date_debut)}" title="Cliquez pour ouvrir le calendrier" required>
               </div>
               <div class="form-group">
                 <label class="form-label">Date et heure de fin</label>
                 <input type="datetime-local" class="form-control" id="prog-fin"
-                       min="${minDateTime}" max="${maxDateTime}" value="${getDateTimeValue(programme?.date_fin)}">
+                       min="${minDateTime}" max="${maxDateTime}" value="${getDateTimeValue(programme?.date_fin)}" title="Cliquez pour ouvrir le calendrier">
               </div>
             </div>
 
@@ -941,9 +1116,22 @@ const PagesCalendrier = {
   },
 
   // Détails d'un programme
-  renderProgrammeDetail(programmeId) {
+  async renderProgrammeDetail(programmeId) {
     const programme = Programmes.getById(programmeId);
     if (!programme) return '<div class="alert alert-danger">Programme non trouvé</div>';
+
+    let ownPresenceStatut = 'non_renseigne';
+    let ownPresenceComment = '';
+    let statsMonth = null;
+    let byProgrammeMonth = [];
+    if (Permissions.canMarkOwnPresence()) {
+      const presences = await Presences.loadByProgramme(programmeId);
+      const myPresence = presences.find(p => p.disciple_id === AppState.user?.id);
+      ownPresenceStatut = myPresence?.statut || 'non_renseigne';
+      ownPresenceComment = myPresence?.commentaire || '';
+      statsMonth = await Presences.getOwnPresenceStatsForPeriod('month');
+      byProgrammeMonth = await Presences.getOwnPresenceByProgrammeInPeriod('month');
+    }
 
     const dateDebut = programme.date_debut?.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);
     const dateFin = programme.date_fin?.toDate ? programme.date_fin.toDate() : null;
@@ -959,7 +1147,7 @@ const PagesCalendrier = {
             </span>
           </div>
           <div class="d-flex gap-1">
-            ${Permissions.canMarkPresence() ? `
+            ${Permissions.canAccessPresencesPage() ? `
             <button class="btn btn-primary" onclick="App.navigate('presences', {programmeId: '${programmeId}'})">
               <i class="fas fa-clipboard-check"></i> Pointer
             </button>
@@ -972,6 +1160,38 @@ const PagesCalendrier = {
           </div>
         </div>
         <div class="card-body">
+          ${Permissions.canMarkOwnPresence() ? `
+          <div class="ma-presence-block mb-4 p-3" style="background: var(--bg-primary); border-radius: var(--radius-md);">
+            <h4 class="mb-2"><i class="fas fa-user-check"></i> Ma présence</h4>
+            <p class="text-muted small mb-2">Indiquez votre présence pour ce programme.</p>
+            <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+              <select id="own-presence-statut-${programmeId}" class="form-control" style="width: auto;">
+                ${Presences.getStatuts().map(s => `
+                  <option value="${s.value}" ${s.value === ownPresenceStatut ? 'selected' : ''}>${s.label}</option>
+                `).join('')}
+              </select>
+              <button type="button" class="btn btn-primary" onclick="PagesCalendrier.saveOwnPresence('${programmeId}')">
+                <i class="fas fa-save"></i> Enregistrer
+              </button>
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label small text-muted">Commentaire (optionnel, en cas d'absence ou d'excuse)</label>
+              <textarea id="own-presence-comment-${programmeId}" class="form-control" rows="2" placeholder="Ex : raison de l'absence, détail...">${Utils.escapeHtml(ownPresenceComment || '')}</textarea>
+            </div>
+          </div>
+          <div class="own-presence-stats-section mt-4 p-3" style="background: var(--bg-primary); border-radius: var(--radius-md);">
+            <h4 class="mb-3"><i class="fas fa-chart-pie"></i> Mes statistiques de présence</h4>
+            <div class="period-tabs mb-3" style="display: flex; gap: var(--spacing-xs); flex-wrap: wrap;">
+              <button type="button" class="btn btn-sm btn-outline" data-period="week" onclick="PagesCalendrier.refreshOwnPresenceStats('week', this)">Semaine</button>
+              <button type="button" class="btn btn-sm btn-primary" data-period="month" onclick="PagesCalendrier.refreshOwnPresenceStats('month', this)">Mois</button>
+              <button type="button" class="btn btn-sm btn-outline" data-period="quarter" onclick="PagesCalendrier.refreshOwnPresenceStats('quarter', this)">Trimestre</button>
+              <button type="button" class="btn btn-sm btn-outline" data-period="year" onclick="PagesCalendrier.refreshOwnPresenceStats('year', this)">Année</button>
+            </div>
+            <div id="own-presence-stats-content">
+              ${PagesCalendrier.renderOwnPresenceStatsInner(statsMonth, byProgrammeMonth)}
+            </div>
+          </div>
+          ` : ''}
           <div class="programme-details">
             <div class="detail-item">
               <i class="fas fa-calendar"></i>

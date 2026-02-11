@@ -815,6 +815,25 @@ select.form-control {
   cursor: pointer;
 }
 
+/* Champs date : largeur et apparence cohérentes sur toutes les pages */
+.form-control[type="date"],
+.form-control.input-date {
+  min-width: 140px;
+  max-width: 180px;
+  width: auto;
+}
+.form-control[type="datetime-local"] {
+  min-width: 180px;
+  max-width: 220px;
+  width: auto;
+}
+
+/* Champs date : inviter au clic pour ouvrir le calendrier (saisie clavier bloquée par JS) */
+.form-control[type="date"],
+.form-control[type="datetime-local"] {
+  cursor: pointer;
+}
+
 /* Checkbox & Radio */
 .form-check {
   display: flex;

@@ -28,6 +28,7 @@ const App = {
       if (typeof Toast !== 'undefined') Toast.init();
       this.applyTheme(localStorage.getItem('crm_theme') || 'light');
       this.setupPasswordToggleDelegation();
+      this.setupDateInputsNoTyping();
       this.setupErrorHandling();
       const isLoggedIn = await Auth.checkAuthState();
       if (App._initDone) return;
@@ -57,6 +58,26 @@ const App = {
         }
       }
     }
+  },
+
+  /** Bloque la saisie clavier sur les champs date/datetime : sélection uniquement via le calendrier natif (clic). */
+  setupDateInputsNoTyping() {
+    document.body.addEventListener('keydown', function (e) {
+      const el = e.target;
+      if (!el || (el.type !== 'date' && el.type !== 'datetime-local')) return;
+      if (e.key === 'Tab' || e.key === 'Escape') return;
+      e.preventDefault();
+    });
+    document.body.addEventListener('keypress', function (e) {
+      const el = e.target;
+      if (!el || (el.type !== 'date' && el.type !== 'datetime-local')) return;
+      e.preventDefault();
+    });
+    document.body.addEventListener('paste', function (e) {
+      const el = e.target;
+      if (!el || (el.type !== 'date' && el.type !== 'datetime-local')) return;
+      e.preventDefault();
+    });
   },
 
   setupPasswordToggleDelegation() {
@@ -272,7 +293,7 @@ const App = {
       case 'programmes': pageTitle = 'Programmes'; pageContent = PagesCalendrier.renderProgrammes(); break;
       case 'programmes-add': pageTitle = 'Nouveau programme'; pageContent = PagesCalendrier.renderProgrammeForm(); break;
       case 'programmes-edit': pageTitle = 'Modifier le programme'; pageContent = PagesCalendrier.renderProgrammeForm(this.currentParams.programmeId); break;
-      case 'programme-detail': pageTitle = 'Détails du programme'; pageContent = PagesCalendrier.renderProgrammeDetail(this.currentParams.programmeId); break;
+      case 'programme-detail': pageTitle = 'Détails du programme'; pageContent = await PagesCalendrier.renderProgrammeDetail(this.currentParams.programmeId); break;
       case 'presences': pageTitle = 'Pointage des présences'; pageContent = await PagesPresences.renderPresences(this.currentParams.programmeId); break;
       case 'historique-membre': pageTitle = 'Historique de présence'; pageContent = await PagesPresences.renderHistoriqueMembre(this.currentParams.membreId); break;
       case 'statistiques': pageTitle = 'Statistiques'; pageContent = await PagesStatistiques.renderStatistiques(); break;
@@ -769,6 +790,9 @@ const App = {
               <div class="nav-item ${AppState.currentPage === 'temoignages' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('temoignages')" onkeydown="App.navItemKeydown(event, 'temoignages')"><i class="fas fa-star"></i><span>Témoignages</span></div>
               <div class="nav-item ${AppState.currentPage === 'documents' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('documents')" onkeydown="App.navItemKeydown(event, 'documents')"><i class="fas fa-folder"></i><span>Documents</span></div>
             </div>
+            ${Permissions.canViewProgrammesReadOnly() && !Permissions.hasRole('mentor') ? `<div class="nav-section"><div class="nav-section-title">Programmes</div>
+              <div class="nav-item ${AppState.currentPage === 'programmes' || AppState.currentPage === 'programme-detail' ? 'active' : ''}" tabindex="0" role="link" onclick="App.navigate('programmes')" onkeydown="App.navItemKeydown(event, 'programmes')"><i class="fas fa-clipboard-list"></i><span>Programmes</span></div>
+            </div>` : ''}
             ${Permissions.hasRole('mentor') ? `<div class="nav-section"><div class="nav-section-title">Gestion</div>
               <div class="nav-item ${AppState.currentPage === 'mes-disciples' ? 'active' : ''}" onclick="App.navigate('mes-disciples')"><i class="fas fa-user-friends"></i><span>Mes disciples</span></div>
               <div class="nav-item ${AppState.currentPage === 'programmes' ? 'active' : ''}" onclick="App.navigate('programmes')"><i class="fas fa-clipboard-list"></i><span>Programmes</span></div>
@@ -941,7 +965,22 @@ const App = {
     const hint = document.getElementById('pole-interne-hint');
     if (hint) hint.textContent = checkedCount > 0 ? `${checkedCount}/2 pôle(s) sélectionné(s)` : (document.querySelector('.pole-check input[value="aucun"]:checked') ? 'Aucun pôle' : '');
   },
-  filterProgrammes() { const search = document.getElementById('search-programmes')?.value.toLowerCase() || ''; const typeFilter = document.getElementById('filter-type')?.value || ''; document.querySelectorAll('#programmes-list .programme-card').forEach(card => { const name = card.dataset.name || ''; const type = card.dataset.type || ''; card.style.display = name.includes(search) && (!typeFilter || type === typeFilter) ? '' : 'none'; }); },
+  filterProgrammes() {
+    const search = (document.getElementById('search-programmes')?.value || '').toLowerCase();
+    const typeFilter = document.getElementById('filter-type')?.value || '';
+    const dateFrom = document.getElementById('filter-date-from')?.value || '';
+    const dateTo = document.getElementById('filter-date-to')?.value || '';
+    document.querySelectorAll('#programmes-list .programme-card').forEach(card => {
+      const name = card.dataset.name || '';
+      const type = card.dataset.type || '';
+      const date = card.dataset.date || '';
+      const matchSearch = name.includes(search);
+      const matchType = !typeFilter || type === typeFilter;
+      const matchDateFrom = !dateFrom || date >= dateFrom;
+      const matchDateTo = !dateTo || date <= dateTo;
+      card.style.display = matchSearch && matchType && matchDateFrom && matchDateTo ? '' : 'none';
+    });
+  },
 
   exportMembresCSV() {
     const isMesDisciples = AppState.currentPage === 'mes-disciples';

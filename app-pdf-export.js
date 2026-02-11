@@ -5,27 +5,59 @@
 
 const PDFExport = {
   // Télécharger un document HTML en PDF (comme un fichier, sans ouvrir la boîte d'impression)
-  async downloadHtmlAsPdf(htmlContent, filename) {
+  async downloadHtmlAsPdf(htmlContent, filename, options = {}) {
     if (typeof html2pdf === 'undefined') {
       throw new Error('Génération PDF indisponible. Réessayez ou utilisez l\'impression (Ctrl+P).');
     }
+    const orientation = options.orientation || 'portrait';
+    const isLandscape = orientation === 'landscape';
+    const iframeW = isLandscape ? '297mm' : '210mm';
+    const iframeH = '1200px';
     const iframe = document.createElement('iframe');
-    iframe.setAttribute('style', 'position:absolute;width:9999px;height:9999px;border:none;left:-9999px;');
+    iframe.setAttribute('style', 'position:fixed;left:-9999px;top:0;width:' + iframeW + ';height:' + iframeH + ';border:none;overflow:auto;');
+    iframe.setAttribute('name', 'pdf-export-frame');
     document.body.appendChild(iframe);
     const doc = iframe.contentDocument;
+    if (!doc) {
+      document.body.removeChild(iframe);
+      throw new Error('Impossible de créer le document pour l\'export PDF.');
+    }
     doc.open();
     doc.write(htmlContent);
     doc.close();
-    const body = iframe.contentDocument.body;
+    const delay = options.delay != null ? options.delay : 700;
+    await new Promise(r => { iframe.onload = r; });
+    await new Promise(r => setTimeout(r, delay));
+    const body = doc.body;
+    if (!body) {
+      document.body.removeChild(iframe);
+      throw new Error('Le contenu du rapport n\'a pas pu être chargé.');
+    }
+    body.style.overflow = 'visible';
     const opt = {
-      margin: 10,
+      margin: 8,
       filename: filename || 'rapport.pdf',
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: options.scale != null ? options.scale : 1.5, useCORS: true, allowTaint: true, logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: orientation },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'], before: '#section-detail-membre' }
     };
-    await html2pdf().set(opt).from(body).save();
-    document.body.removeChild(iframe);
+    try {
+      await html2pdf().set(opt).from(body).save();
+    } finally {
+      try { document.body.removeChild(iframe); } catch (_) {}
+    }
+    return true;
+  },
+
+  // Ouvrir le HTML dans une fenêtre pour impression (secours si le téléchargement direct échoue)
+  openForPrint(htmlContent, title) {
+    const w = window.open('about:blank', '_blank');
+    if (!w) return false;
+    w.document.write(htmlContent);
+    w.document.close();
+    w.document.title = title || 'Rapport';
+    w.onload = () => { try { setTimeout(() => w.print(), 400); } catch (_) {} };
     return true;
   },
 
@@ -33,15 +65,22 @@ const PDFExport = {
   async generatePresenceReport(stats, options = {}) {
     const content = this.buildPresenceHTML(stats, options);
     const filename = `rapport-presences-${new Date().toISOString().slice(0, 10)}.pdf`;
-    await this.downloadHtmlAsPdf(content, filename);
+    await this.downloadHtmlAsPdf(content, filename, { orientation: 'landscape', delay: 800, scale: 1.25 });
     return true;
   },
 
   buildPresenceHTML(stats, options) {
     const { dateDebut, dateFin, famille } = options;
-    const periodeStr = dateDebut && dateFin 
+    const periodeStr = dateDebut && dateFin
       ? `Du ${Utils.formatDate(dateDebut)} au ${Utils.formatDate(dateFin)}`
       : 'Toutes périodes';
+
+    const global = stats.global || {};
+    const parType = Array.isArray(stats.parType) ? stats.parType : [];
+    const parMembre = Array.isArray(stats.parMembre) ? stats.parMembre : [];
+    const evolution = Array.isArray(stats.evolution) ? stats.evolution : [];
+
+    const capTaux = (v) => Math.min(100, Math.max(0, Number(v) || 0));
 
     return `<!DOCTYPE html>
 <html lang="fr">
@@ -50,42 +89,47 @@ const PDFExport = {
   <title>Rapport de Présences - ${Utils.escapeHtml(famille || '')}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; line-height: 1.4; color: #333; padding: 15mm; }
-    @media print { body { padding: 0; } } .no-print { display: none !important; }
-    .header { text-align: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #2D5A7B; }
-    .header h1 { color: #2D5A7B; font-size: 22pt; margin-bottom: 5px; }
-    .header .subtitle { font-size: 14pt; color: #666; }
-    .header .periode { font-size: 11pt; color: #888; margin-top: 8px; }
-    .header .date-generation { font-size: 9pt; color: #aaa; margin-top: 5px; }
-    .section { margin-bottom: 20px; }
-    .section-title { font-size: 13pt; color: #2D5A7B; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #ddd; }
-    .stats-summary { display: flex; justify-content: space-around; margin-bottom: 20px; padding: 15px; background: #f5f7fa; border-radius: 8px; }
-    .stat-box { text-align: center; padding: 10px 20px; }
-    .stat-value { font-size: 24pt; font-weight: bold; color: #2D5A7B; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 9pt; line-height: 1.3; color: #333; padding: 8mm; overflow: visible; }
+    @media print { body { padding: 6mm; } } .no-print { display: none !important; }
+    .section { page-break-inside: avoid; margin-bottom: 12px; }
+    .header { text-align: center; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #2D5A7B; }
+    .header h1 { color: #2D5A7B; font-size: 16pt; margin-bottom: 2px; }
+    .header .subtitle { font-size: 11pt; color: #666; }
+    .header .periode { font-size: 9pt; color: #888; margin-top: 2px; }
+    .header .date-generation { font-size: 8pt; color: #aaa; margin-top: 2px; }
+    .section-title { font-size: 11pt; color: #2D5A7B; margin-bottom: 6px; padding-bottom: 3px; border-bottom: 1px solid #ddd; }
+    .stats-summary { display: flex; flex-wrap: wrap; justify-content: space-around; gap: 6px; margin-bottom: 10px; padding: 8px 10px; background: #f5f7fa; border-radius: 6px; }
+    .stat-box { text-align: center; padding: 4px 10px; min-width: 0; }
+    .stat-value { font-size: 14pt; font-weight: bold; color: #2D5A7B; }
     .stat-value.success { color: #4CAF50; }
     .stat-value.danger { color: #F44336; }
     .stat-value.warning { color: #FF9800; }
-    .stat-label { font-size: 9pt; color: #666; text-transform: uppercase; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10pt; }
-    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd; }
-    th { background: #f5f7fa; font-weight: 600; color: #555; text-transform: uppercase; font-size: 9pt; }
+    .stat-label { font-size: 7pt; color: #666; text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 8pt; table-layout: fixed; }
+    th, td { padding: 3px 5px; text-align: left; border-bottom: 1px solid #ddd; overflow: hidden; text-overflow: ellipsis; }
+    th { background: #f5f7fa; font-weight: 600; color: #555; text-transform: uppercase; font-size: 7pt; }
+    .col-membre { width: 20%; }
+    .col-mentor { width: 20%; }
+    .col-num { width: 9%; }
+    .col-taux { width: 12%; }
     tr:nth-child(even) { background: #fafafa; }
     .text-center { text-align: center; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9pt; font-weight: 500; }
+    .badge { display: inline-block; padding: 1px 5px; border-radius: 6px; font-size: 7pt; font-weight: 500; }
     .badge-success { background: #E8F5E9; color: #2E7D32; }
     .badge-danger { background: #FFEBEE; color: #C62828; }
     .badge-warning { background: #FFF3E0; color: #E65100; }
-    .progress-bar { height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; width: 80px; display: inline-block; vertical-align: middle; margin-right: 5px; }
-    .progress-fill { height: 100%; border-radius: 4px; }
+    .progress-bar { height: 5px; background: #e0e0e0; border-radius: 3px; overflow: hidden; width: 40px; display: inline-block; vertical-align: middle; margin-right: 3px; }
+    .progress-fill { height: 100%; border-radius: 3px; max-width: 100%; }
     .progress-fill.high { background: #4CAF50; }
     .progress-fill.medium { background: #FF9800; }
     .progress-fill.low { background: #F44336; }
-    .type-bar { display: flex; align-items: center; margin-bottom: 8px; }
-    .type-label { width: 180px; font-size: 10pt; }
-    .type-progress { flex: 1; height: 20px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin: 0 10px; }
-    .type-progress-fill { height: 100%; border-radius: 4px; }
-    .type-value { width: 50px; text-align: right; font-weight: 600; }
-    .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; font-size: 9pt; color: #888; }
+    .type-bar { display: flex; align-items: center; margin-bottom: 4px; }
+    .type-label { width: 140px; font-size: 8pt; flex-shrink: 0; }
+    .type-progress { flex: 1; min-width: 0; height: 12px; background: #e0e0e0; border-radius: 3px; overflow: hidden; margin: 0 6px; }
+    .type-progress-fill { height: 100%; border-radius: 3px; max-width: 100%; }
+    .type-value { width: 36px; text-align: right; font-weight: 600; flex-shrink: 0; font-size: 8pt; }
+    .footer { margin-top: 12px; padding-top: 8px; border-top: 1px solid #ddd; text-align: center; font-size: 8pt; color: #888; }
+    .page-break-before { page-break-before: always; }
     .btn-print { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; background: #2D5A7B; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
     .btn-print:hover { background: #1E3D5C; }
   </style>
@@ -103,23 +147,23 @@ const PDFExport = {
   <div class="section">
     <div class="stats-summary">
       <div class="stat-box">
-        <div class="stat-value">${stats.global.totalProgrammes}</div>
+        <div class="stat-value">${global.totalProgrammes != null ? global.totalProgrammes : 0}</div>
         <div class="stat-label">Programmes</div>
       </div>
       <div class="stat-box">
-        <div class="stat-value success">${stats.global.totalPresencesEffectives}</div>
+        <div class="stat-value success">${global.totalPresencesEffectives != null ? global.totalPresencesEffectives : 0}</div>
         <div class="stat-label">Présences</div>
       </div>
       <div class="stat-box">
-        <div class="stat-value danger">${stats.global.totalAbsences}</div>
+        <div class="stat-value danger">${global.totalAbsences != null ? global.totalAbsences : 0}</div>
         <div class="stat-label">Absences</div>
       </div>
       <div class="stat-box">
-        <div class="stat-value warning">${stats.global.totalExcuses}</div>
+        <div class="stat-value warning">${global.totalExcuses != null ? global.totalExcuses : 0}</div>
         <div class="stat-label">Excusés</div>
       </div>
       <div class="stat-box">
-        <div class="stat-value">${stats.global.tauxPresenceGlobal}%</div>
+        <div class="stat-value">${global.tauxPresenceGlobal != null ? global.tauxPresenceGlobal : 0}%</div>
         <div class="stat-label">Taux Global</div>
       </div>
     </div>
@@ -127,51 +171,60 @@ const PDFExport = {
   
   <div class="section">
     <h2 class="section-title">Présence par Type de Programme</h2>
-    ${stats.parType.map(t => `
+    ${parType.map(t => {
+      const taux = capTaux(t.tauxPresence);
+      return `
       <div class="type-bar">
         <span class="type-label">${t.label}</span>
         <div class="type-progress">
-          <div class="type-progress-fill" style="width: ${t.tauxPresence}%; background: ${t.color}"></div>
+          <div class="type-progress-fill" style="width: ${taux}%; background: ${t.color || '#2D5A7B'}"></div>
         </div>
-        <span class="type-value">${t.tauxPresence}%</span>
-      </div>
-    `).join('')}
+        <span class="type-value">${t.tauxPresence != null ? t.tauxPresence : 0}%</span>
+      </div>`;
+    }).join('')}
   </div>
   
-  <div class="section">
+  <div class="section page-break-before" id="section-detail-membre">
     <h2 class="section-title">Détail par Membre</h2>
     <table>
+      <colgroup>
+        <col class="col-membre"><col class="col-mentor"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-taux">
+      </colgroup>
       <thead>
         <tr>
           <th>Membre</th>
           <th>Mentor</th>
-          <th class="text-center">Présences</th>
-          <th class="text-center">Absences</th>
-          <th class="text-center">Excusés</th>
+          <th class="text-center">Prés.</th>
+          <th class="text-center">Abs.</th>
+          <th class="text-center">Excus.</th>
           <th class="text-center">Taux</th>
         </tr>
       </thead>
       <tbody>
-        ${stats.parMembre.map(m => `
+        ${parMembre.length === 0
+          ? '<tr><td colspan="6" class="text-center" style="padding:12px;color:#888;">Aucun membre dans cette période.</td></tr>'
+          : parMembre.map(m => {
+              const taux = capTaux(m.tauxPresence);
+              return `
           <tr>
-            <td><strong>${Utils.escapeHtml(m.nomComplet)}</strong></td>
-            <td>${Utils.escapeHtml(m.mentor)}</td>
-            <td class="text-center"><span class="badge badge-success">${m.nbPresences}</span></td>
-            <td class="text-center"><span class="badge badge-danger">${m.nbAbsences}</span></td>
-            <td class="text-center"><span class="badge badge-warning">${m.nbExcuses}</span></td>
+            <td><strong>${Utils.escapeHtml(m.nomComplet || '')}</strong></td>
+            <td>${Utils.escapeHtml(m.mentor || '-')}</td>
+            <td class="text-center"><span class="badge badge-success">${m.nbPresences != null ? m.nbPresences : 0}</span></td>
+            <td class="text-center"><span class="badge badge-danger">${m.nbAbsences != null ? m.nbAbsences : 0}</span></td>
+            <td class="text-center"><span class="badge badge-warning">${m.nbExcuses != null ? m.nbExcuses : 0}</span></td>
             <td class="text-center">
               <div class="progress-bar">
-                <div class="progress-fill ${m.tauxPresence >= 80 ? 'high' : m.tauxPresence >= 60 ? 'medium' : 'low'}" style="width: ${m.tauxPresence}%"></div>
+                <div class="progress-fill ${m.tauxPresence >= 80 ? 'high' : m.tauxPresence >= 60 ? 'medium' : 'low'}" style="width: ${taux}%"></div>
               </div>
-              ${m.tauxPresence}%
+              ${m.tauxPresence != null ? m.tauxPresence : 0}%
             </td>
-          </tr>
-        `).join('')}
+          </tr>`;
+            }).join('')}
       </tbody>
     </table>
   </div>
   
-  ${stats.evolution && stats.evolution.length > 0 ? `
+  ${evolution.length > 0 ? `
   <div class="section">
     <h2 class="section-title">Évolution Mensuelle</h2>
     <table>
@@ -184,19 +237,21 @@ const PDFExport = {
         </tr>
       </thead>
       <tbody>
-        ${stats.evolution.map(e => `
+        ${evolution.map(e => {
+          const taux = capTaux(e.tauxPresence);
+          return `
           <tr>
             <td>${e.label}</td>
-            <td class="text-center">${e.nbProgrammes}</td>
-            <td class="text-center">${e.nbPresences}</td>
+            <td class="text-center">${e.nbProgrammes != null ? e.nbProgrammes : 0}</td>
+            <td class="text-center">${e.nbPresences != null ? e.nbPresences : 0}</td>
             <td class="text-center">
               <div class="progress-bar">
-                <div class="progress-fill ${e.tauxPresence >= 80 ? 'high' : e.tauxPresence >= 60 ? 'medium' : 'low'}" style="width: ${e.tauxPresence}%"></div>
+                <div class="progress-fill ${e.tauxPresence >= 80 ? 'high' : e.tauxPresence >= 60 ? 'medium' : 'low'}" style="width: ${taux}%"></div>
               </div>
-              ${e.tauxPresence}%
+              ${e.tauxPresence != null ? e.tauxPresence : 0}%
             </td>
-          </tr>
-        `).join('')}
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>
   </div>
@@ -436,7 +491,7 @@ const PDFExport = {
 </html>`;
 
     const filename = `presences-programme-${new Date().toISOString().slice(0, 10)}.pdf`;
-    await this.downloadHtmlAsPdf(content, filename);
+    await this.downloadHtmlAsPdf(content, filename, { delay: 600 });
     return true;
   }
 };

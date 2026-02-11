@@ -2238,7 +2238,7 @@ const PagesNouvellesAmes = {
         <meta charset="UTF-8">
         <title>Nouvelles Âmes - ${AppState.famille?.nom || ''}</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
+          body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; overflow: visible; }
           h1 { color: #2D5A7B; font-size: 20px; margin-bottom: 5px; }
           .subtitle { color: #666; margin-bottom: 20px; }
           table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -2290,11 +2290,17 @@ const PagesNouvellesAmes = {
       }
       App.showLoading();
       const filename = `nouvelles_ames_${this.currentCategorieView === 'all' ? 'toutes' : this.currentCategorieView}_${new Date().toISOString().slice(0, 10)}.pdf`;
-      await PDFExport.downloadHtmlAsPdf(htmlContent, filename);
+      await PDFExport.downloadHtmlAsPdf(htmlContent, filename, { delay: 800 });
       Toast.success('Téléchargement du PDF en cours.');
     } catch (error) {
       console.error('Erreur export PDF:', error);
       Toast.error(error.message || 'Erreur lors de la génération du PDF');
+      try {
+        if (typeof PDFExport !== 'undefined' && PDFExport.openForPrint && htmlContent) {
+          PDFExport.openForPrint(htmlContent, 'Liste des Nouvelles Âmes');
+          Toast.info('Fenêtre ouverte : utilisez Imprimer puis « Enregistrer au format PDF ».');
+        }
+      } catch (_) {}
     } finally {
       App.hideLoading();
     }
@@ -2342,7 +2348,7 @@ const PagesNouvellesAmes = {
       <table><thead><tr><th>Nom</th><th>Catégorie</th><th>Téléphone</th><th>Canal</th><th>Statut</th><th>Suivi par</th><th>Premier contact</th></tr></thead><tbody>${tableRows}</tbody></table>
       </body></html>`;
       App.showLoading();
-      await PDFExport.downloadHtmlAsPdf(htmlContent, filename);
+      await PDFExport.downloadHtmlAsPdf(htmlContent, filename, { delay: 800 });
       Toast.success('Téléchargement du PDF en cours.');
     }
     App.hideLoading();

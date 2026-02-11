@@ -65,11 +65,12 @@ const Statistiques = {
       ? Math.round((presencesByStatut.present / totalPresencesAttendues) * 100 * 10) / 10
       : 0;
 
-    // Stats par type de programme
+    // Stats par type de programme (ne compter que les présences des membres filtrés)
+    const membreIds = new Set(membres.map(m => m.id));
     const statsByType = {};
     Programmes.getTypes().forEach(type => {
       const progsOfType = programmes.filter(p => p.type === type.value);
-      const presencesOfType = allPresences.filter(p => p.programme.type === type.value);
+      const presencesOfType = allPresences.filter(p => p.programme.type === type.value && membreIds.has(p.disciple_id));
       const expectedOfType = progsOfType.length * totalMembres;
       const presentOfType = presencesOfType.filter(p => p.statut === 'present').length;
 
@@ -130,14 +131,15 @@ const Statistiques = {
   },
 
   // Membres avec faible taux de présence (alertes absence)
-  async getLowAttendanceMembers(seuilPourcent = 50, periodeJours = 30) {
+  async getLowAttendanceMembers(seuilPourcent = 50, periodeJours = 30, mentorId = null) {
     const dateFin = new Date();
     const dateDebut = new Date();
     dateDebut.setDate(dateDebut.getDate() - periodeJours);
 
     const result = await this.calculatePresenceStats({
       dateDebut,
-      dateFin
+      dateFin,
+      mentorId
     });
 
     if (!result.parMembre || result.parMembre.length === 0) {
@@ -192,9 +194,11 @@ const Statistiques = {
       monthlyData[monthKey].nbAttendus += membres.length;
     });
 
+    const membreIdsEvolution = new Set(membres.map(m => m.id));
     presences.forEach(p => {
       const prog = p.programme;
       if (!prog) return;
+      if (!membreIdsEvolution.has(p.disciple_id)) return;
       const d = prog.date_debut?.toDate ? prog.date_debut.toDate() : new Date(prog.date_debut);
       const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       
@@ -302,9 +306,12 @@ const Statistiques = {
     return { totalFamille, parMentor };
   },
 
-  // Statistiques d'évolution des membres
-  calculateMembresEvolution() {
-    const membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+  // Statistiques d'évolution des membres (optionnellement limitées aux disciples d'un mentor)
+  calculateMembresEvolution(mentorId = null) {
+    let membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+    if (mentorId) {
+      membres = membres.filter(m => m.mentor_id === mentorId);
+    }
     const monthlyData = {};
 
     membres.forEach(m => {
@@ -377,26 +384,31 @@ const PagesStatistiques = {
   // Page principale des statistiques
   async renderStatistiques() {
     this.initDates();
+
+    const isMentorView = AppState.user && AppState.user.role === 'mentor' && !Permissions.hasRole('adjoint_superviseur');
+    const mentorIdForStats = isMentorView ? AppState.user.id : null;
     
     App.showLoading();
     this.stats = await Statistiques.calculatePresenceStats({
       dateDebut: this.currentDateDebut,
-      dateFin: this.currentDateFin
+      dateFin: this.currentDateFin,
+      mentorId: mentorIdForStats
     });
     App.hideLoading();
 
-    const membresEvolution = Statistiques.calculateMembresEvolution();
+    const membresEvolution = Statistiques.calculateMembresEvolution(mentorIdForStats);
     
     // Récupérer les alertes absence (membres avec < 50% de présence sur 30 jours)
     let alertesAbsence = [];
     try {
-      alertesAbsence = await Statistiques.getLowAttendanceMembers(50, 30);
+      alertesAbsence = await Statistiques.getLowAttendanceMembers(50, 30, mentorIdForStats);
     } catch (error) {
       console.error('Erreur chargement alertes absence:', error);
     }
     this.alertesAbsence = alertesAbsence;
 
     return `
+      ${isMentorView ? '<p class="text-muted" style="margin-bottom: var(--spacing-md);"><i class="fas fa-users"></i> Statistiques limitées à vos disciples et nouveaux.</p>' : ''}
       <div class="stats-header">
         <div class="stats-filters">
           <select class="form-control" id="stats-periode" onchange="PagesStatistiques.changePeriode(this.value)">
@@ -1303,21 +1315,23 @@ const PagesStatistiques = {
     Toast.success('Fenêtre ouverte : dans la boîte d\'impression, choisissez « Enregistrer au format PDF » comme destination pour sauvegarder le fichier.');
   },
 
-  // Export PDF (téléchargement direct du fichier)
-  async exportPDF() {
-    try {
-      App.showLoading();
-      await PDFExport.generatePresenceReport(this.stats, {
-        dateDebut: this.currentDateDebut,
-        dateFin: this.currentDateFin,
-        famille: AppState.famille.nom
-      });
-      Toast.success('Téléchargement du rapport PDF en cours.');
-    } catch (error) {
-      console.error('Erreur export PDF:', error);
-      Toast.error(error.message || 'Erreur lors de la génération du rapport PDF.');
-    } finally {
-      App.hideLoading();
+  // Export PDF : ouverture en fenêtre d'impression (fiable, sans page blanche ni coupure)
+  exportPDF() {
+    if (!this.stats) {
+      Toast.error('Aucune donnée de statistiques à exporter. Rechargez la page et réessayez.');
+      return;
+    }
+    const opts = {
+      dateDebut: this.currentDateDebut,
+      dateFin: this.currentDateFin,
+      famille: (AppState.famille && AppState.famille.nom) ? AppState.famille.nom : ''
+    };
+    const htmlContent = PDFExport.buildPresenceHTML(this.stats, opts);
+    const opened = PDFExport.openForPrint(htmlContent, 'Rapport de Présences');
+    if (opened) {
+      Toast.success('Rapport ouvert : dans la fenêtre, cliquez sur « Imprimer / PDF » ou utilisez Ctrl+P, puis choisissez « Enregistrer au format PDF » comme destination.');
+    } else {
+      Toast.error('Autorisez les popups pour ce site pour ouvrir le rapport.');
     }
   }
 };

@@ -119,9 +119,11 @@ const Pages = {
             <option value="">Tous les rôles</option>
             <option value="disciple">Disciples</option>
             <option value="nouveau">Nouveaux</option>
+            ${(isMesDisciples && AppState.user && AppState.user.role === 'mentor') ? '' : `
             <option value="mentor">Mentors</option>
             <option value="adjoint_superviseur">Adjoints</option>
             <option value="superviseur">Superviseurs</option>
+            `}
           </select>
           ${(Permissions.canViewAllMembers() || Permissions.canViewMembersListReadOnly()) && !isMesDisciples ? `
           <select class="form-control" id="filter-mentor" onchange="App.filterMembres()" style="width: auto;">
@@ -331,7 +333,7 @@ const Pages = {
               <label class="form-label required">Rôle</label>
               <select class="form-control" id="membre-role" required onchange="App.toggleMentorField()">
                 <option value="disciple">Disciple</option>
-                ${canAddNouveau ? '<option value="nouveau">Nouveau (sans mentor)</option>' : ''}
+                ${(canAddNouveau || (Permissions.canAddDisciple() && !isAdminOrSuperviseur)) ? '<option value="nouveau">Nouveau (sans mentor)</option>' : ''}
                 ${isAdminOrSuperviseur ? `
                   <option value="mentor">Mentor</option>
                   <option value="adjoint_superviseur">Adjoint superviseur</option>

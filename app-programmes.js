@@ -203,7 +203,7 @@ const Programmes = {
       { value: 'veillee_priere', label: 'Veillée de prière', color: '#673AB7', category: 'priere' },
       { value: 'evangelisation_groupe', label: 'Évangélisation en groupe', color: '#009688', category: 'evangelisation' },
       { value: 'sortie_famille', label: 'Sortie en famille', color: '#E91E63', category: 'famille' },
-      // Programmes d'exhortation pour nouvelles âmes
+      // Cultes en Semaine pour nouvelles âmes
       { value: 'exhort_accueil', label: 'Accueil Nouvelles Âmes', color: '#8BC34A', category: 'exhortation', icon: 'fa-hand-holding-heart' },
       { value: 'exhort_foi_fondements', label: 'Foi & Fondements', color: '#00BCD4', category: 'exhortation', icon: 'fa-book-bible' },
       { value: 'exhort_bapteme', label: 'Préparation au Baptême', color: '#3F51B5', category: 'exhortation', icon: 'fa-water' },

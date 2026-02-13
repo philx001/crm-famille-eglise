@@ -1,6 +1,6 @@
 // ============================================
 // MODULE NOUVELLES ÂMES
-// Gestion des personnes contactées (évangélisation, cultes, exhortations)
+// Gestion des personnes contactées (évangélisation, cultes, cultes en semaine)
 // ============================================
 
 // ============================================
@@ -16,7 +16,7 @@ const NouvellesAmesData = {
 const CANAUX = [
   { value: 'evangelisation', label: 'Évangélisation', icon: 'fa-bullhorn', color: '#1976D2' },
   { value: 'culte', label: 'Culte du dimanche', icon: 'fa-church', color: '#7B1FA2' },
-  { value: 'exhortation', label: 'Programme d\'exhortation', icon: 'fa-hands-praying', color: '#E65100' }
+  { value: 'exhortation', label: 'Culte en Semaine', icon: 'fa-hands-praying', color: '#E65100' }
 ];
 
 // Thématiques d'exhortation
@@ -603,7 +603,7 @@ const SuivisAmes = {
 };
 
 // ============================================
-// INSCRIPTIONS AUX PROGRAMMES D'EXHORTATION
+// INSCRIPTIONS AUX CULTES EN SEMAINE
 // ============================================
 
 const InscriptionsProgrammes = {
@@ -714,7 +714,7 @@ const InscriptionsProgrammes = {
     }
   },
 
-  // Obtenir les programmes d'exhortation disponibles
+  // Obtenir les cultes en semaine disponibles
   getProgrammesExhortation() {
     return AppState.programmes.filter(p => Programmes.isExhortation(p.type));
   },
@@ -1666,10 +1666,10 @@ const PagesNouvellesAmes = {
             </div>
           </div>
           
-          <!-- Programmes d'exhortation -->
+          <!-- Cultes en Semaine -->
           <div class="card mt-3">
             <div class="card-header">
-              <h3 class="card-title"><i class="fas fa-graduation-cap"></i> Programmes d'exhortation</h3>
+              <h3 class="card-title"><i class="fas fa-graduation-cap"></i> Cultes en Semaine</h3>
               ${na.statut !== 'integre' ? `
               <button class="btn btn-sm btn-primary" onclick="PagesNouvellesAmes.showInscriptionModal('${id}')">
                 <i class="fas fa-plus"></i> Inscrire
@@ -2348,7 +2348,7 @@ const PagesNouvellesAmes = {
   },
 
   // ============================================
-  // PROGRAMMES D'EXHORTATION
+  // CULTES EN SEMAINE
   // ============================================
 
   // Rendu de la liste des programmes inscrits
@@ -2360,7 +2360,7 @@ const PagesNouvellesAmes = {
         <div class="empty-state" style="padding: var(--spacing-lg);">
           <i class="fas fa-graduation-cap"></i>
           <h4>Aucune inscription</h4>
-          <p>Inscrivez cette personne à un programme d'exhortation.</p>
+          <p>Inscrivez cette personne à un culte en semaine.</p>
         </div>
       `;
     }
@@ -2454,7 +2454,7 @@ const PagesNouvellesAmes = {
     const na = NouvellesAmes.getById(nouvelleAmeId);
     if (!na) return;
     
-    // Récupérer les programmes d'exhortation
+    // Récupérer les cultes en semaine
     const programmesExhort = InscriptionsProgrammes.getProgrammesExhortation();
     const inscrits = (na.programmes_inscrits || []).map(i => i.programme_id);
     const disponibles = programmesExhort.filter(p => !inscrits.includes(p.id));
@@ -2493,7 +2493,7 @@ const PagesNouvellesAmes = {
             ` : `
             <div class="alert alert-warning">
               <i class="fas fa-info-circle"></i>
-              Aucun programme d'exhortation disponible. Créez d'abord un programme de type "Exhortation" dans le calendrier.
+              Aucun culte en semaine disponible. Créez d'abord un programme de type "Culte en Semaine" dans le calendrier.
             </div>
             `}
           </div>

@@ -89,6 +89,7 @@ const Auth = {
             email: userData.email || '',
             prenom: userData.prenom || '',
             nom: userData.nom || '',
+            role: userData.role || '',
             famille_id: familleId,
             date: firebase.firestore.FieldValue.serverTimestamp()
           });
@@ -758,7 +759,7 @@ const Membres = {
 
       if (typeof AuditLog !== 'undefined') {
         const m = AppState.membres.find(mem => mem.id === id);
-        AuditLog.recordModification(AppState.user.id, AppState.user.email, AppState.user.prenom, AppState.user.nom, 'archivage_membre', 'utilisateurs', id, m ? `${m.prenom} ${m.nom}` : null);
+        AuditLog.recordModification(AppState.user.id, AppState.user.email, AppState.user.prenom, AppState.user.nom, AppState.user.role, 'archivage_membre', 'utilisateurs', id, m ? `${m.prenom} ${m.nom}` : null);
       }
 
       const idx = AppState.membres.findIndex(m => m.id === id);
@@ -793,7 +794,7 @@ const Membres = {
 
       if (typeof AuditLog !== 'undefined') {
         const m = AppState.membres.find(mem => mem.id === id);
-        AuditLog.recordModification(AppState.user.id, AppState.user.email, AppState.user.prenom, AppState.user.nom, 'deblocage_membre', 'utilisateurs', id, m ? `${m.prenom} ${m.nom}` : null);
+        AuditLog.recordModification(AppState.user.id, AppState.user.email, AppState.user.prenom, AppState.user.nom, AppState.user.role, 'deblocage_membre', 'utilisateurs', id, m ? `${m.prenom} ${m.nom}` : null);
       }
 
       const idx = AppState.membres.findIndex(m => m.id === id);
@@ -848,13 +849,14 @@ const Membres = {
 
 // Journal d'activité (logs) — écriture côté client, lecture admin uniquement
 const AuditLog = {
-  async recordModification(userId, userEmail, userPrenom, userNom, action, collectionName, documentId, details) {
+  async recordModification(userId, userEmail, userPrenom, userNom, userRole, action, collectionName, documentId, details) {
     try {
       await db.collection('logs_modification').add({
         user_id: userId,
         user_email: userEmail || '',
         user_prenom: userPrenom || '',
         user_nom: userNom || '',
+        user_role: userRole || '',
         action,
         collection: collectionName,
         document_id: documentId || null,

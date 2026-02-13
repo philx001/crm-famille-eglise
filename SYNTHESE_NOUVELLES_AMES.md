@@ -9,7 +9,7 @@
 ## 🎯 RÉSUMÉ EXÉCUTIF
 
 ### Objectifs principaux
-1. **Gérer les nouvelles âmes** contactées via 3 canaux : évangélisation, cultes, programmes d'exhortation
+1. **Gérer les nouvelles âmes** contactées via 3 canaux : évangélisation, cultes, cultes en semaine
 2. **Assurer le suivi personnalisé** de chaque personne jusqu'à son intégration
 3. **Planifier et piloter l'évangélisation** par famille (sessions hebdomadaires, secteurs, contacts)
 4. **Mesurer l'efficacité** via statistiques et rapports
@@ -331,7 +331,7 @@ ${Permissions.canManageNouvellesAmes() ? `
 ---
 
 ### 4. `app-programmes.js`
-**Ajouter les types de programmes d'exhortation :**
+**Ajouter les types de cultes en semaine :**
 ```javascript
 getTypes() {
   return [
@@ -465,13 +465,13 @@ match /secteurs_evangelisation/{docId} {
 
 ---
 
-### 📌 Sprint 4 : Programmes d'Exhortation (Priorité MOYENNE)
+### 📌 Sprint 4 : Cultes en Semaine (Priorité MOYENNE)
 **Durée estimée : 4h**
 
 | # | Tâche | Description |
 |---|-------|-------------|
-| 4.1 | Ajouter types de programmes | 6 thématiques d'exhortation |
-| 4.2 | Formulaire d'accueil | Pour nouvelles âmes aux exhortations |
+| 4.1 | Ajouter types de programmes | 6 thématiques de culte en semaine |
+| 4.2 | Formulaire d'accueil | Pour nouvelles âmes aux cultes en semaine |
 | 4.3 | Lien programme → nouvelle âme | Association automatique |
 
 **Livrable Sprint 4 :** Types de programmes enrichis
@@ -520,7 +520,7 @@ match /secteurs_evangelisation/{docId} {
 
 ### Sprint 4
 - [ ] Nouveaux types de programmes visibles
-- [ ] Création programme exhortation OK
+- [ ] Création culte en semaine OK
 - [ ] Lien avec nouvelles âmes fonctionnel
 
 ### Sprint 5

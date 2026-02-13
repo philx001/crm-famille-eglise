@@ -259,12 +259,12 @@ const App = {
 
   navigateFromHash() {
     const { page, params } = this.parseHash();
-    const validPages = ['dashboard', 'membres', 'membres-add', 'profil', 'profil-edit', 'mon-compte', 'annuaire',
+    const validPages = ['dashboard', 'membres', 'membres-add', 'archives-membres', 'profil', 'profil-edit', 'mon-compte', 'annuaire',
       'mes-disciples', 'calendrier', 'programmes', 'programmes-add', 'programmes-edit', 'programme-detail',
       'presences', 'historique-membre', 'statistiques', 'notifications', 'sujets-priere', 'temoignages',
       'documents', 'notes-personnelles', 'nouvelles-ames', 'nouvelles-ames-add', 'nouvelle-ame-detail', 'nouvelle-ame-suivi',
       'evangelisation', 'evangelisation-stats', 'evangelisation-planning', 'evangelisation-add',
-      'evangelisation-detail', 'secteurs'];
+      'evangelisation-detail', 'secteurs', 'admin-familles', 'logs'];
     if (validPages.includes(page)) {
       AppState.currentPage = page;
       this.currentParams = params;

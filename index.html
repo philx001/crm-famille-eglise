@@ -17,7 +17,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
   
-  <!-- Font Awesome -->
+  <!-- Font Awesome (preconnect pour accélérer le chargement) -->
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
   <!-- Chart.js -->
@@ -61,18 +62,18 @@
   <script src="app-nouvelles-ames.js?v=__APP_VERSION__"></script>
   <script src="app-evangelisation.js?v=__APP_VERSION__"></script>
   <script src="app-main.js?v=__APP_VERSION__"></script>
-  <!-- Filet de sécurité : si après 8 s le spinner est encore visible (script 404 ou Auth bloqué), afficher un message -->
+  <!-- Filet de sécurité : si après 20 s le spinner est encore visible (script 404 ou Auth bloqué), afficher un message -->
   <script>
     (function () {
       setTimeout(function () {
         var app = document.getElementById('app');
-        if (app && app.querySelector && app.querySelector('.spinner')) {
+        if (app && app.querySelector && app.querySelector('.spinner') && typeof App !== 'undefined' && !App._initDone) {
           app.innerHTML = '<div class="card" style="max-width:400px;margin:2rem auto;padding:1.5rem;text-align:center;">' +
             '<p><strong>Chargement trop long</strong></p>' +
             '<p>Vérifiez votre connexion, désactivez les bloqueurs de publicité pour ce site, puis <a href="#" onclick="location.reload();return false;">rafraîchir (F5)</a>.</p>' +
             '<p style="font-size:0.85rem;color:#666;">Si le problème persiste, ouvrez la console (F12) et notez les erreurs affichées.</p></div>';
         }
-      }, 8000);
+      }, 20000);
     })();
   </script>
 </body>

@@ -992,27 +992,46 @@ const Pages = {
     `;
   },
 
-  async renderLogs() {
+  renderLogs() {
     if (!Permissions.isAdmin()) return '<div class="alert alert-danger">Accès réservé à l\'administrateur.</div>';
-    let connexions = [];
-    let modifications = [];
-    try {
-      const [snapConnexions, snapModifications] = await Promise.all([
-        db.collection('logs_connexion').orderBy('date', 'desc').limit(80).get(),
-        db.collection('logs_modification').orderBy('date', 'desc').limit(80).get()
-      ]);
-      connexions = snapConnexions.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      modifications = snapModifications.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    } catch (e) {
-      console.error('Erreur chargement logs:', e);
-      return '<div class="alert alert-danger">Impossible de charger le journal d\'activité. Vérifiez les règles Firestore (lecture réservée à l\'admin).</div>';
-    }
-    const formatLogDate = (d) => {
-      if (!d) return '-';
-      const t = d.toDate ? d.toDate() : new Date(d);
-      return isNaN(t.getTime()) ? '-' : t.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    };
-    return `
+    const roleOptions = [
+      { value: '', label: 'Tous les rôles' },
+      { value: 'admin', label: 'Administrateur' },
+      { value: 'superviseur', label: 'Superviseur' },
+      { value: 'adjoint_superviseur', label: 'Adjoint superviseur' },
+      { value: 'mentor', label: 'Mentor' },
+      { value: 'disciple', label: 'Disciple' },
+      { value: 'nouveau', label: 'Nouveau' }
+    ];
+    const bounds = Utils.getDateFilterBounds ? Utils.getDateFilterBounds() : { min: '2020-01-01', max: '2030-12-31' };
+    const loadingRow = '<tr><td colspan="5" class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> Chargement...</td></tr>';
+    const loadingRowModif = '<tr><td colspan="6" class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> Chargement...</td></tr>';
+    const html = `
+      <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h3 class="card-title mb-0"><i class="fas fa-filter"></i> Filtres</h3>
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <label class="d-flex align-items-center gap-1">
+              <span class="text-muted" style="font-size: 0.9rem;">Du</span>
+              <input type="date" class="form-control form-control-sm input-date" id="logs-filter-du"
+                     min="${bounds.min}" max="${bounds.max}" style="width: 140px;"
+                     title="Cliquez pour ouvrir le calendrier" onchange="Pages.filterLogs()">
+            </label>
+            <label class="d-flex align-items-center gap-1">
+              <span class="text-muted" style="font-size: 0.9rem;">Au</span>
+              <input type="date" class="form-control form-control-sm input-date" id="logs-filter-au"
+                     min="${bounds.min}" max="${bounds.max}" style="width: 140px;"
+                     title="Cliquez pour ouvrir le calendrier" onchange="Pages.filterLogs()">
+            </label>
+            <label class="d-flex align-items-center gap-1">
+              <span class="text-muted" style="font-size: 0.9rem;">Rôle</span>
+              <select class="form-control form-control-sm" id="logs-filter-role" style="width: 160px;" onchange="Pages.filterLogs()">
+                ${roleOptions.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
       <div class="card mb-3">
         <div class="card-header">
           <h3 class="card-title"><i class="fas fa-sign-in-alt"></i> Connexions</h3>
@@ -1021,17 +1040,10 @@ const Pages = {
           <div class="table-container">
             <table class="table">
               <thead>
-                <tr><th>Date</th><th>Membre</th><th>Email</th><th>Famille</th></tr>
+                <tr><th>Date</th><th>Membre</th><th>Rôle</th><th>Email</th><th>Famille</th></tr>
               </thead>
-              <tbody>
-                ${connexions.length === 0 ? '<tr><td colspan="4" class="text-center text-muted">Aucune connexion enregistrée.</td></tr>' : connexions.map(l => `
-                  <tr>
-                    <td>${formatLogDate(l.date)}</td>
-                    <td>${Utils.escapeHtml((l.prenom || '') + ' ' + (l.nom || ''))}</td>
-                    <td>${Utils.escapeHtml(l.email || '')}</td>
-                    <td><code>${Utils.escapeHtml(l.famille_id || '')}</code></td>
-                  </tr>
-                `).join('')}
+              <tbody id="logs-tbody-connexions">
+                ${loadingRow}
               </tbody>
             </table>
           </div>
@@ -1045,25 +1057,126 @@ const Pages = {
           <div class="table-container">
             <table class="table">
               <thead>
-                <tr><th>Date</th><th>Par</th><th>Action</th><th>Document</th><th>Détails</th></tr>
+                <tr><th>Date</th><th>Par</th><th>Rôle</th><th>Action</th><th>Document</th><th>Détails</th></tr>
               </thead>
-              <tbody>
-                ${modifications.length === 0 ? '<tr><td colspan="5" class="text-center text-muted">Aucune modification enregistrée.</td></tr>' : modifications.map(l => `
-                  <tr>
-                    <td>${formatLogDate(l.date)}</td>
-                    <td>${Utils.escapeHtml((l.user_prenom || '') + ' ' + (l.user_nom || ''))} <span class="text-muted">${Utils.escapeHtml(l.user_email || '')}</span></td>
-                    <td>${Utils.escapeHtml(l.action || '')}</td>
-                    <td>${Utils.escapeHtml(l.collection || '')} / ${Utils.escapeHtml(l.document_id || '')}</td>
-                    <td>${l.details ? Utils.escapeHtml(String(l.details)) : '-'}</td>
-                  </tr>
-                `).join('')}
+              <tbody id="logs-tbody-modifications">
+                ${loadingRowModif}
               </tbody>
             </table>
           </div>
         </div>
       </div>
-      <p class="text-muted mt-2" style="font-size: 0.85rem;">Dernières 80 entrées par type. Les données sont strictement réservées à l'administrateur.</p>
+      <p class="text-muted mt-2" style="font-size: 0.85rem;">Dernières 100 entrées par type. Filtrage par date et rôle. Les données sont strictement réservées à l'administrateur.</p>
     `;
+    setTimeout(() => Pages.loadLogsData(), 0);
+    return html;
+  },
+
+  async loadLogsData() {
+    if (!Permissions.isAdmin()) return;
+    const tbodyConnexions = document.getElementById('logs-tbody-connexions');
+    const tbodyModifications = document.getElementById('logs-tbody-modifications');
+    if (!tbodyConnexions || !tbodyModifications) return;
+    try {
+      const [snapConnexions, snapModifications] = await Promise.all([
+        db.collection('logs_connexion').orderBy('date', 'desc').limit(100).get(),
+        db.collection('logs_modification').orderBy('date', 'desc').limit(100).get()
+      ]);
+      const connexions = snapConnexions.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const modifications = snapModifications.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      Pages.logsConnexions = connexions;
+      Pages.logsModifications = modifications;
+      Pages.renderLogsTables(connexions, modifications);
+    } catch (e) {
+      console.error('Erreur chargement logs:', e);
+      tbodyConnexions.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">Impossible de charger. Vérifiez les règles Firestore (lecture réservée à l\'admin).</td></tr>';
+      tbodyModifications.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Erreur de chargement.</td></tr>';
+    }
+  },
+
+  renderLogsTables(connexions, modifications) {
+    const formatLogDate = (d) => {
+      if (!d) return '-';
+      const t = d.toDate ? d.toDate() : new Date(d);
+      return isNaN(t.getTime()) ? '-' : t.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
+    const tbodyConnexions = document.getElementById('logs-tbody-connexions');
+    const tbodyModifications = document.getElementById('logs-tbody-modifications');
+    if (!tbodyConnexions || !tbodyModifications) return;
+    tbodyConnexions.innerHTML = connexions.length === 0
+      ? '<tr><td colspan="5" class="text-center text-muted">Aucune connexion enregistrée.</td></tr>'
+      : connexions.map(l => `
+        <tr>
+          <td>${formatLogDate(l.date)}</td>
+          <td>${Utils.escapeHtml((l.prenom || '') + ' ' + (l.nom || ''))}</td>
+          <td><span class="badge badge-${l.role || 'secondary'}">${l.role ? (Utils.getRoleLabel ? Utils.getRoleLabel(l.role) : l.role) : '-'}</span></td>
+          <td>${Utils.escapeHtml(l.email || '')}</td>
+          <td><code>${Utils.escapeHtml(l.famille_id || '')}</code></td>
+        </tr>
+      `).join('');
+    tbodyModifications.innerHTML = modifications.length === 0
+      ? '<tr><td colspan="6" class="text-center text-muted">Aucune modification enregistrée.</td></tr>'
+      : modifications.map(l => `
+        <tr>
+          <td>${formatLogDate(l.date)}</td>
+          <td>${Utils.escapeHtml((l.user_prenom || '') + ' ' + (l.user_nom || ''))} <span class="text-muted">${Utils.escapeHtml(l.user_email || '')}</span></td>
+          <td><span class="badge badge-${l.user_role || 'secondary'}">${l.user_role ? (Utils.getRoleLabel ? Utils.getRoleLabel(l.user_role) : l.user_role) : '-'}</span></td>
+          <td>${Utils.escapeHtml(l.action || '')}</td>
+          <td>${Utils.escapeHtml(l.collection || '')} / ${Utils.escapeHtml(l.document_id || '')}</td>
+          <td>${l.details ? Utils.escapeHtml(String(l.details)) : '-'}</td>
+        </tr>
+      `).join('');
+  },
+
+  filterLogs() {
+    if (!Pages.logsConnexions || !Pages.logsModifications) return;
+    const duVal = document.getElementById('logs-filter-du')?.value || '';
+    const auVal = document.getElementById('logs-filter-au')?.value || '';
+    const roleVal = document.getElementById('logs-filter-role')?.value || '';
+    const formatLogDate = (d) => {
+      if (!d) return '-';
+      const t = d.toDate ? d.toDate() : new Date(d);
+      return isNaN(t.getTime()) ? '-' : t.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
+    const filterRow = (l, dateField, roleField) => {
+      const dateStr = l.date ? (l.date.toDate ? l.date.toDate() : new Date(l.date)).toISOString().slice(0, 10) : '';
+      const r = roleField === 'role' ? (l.role || '') : (l.user_role || '');
+      if (duVal && dateStr < duVal) return false;
+      if (auVal && dateStr > auVal) return false;
+      if (roleVal && r !== roleVal) return false;
+      return true;
+    };
+    const filteredConnexions = Pages.logsConnexions.filter(l => filterRow(l, 'date', 'role'));
+    const filteredModifications = Pages.logsModifications.filter(l => filterRow(l, 'date', 'user_role'));
+    const tbodyConnexions = document.getElementById('logs-tbody-connexions');
+    const tbodyModifications = document.getElementById('logs-tbody-modifications');
+    if (tbodyConnexions) {
+      tbodyConnexions.innerHTML = filteredConnexions.length === 0
+        ? '<tr><td colspan="5" class="text-center text-muted">Aucune connexion correspondant aux filtres.</td></tr>'
+        : filteredConnexions.map(l => `
+          <tr>
+            <td>${formatLogDate(l.date)}</td>
+            <td>${Utils.escapeHtml((l.prenom || '') + ' ' + (l.nom || ''))}</td>
+            <td><span class="badge badge-${l.role || 'secondary'}">${l.role ? (Utils.getRoleLabel ? Utils.getRoleLabel(l.role) : l.role) : '-'}</span></td>
+            <td>${Utils.escapeHtml(l.email || '')}</td>
+            <td><code>${Utils.escapeHtml(l.famille_id || '')}</code></td>
+          </tr>
+        `).join('');
+    }
+    if (tbodyModifications) {
+      tbodyModifications.innerHTML = filteredModifications.length === 0
+        ? '<tr><td colspan="6" class="text-center text-muted">Aucune modification correspondant aux filtres.</td></tr>'
+        : filteredModifications.map(l => `
+          <tr>
+            <td>${formatLogDate(l.date)}</td>
+            <td>${Utils.escapeHtml((l.user_prenom || '') + ' ' + (l.user_nom || ''))} <span class="text-muted">${Utils.escapeHtml(l.user_email || '')}</span></td>
+            <td><span class="badge badge-${l.user_role || 'secondary'}">${l.user_role ? (Utils.getRoleLabel ? Utils.getRoleLabel(l.user_role) : l.user_role) : '-'}</span></td>
+            <td>${Utils.escapeHtml(l.action || '')}</td>
+            <td>${Utils.escapeHtml(l.collection || '')} / ${Utils.escapeHtml(l.document_id || '')}</td>
+            <td>${l.details ? Utils.escapeHtml(String(l.details)) : '-'}</td>
+          </tr>
+        `).join('');
+    }
   }
 };
 

@@ -35,9 +35,9 @@ Ce document détaille les fonctionnalités à ajouter à l'application CRM Famil
 ### Canaux d'acquisition des nouvelles âmes
 1. **Évangélisation** : Personnes contactées dans la rue ou lors de programmes d'évangélisation
 2. **Cultes du dimanche** : Nouvelles âmes accueillies à l'issue des cultes
-3. **Programmes d'exhortation** : Personnes venues aux programmes thématiques en semaine (lundi-samedi)
+3. **Cultes en Semaine** : Personnes venues aux programmes thématiques en semaine (lundi-samedi)
 
-### Thématiques des programmes d'exhortation
+### Thématiques des cultes en semaine
 - Défis des finances
 - Santé
 - Couple/Famille
@@ -84,7 +84,7 @@ Ce document détaille les fonctionnalités à ajouter à l'application CRM Famil
   date_premier_contact: Timestamp,
   lieu_premier_contact: string | null,
 
-  // Pour programme d'exhortation uniquement
+  // Pour culte en semaine uniquement
   thematique_exhortation: "finances" | "sante" | "couple_famille" | "travail_affaires" | "emotionnel_spirituel" | "autres" | null,
 
   // Suivi
@@ -289,7 +289,7 @@ const PagesNouvellesAmes = {
 **Fonctionnalités :**
 - Tableau avec colonnes : Nom, Téléphone, Canal, Statut, Dernière présence, Mentor, Actions
 - Filtres :
-  - Par canal d'acquisition (tous, évangélisation, culte, exhortation)
+  - Par canal d'acquisition (tous, évangélisation, culte, culte en semaine)
   - Par statut (tous, nouveau, en cours, intégré, inactif, perdu)
   - Par mentor assigné
 - Recherche par nom/téléphone
@@ -361,7 +361,7 @@ const PagesNouvellesAmes = {
 - Canal d'acquisition (avec icône)
 - Date du premier contact
 - Lieu du premier contact
-- Thématique (si exhortation)
+- Thématique (si culte en semaine)
 - Contacté par (nom)
 
 **4. Suivi**
@@ -409,10 +409,10 @@ const PagesNouvellesAmes = {
 - Canal d'acquisition (requis) : Radio buttons
   - 📢 Évangélisation
   - ⛪ Culte du dimanche
-  - 🎯 Programme d'exhortation
+  - 🎯 Culte en Semaine
 - Date du premier contact (requis)
 - Lieu du premier contact (optionnel)
-- Thématique (si exhortation sélectionné)
+- Thématique (si culte en semaine sélectionné)
 
 **Section 3 : Suivi**
 - Contacté par (auto-rempli : utilisateur actuel)
@@ -985,7 +985,7 @@ renderPresenceRow(presence, index) {
 - Graphique camembert
 - Évangélisation : X (XX%)
 - Culte dimanche : X (XX%)
-- Programmes exhortation : X (XX%)
+- Cultes en semaine : X (XX%)
 
 **3. Tableau des nouvelles âmes**
 - Colonnes : Nom, Canal, Statut, Présences, Taux, Mentor
@@ -1116,7 +1116,7 @@ getTypes() {
     { value: 'temps_partage_lundi', label: 'Temps de partage du lundi', color: '#4CAF50' },
     // ... autres types existants ...
 
-    // NOUVEAUX TYPES - Programmes d'exhortation
+    // NOUVEAUX TYPES - Cultes en Semaine
     { value: 'exhortation_finances', label: 'Exhortation - Défis Finances', color: '#4CAF50' },
     { value: 'exhortation_sante', label: 'Exhortation - Santé', color: '#03A9F4' },
     { value: 'exhortation_couple', label: 'Exhortation - Couple/Famille', color: '#E91E63' },
@@ -1130,7 +1130,7 @@ getTypes() {
 **Utilité :**
 - Permet de créer des programmes spécifiques pour chaque thématique
 - Les nouvelles âmes peuvent être pointées à ces programmes
-- Statistiques par type de programme d'exhortation
+- Statistiques par type de culte en semaine
 
 ---
 
@@ -1743,7 +1743,7 @@ service cloud.firestore {
    - Ajouter badge de notification pour alertes
 
 6. **app-programmes.js**
-   - Ajouter 6 nouveaux types de programmes d'exhortation (section 3.5)
+   - Ajouter 6 nouveaux types de cultes en semaine (section 3.5)
 
 7. **app-presences.js**
    - Modifier pour supporter le pointage des nouvelles âmes
@@ -1879,7 +1879,7 @@ service cloud.firestore {
 1. Dashboard : nouvelles cartes
 2. Statistiques étendues
 3. Alertes automatiques
-4. Types de programmes d'exhortation
+4. Types de cultes en semaine
 5. Styles et composants UI
 
 #### Phase 5 : Tests & Documentation (4h)
@@ -1930,7 +1930,7 @@ service cloud.firestore {
 - [ ] Alertes nouvelles âmes fonctionnelles
 - [ ] Présences : nouvelles âmes pointables
 - [ ] Statistiques : onglets ajoutés
-- [ ] Types programmes exhortation ajoutés
+- [ ] Types cultes en semaine ajoutés
 - [ ] Sidebar : section évangélisation visible
 - [ ] Badges colorés corrects
 - [ ] Composants UI responsive

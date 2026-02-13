@@ -7,7 +7,7 @@
 
 ## 🎯 Objectifs
 
-1. **Gestion des nouvelles âmes** : Suivre les personnes contactées via différents canaux (évangélisation, cultes, exhortations)
+1. **Gestion des nouvelles âmes** : Suivre les personnes contactées via différents canaux (évangélisation, cultes, cultes en semaine)
 2. **Suivi personnalisé** : Accompagner chaque nouvelle âme jusqu'à son intégration dans une famille
 3. **Gestion de l'évangélisation** : Planifier et suivre les sessions d'évangélisation hebdomadaires
 4. **Statistiques** : Mesurer l'efficacité des actions et le taux de fidélisation
@@ -171,13 +171,13 @@
 | B6 | **Statistiques évangélisation** | Nb contacts/semaine, par secteur, par participant, taux de conversion | Moyenne |
 | B7 | **Export rapport hebdomadaire** | PDF avec résumé de la semaine d'évangélisation | Faible |
 
-### C. Programmes d'exhortation
+### C. Cultes en Semaine
 
 | # | Fonctionnalité | Description | Complexité |
 |---|----------------|-------------|------------|
 | C1 | **Nouveau type de programme** | Ajouter "exhortation" aux types de programmes | Faible |
 | C2 | **Thématiques** | Gestion des thématiques (finances, santé, couple, travail, émotionnel, autre) | Faible |
-| C3 | **Accueil spécifique** | Formulaire d'accueil pour les nouvelles âmes arrivant aux exhortations | Moyenne |
+| C3 | **Accueil spécifique** | Formulaire d'accueil pour les nouvelles âmes arrivant aux cultes en semaine | Moyenne |
 
 ### D. Cultes (accueil dimanche)
 
@@ -259,7 +259,7 @@
 - Invité par un membre
 - Venu spontanément
 
-### Programmes d'exhortation (Lundi-Samedi)
+### Cultes en Semaine (Lundi-Samedi)
 | Thématique | Description |
 |------------|-------------|
 | Finances | Défis financiers, dettes, gestion |

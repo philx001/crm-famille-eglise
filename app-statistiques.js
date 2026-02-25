@@ -43,10 +43,17 @@ const Statistiques = {
       allPresences.push(...presences.map(p => ({ ...p, programme: prog })));
     }
 
-    // Calculer les stats globales
+    // totalPresencesAttendues = somme des programmes où chaque membre était déjà dans la famille
+    let totalPresencesAttendues = 0;
     const totalProgrammes = programmes.length;
     const totalMembres = membres.length;
-    const totalPresencesAttendues = totalProgrammes * totalMembres;
+
+    membres.forEach(m => {
+      programmes.forEach(prog => {
+        const dProg = prog.date_debut?.toDate ? prog.date_debut.toDate() : new Date(prog.date_debut);
+        if (Utils.membreEtaitDansFamilleALaDate(m, dProg)) totalPresencesAttendues++;
+      });
+    });
 
     const presencesByStatut = {
       present: 0,
@@ -56,7 +63,8 @@ const Statistiques = {
     };
 
     allPresences.forEach(p => {
-      if (membres.find(m => m.id === p.disciple_id)) {
+      const membre = membres.find(m => m.id === p.disciple_id);
+      if (membre && Utils.membreEtaitDansFamilleALaDate(membre, p.programme?.date_debut)) {
         presencesByStatut[p.statut]++;
       }
     });
@@ -65,13 +73,23 @@ const Statistiques = {
       ? Math.round((presencesByStatut.present / totalPresencesAttendues) * 100 * 10) / 10
       : 0;
 
-    // Stats par type de programme (ne compter que les présences des membres filtrés)
+    // Stats par type de programme (ne compter que les présences attendues par membre)
     const membreIds = new Set(membres.map(m => m.id));
     const statsByType = {};
     Programmes.getTypes().forEach(type => {
       const progsOfType = programmes.filter(p => p.type === type.value);
-      const presencesOfType = allPresences.filter(p => p.programme.type === type.value && membreIds.has(p.disciple_id));
-      const expectedOfType = progsOfType.length * totalMembres;
+      let expectedOfType = 0;
+      membres.forEach(m => {
+        progsOfType.forEach(prog => {
+          const dProg = prog.date_debut?.toDate ? prog.date_debut.toDate() : new Date(prog.date_debut);
+          if (Utils.membreEtaitDansFamilleALaDate(m, dProg)) expectedOfType++;
+        });
+      });
+      const presencesOfType = allPresences.filter(p => 
+        p.programme.type === type.value && 
+        membreIds.has(p.disciple_id) && 
+        Utils.membreEtaitDansFamilleALaDate(membres.find(x => x.id === p.disciple_id), p.programme?.date_debut)
+      );
       const presentOfType = presencesOfType.filter(p => p.statut === 'present').length;
 
       if (progsOfType.length > 0) {
@@ -87,9 +105,17 @@ const Statistiques = {
       }
     });
 
-    // Stats par membre
+    // Stats par membre (nbTotal = programmes où le membre était attendu)
     const statsByMembre = membres.map(membre => {
-      const presencesMembre = allPresences.filter(p => p.disciple_id === membre.id);
+      const programmesAttendus = programmes.filter(prog => {
+        const dProg = prog.date_debut?.toDate ? prog.date_debut.toDate() : new Date(prog.date_debut);
+        return Utils.membreEtaitDansFamilleALaDate(membre, dProg);
+      });
+      const nbTotal = programmesAttendus.length;
+      const presencesMembre = allPresences.filter(p => 
+        p.disciple_id === membre.id && 
+        Utils.membreEtaitDansFamilleALaDate(membre, p.programme?.date_debut)
+      );
       const presents = presencesMembre.filter(p => p.statut === 'present').length;
       const absents = presencesMembre.filter(p => p.statut === 'absent').length;
       const excuses = presencesMembre.filter(p => p.statut === 'excuse').length;
@@ -105,12 +131,12 @@ const Statistiques = {
         nbPresences: presents,
         nbAbsences: absents,
         nbExcuses: excuses,
-        nbTotal: totalProgrammes,
-        tauxPresence: totalProgrammes > 0 ? Math.round((presents / totalProgrammes) * 100 * 10) / 10 : 0
+        nbTotal,
+        tauxPresence: nbTotal > 0 ? Math.round((presents / nbTotal) * 100 * 10) / 10 : 0
       };
     }).sort((a, b) => b.tauxPresence - a.tauxPresence);
 
-    // Évolution mensuelle
+    // Évolution mensuelle (avec filtrage par date d'entrée)
     const evolution = this.calculateMonthlyEvolution(programmes, allPresences, membres);
 
     return {
@@ -172,7 +198,7 @@ const Statistiques = {
       .sort((a, b) => a.tauxPresence - b.tauxPresence);
   },
 
-  // Calculer l'évolution mensuelle
+  // Calculer l'évolution mensuelle (nbAttendus = membres attendus par programme, filtrés par date d'entrée)
   calculateMonthlyEvolution(programmes, presences, membres) {
     const monthlyData = {};
 
@@ -191,14 +217,17 @@ const Statistiques = {
       }
       
       monthlyData[monthKey].nbProgrammes++;
-      monthlyData[monthKey].nbAttendus += membres.length;
+      membres.forEach(m => {
+        if (Utils.membreEtaitDansFamilleALaDate(m, d)) monthlyData[monthKey].nbAttendus++;
+      });
     });
 
     const membreIdsEvolution = new Set(membres.map(m => m.id));
     presences.forEach(p => {
       const prog = p.programme;
       if (!prog) return;
-      if (!membreIdsEvolution.has(p.disciple_id)) return;
+      const membre = membres.find(m => m.id === p.disciple_id);
+      if (!membre || !Utils.membreEtaitDansFamilleALaDate(membre, prog.date_debut)) return;
       const d = prog.date_debut?.toDate ? prog.date_debut.toDate() : new Date(prog.date_debut);
       const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       
@@ -547,7 +576,7 @@ const PagesStatistiques = {
       <!-- Tableau détaillé par membre -->
       <div class="card mt-3">
         <div class="card-header">
-          <h3 class="card-title"><i class="fas fa-users"></i> Détail par membre</h3>
+          <h3 class="card-title"><i class="fas fa-users"></i> Détail par membre <span class="badge badge-secondary" style="font-weight: 600;">${(this.stats.parMembre || []).length}</span></h3>
           <div class="search-box" style="width: 250px;">
             <i class="fas fa-search"></i>
             <input type="text" class="form-control" placeholder="Rechercher..." 
@@ -607,7 +636,7 @@ const PagesStatistiques = {
       <!-- Répartition des membres par mentor (superviseur + admin uniquement) -->
       <div class="card mt-3">
         <div class="card-header">
-          <h3 class="card-title"><i class="fas fa-users-cog"></i> Répartition des membres par mentor</h3>
+          <h3 class="card-title"><i class="fas fa-users-cog"></i> Répartition des membres par mentor <span class="badge badge-secondary" style="font-weight: 600;">${this.stats.global.totalMembres} membre${this.stats.global.totalMembres !== 1 ? 's' : ''}</span></h3>
           <span class="badge badge-secondary">Proportion de la famille</span>
         </div>
         <div class="card-body">

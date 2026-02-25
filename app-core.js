@@ -78,6 +78,24 @@ const Utils = {
     return { min: '1900-01-01', max: today };
   },
 
+  /**
+   * Retourne la date d'entrée du membre dans la famille (pour pointage et statistiques).
+   * Utilise created_at ; si absent, retourne "aujourd'hui" pour exclure des programmes passés.
+   */
+  getDateEntreeFamille(membre) {
+    if (!membre) return new Date();
+    const src = membre.created_at || membre.date_arrivee_icc;
+    if (!src) return new Date(); // Pas de date connue → exclure des programmes passés
+    return src.toDate ? src.toDate() : new Date(src);
+  },
+
+  /** Vérifie si le membre était dans la famille à la date du programme (pour pointage/stats). */
+  membreEtaitDansFamilleALaDate(membre, dateProgramme) {
+    const dateEntree = this.getDateEntreeFamille(membre);
+    const dProg = dateProgramme?.toDate ? dateProgramme.toDate() : new Date(dateProgramme);
+    return dateEntree <= dProg;
+  },
+
   formatRelativeDate(date) {
     if (!date) return '';
     const d = date.toDate ? date.toDate() : new Date(date);
@@ -186,6 +204,9 @@ const Utils = {
     { value: 'spirituel', label: 'Pôle Spirituel' },
     { value: 'evenementiel', label: 'Pôle Evènementiel' },
     { value: 'evangelisation', label: 'Pôle Evangélisation' },
+    { value: 'solidarite', label: 'Pôle Solidarité' },
+    { value: 'partage_formation', label: 'Pôle Partage et Formation' },
+    { value: 'integration', label: 'Pôle Intégration' },
     { value: 'aucun', label: 'Aucun' }
   ],
 

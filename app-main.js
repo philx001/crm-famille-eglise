@@ -281,14 +281,34 @@ const App = {
     try {
     switch (AppState.currentPage) {
       case 'dashboard': pageTitle = 'Tableau de bord'; pageContent = await this.renderDashboardEnhanced(); break;
-      case 'membres': pageTitle = 'Membres'; pageContent = Pages.renderMembres(); break;
+      case 'membres': {
+        const nbMembres = (AppState.membres || []).filter(m => m.statut_compte === 'actif').length;
+        pageTitle = `Membres (${nbMembres})`;
+        pageContent = Pages.renderMembres();
+        break;
+      }
       case 'membres-add': pageTitle = 'Ajouter un membre'; pageContent = Pages.renderAddMembre(); break;
-      case 'archives-membres': pageTitle = 'Archivage des membres'; pageContent = Pages.renderArchivesMembres(); break;
+      case 'archives-membres': {
+        const nbArchives = (AppState.membres || []).filter(m => m.statut_compte === 'inactif').length;
+        pageTitle = `Archivage des membres (${nbArchives})`;
+        pageContent = Pages.renderArchivesMembres();
+        break;
+      }
       case 'profil': pageTitle = 'Mon profil'; pageContent = Pages.renderProfil(); break;
       case 'profil-edit': pageTitle = 'Modifier le profil'; pageContent = Pages.renderProfilEdit(); break;
       case 'mon-compte': pageTitle = 'Mon compte'; pageContent = Pages.renderMonCompte(); break;
-      case 'annuaire': pageTitle = 'Annuaire'; pageContent = Pages.renderAnnuaire(); break;
-      case 'mes-disciples': pageTitle = 'Mes disciples'; pageContent = Pages.renderMembres(); break;
+      case 'annuaire': {
+        const nbAnnuaire = (AppState.membres || []).filter(m => m.statut_compte === 'actif').length;
+        pageTitle = `Annuaire (${nbAnnuaire})`;
+        pageContent = Pages.renderAnnuaire();
+        break;
+      }
+      case 'mes-disciples': {
+        const nbDisciples = (typeof Membres !== 'undefined' && AppState.user) ? Membres.getDisciples(AppState.user.id).length : 0;
+        pageTitle = `Mes disciples (${nbDisciples})`;
+        pageContent = Pages.renderMembres();
+        break;
+      }
       case 'calendrier': pageTitle = 'Calendrier'; pageContent = await PagesCalendrier.renderCalendrier(); break;
       case 'programmes': pageTitle = 'Programmes'; pageContent = PagesCalendrier.renderProgrammes(); break;
       case 'programmes-add': pageTitle = 'Nouveau programme'; pageContent = PagesCalendrier.renderProgrammeForm(); break;
@@ -296,7 +316,12 @@ const App = {
       case 'programme-detail': pageTitle = 'Détails du programme'; pageContent = await PagesCalendrier.renderProgrammeDetail(this.currentParams.programmeId); break;
       case 'presences': pageTitle = 'Pointage des présences'; pageContent = await PagesPresences.renderPresences(this.currentParams.programmeId); break;
       case 'historique-membre': pageTitle = 'Historique de présence'; pageContent = await PagesPresences.renderHistoriqueMembre(this.currentParams.membreId); break;
-      case 'statistiques': pageTitle = 'Statistiques'; pageContent = await PagesStatistiques.renderStatistiques(); break;
+      case 'statistiques': {
+        const nbStatsMembres = (AppState.membres || []).filter(m => m.statut_compte === 'actif').length;
+        pageTitle = `Statistiques (${nbStatsMembres} membre${nbStatsMembres !== 1 ? 's' : ''})`;
+        pageContent = await PagesStatistiques.renderStatistiques();
+        break;
+      }
       case 'notifications': pageTitle = 'Notifications'; pageContent = await PagesNotifications.render(); break;
       case 'sujets-priere': pageTitle = 'Sujets de prière'; pageContent = await PagesPriere.render(); break;
       case 'temoignages': pageTitle = 'Témoignages'; pageContent = await PagesTemoignages.render(); break;

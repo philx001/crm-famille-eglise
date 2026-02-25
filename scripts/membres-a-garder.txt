@@ -1,0 +1,9 @@
+# Liste des membres à garder (un email par ligne)
+# Les lignes commençant par # sont ignorées.
+# Mettez en premier l'email du membre "repreneur" (admin ou superviseur)
+# qui recevra les réaffectations (disciples, programmes créés par les membres supprimés).
+#
+# Exemple :
+# admin@famille.org
+# superviseur@famille.org
+# mentor1@famille.org

@@ -1,0 +1,14 @@
+{
+  "name": "crm-famille-reset-scripts",
+  "version": "1.0.0",
+  "description": "Scripts pour réinitialiser les données Firestore (données test)",
+  "private": true,
+  "scripts": {
+    "reset": "node reset-firestore-data.js",
+    "delete-content": "node delete-content-data-only.js",
+    "delete-members-except": "node delete-members-except-keep-list.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^11.0.0"
+  }
+}

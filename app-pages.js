@@ -250,7 +250,7 @@ const Pages = {
     return `
       <div class="card">
         <div class="card-header">
-          <h3 class="card-title"><i class="fas fa-archive"></i> Archivage des membres</h3>
+          <h3 class="card-title"><i class="fas fa-archive"></i> Archivage des membres <span class="badge badge-secondary" style="font-weight: 600;">${archives.length}</span></h3>
         </div>
         <div class="card-body">
           <p class="text-muted mb-3">Membres dont le compte a été bloqué (archivés). Vous pouvez les débloquer à tout moment.</p>

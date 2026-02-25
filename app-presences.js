@@ -42,14 +42,14 @@ const PagesPresences = {
     // Charger les présences existantes
     const presences = await Presences.loadByProgramme(programmeId);
     
-    // Obtenir les membres à pointer
+    const dateDebutProg = programme.date_debut?.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);
+
+    // Obtenir les membres à pointer (uniquement ceux qui étaient dans la famille à la date du programme)
     let membres = [];
     if (Permissions.hasRole('adjoint_superviseur')) {
-      // Superviseur et adjoint voient tous les membres actifs
-      membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+      membres = AppState.membres.filter(m => m.statut_compte === 'actif' && Utils.membreEtaitDansFamilleALaDate(m, dateDebutProg));
     } else {
-      // Le mentor voit ses disciples
-      membres = Membres.getDisciples(AppState.user.id);
+      membres = Membres.getDisciples(AppState.user.id).filter(m => Utils.membreEtaitDansFamilleALaDate(m, dateDebutProg));
     }
 
     // Préparer les données de présence
@@ -64,15 +64,13 @@ const PagesPresences = {
       };
     });
 
-    const dateDebut = programme.date_debut?.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);
-
     return `
       <div class="presences-header">
         <div>
-          <h2>${Utils.escapeHtml(programme.nom)}</h2>
+          <h2>${Utils.escapeHtml(programme.nom)} <span class="badge badge-secondary" style="font-size: 0.75rem; font-weight: 600;">${membres.length} membre${membres.length !== 1 ? 's' : ''}</span></h2>
           <p class="text-muted">
-            <i class="fas fa-calendar"></i> ${Utils.formatDate(dateDebut, 'full')} à 
-            ${dateDebut.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+            <i class="fas fa-calendar"></i> ${Utils.formatDate(dateDebutProg, 'full')} à 
+            ${dateDebutProg.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
         <div class="presences-actions">

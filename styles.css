@@ -195,14 +195,14 @@ a:focus-visible {
 }
 
 .sidebar-logo {
-  width: 42px;
-  height: 42px;
+  width: 52px;
+  height: 52px;
   background: var(--secondary);
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  font-size: 1.75rem;
 }
 
 .sidebar-title {
@@ -226,7 +226,7 @@ a:focus-visible {
 .sidebar-family-logo {
   max-width: 100%;
   height: auto;
-  max-height: 56px;
+  max-height: 78px;
   object-fit: contain;
   display: block;
   margin: 0 auto var(--spacing-sm);

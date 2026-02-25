@@ -1,0 +1,4 @@
+# Ne jamais committer la clé Firebase
+serviceAccountKey.json
+
+node_modules/

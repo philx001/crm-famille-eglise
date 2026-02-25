@@ -9,7 +9,9 @@
 
 const NouvellesAmesData = {
   cache: [],
-  loaded: false
+  loaded: false,
+  /** Verrou pour éviter les créations en parallèle (double-soumission) : une seule création à la fois. */
+  _createLock: false
 };
 
 // Canaux d'acquisition
@@ -54,6 +56,48 @@ const TYPES_SUIVI = [
 ];
 
 // ============================================
+// NORMALISATION ET CLÉ D'UNICITÉ (1 fiche = 1 personne)
+// ============================================
+
+function normalizeEmail(v) {
+  if (v == null || typeof v !== 'string') return null;
+  const s = v.trim().toLowerCase();
+  return s || null;
+}
+function normalizeTelephone(v) {
+  if (v == null || typeof v !== 'string') return null;
+  const digits = v.replace(/\D/g, '');
+  return digits || null;
+}
+function normalizeName(v) {
+  if (v == null || typeof v !== 'string') return '';
+  return v.trim().toLowerCase();
+}
+
+/** Retourne la clé d'unicité pour une fiche ou un objet { email?, telephone?, prenom?, nom? }. familleId requis. */
+function getUnicityKey(familleId, naOrData) {
+  const email = normalizeEmail(naOrData.email);
+  if (email) return { type: 'email', value: email, familleId };
+  const tel = normalizeTelephone(naOrData.telephone);
+  if (tel) return { type: 'telephone', value: tel, familleId };
+  const prenom = normalizeName(naOrData.prenom);
+  const nom = normalizeName(naOrData.nom);
+  return { type: 'name', value: prenom + '|' + nom, familleId };
+}
+
+/** Enrichit un objet fiche avec les champs normalisés (pour affichage/cache). Ne modifie pas Firestore. */
+function addNormalizedFields(na, familleId) {
+  const key = getUnicityKey(familleId || na.famille_id, na);
+  return {
+    ...na,
+    _email_normalise: key.type === 'email' ? key.value : normalizeEmail(na.email),
+    _telephone_normalise: key.type === 'telephone' ? key.value : normalizeTelephone(na.telephone),
+    _prenom_normalise: normalizeName(na.prenom),
+    _nom_normalise: normalizeName(na.nom)
+  };
+}
+
+// ============================================
 // GESTION DES NOUVELLES ÂMES
 // ============================================
 
@@ -68,13 +112,15 @@ const NouvellesAmes = {
         .where('famille_id', '==', AppState.famille.id)
         .get();
       
+      const familleId = AppState.famille.id;
       NouvellesAmesData.cache = snapshot.docs.map(doc => {
         const data = doc.data();
-        return {
+        const na = {
           id: doc.id,
           ...data,
           categorie: data.categorie === 'nc' ? 'nc' : 'na'  // Défaut 'na' pour données existantes
         };
+        return addNormalizedFields(na, familleId);
       });
       
       // Trier côté client par date de création (plus récent en premier)
@@ -104,17 +150,60 @@ const NouvellesAmes = {
     return NouvellesAmesData.cache.find(na => na.id === id);
   },
 
-  // Créer une nouvelle âme
+  /** Retourne une fiche existante ayant la même clé d'unicité que data (même personne), ou null. Utilise le cache. */
+  findByUnicityKey(data) {
+    if (!AppState.famille?.id) return null;
+    const key = getUnicityKey(AppState.famille.id, data);
+    return NouvellesAmesData.cache.find(na => {
+      if (na.famille_id !== key.familleId) return false;
+      if (key.type === 'email') return na._email_normalise === key.value;
+      if (key.type === 'telephone') return na._telephone_normalise === key.value;
+      return na._prenom_normalise === normalizeName(data.prenom) && na._nom_normalise === normalizeName(data.nom);
+    }) || null;
+  },
+
+  // Créer une nouvelle âme (1 fiche = 1 personne : refus si même clé d'unicité déjà présente)
   async create(data) {
+    // Éviter les créations en parallèle (double-clic / double soumission) : la 2e attend la 1re
+    while (NouvellesAmesData._createLock) {
+      await new Promise(r => setTimeout(r, 80));
+    }
+    NouvellesAmesData._createLock = true;
     try {
+      const email = (data.email && String(data.email).trim()) || null;
+      if (!email) {
+        Toast.error('L\'email est obligatoire.');
+        return null;
+      }
       const user = AppState.user;
       const famille = AppState.famille;
-      
+      if (!famille?.id) {
+        Toast.error('Famille non chargée.');
+        return null;
+      }
+
+      // Toujours recharger le cache avant la vérification d'unicité (données Firestore à jour)
+      await this.loadAll();
+      const existing = this.findByUnicityKey(data);
+      if (existing) {
+        Toast.warning(`Cette personne est déjà enregistrée. Ouvrez sa fiche pour la modifier.`);
+        if (typeof App !== 'undefined' && App.navigate) {
+          setTimeout(() => {
+            App.navigate('nouvelle-ame-detail', { id: existing.id });
+          }, 1500);
+        }
+        return null;
+      }
+
+      const emailNorm = normalizeEmail(email);
+      const telNorm = normalizeTelephone(data.telephone);
       const nouvelleAme = {
         prenom: data.prenom,
         nom: data.nom,
         telephone: data.telephone,
-        email: data.email || null,
+        email: email,
+        email_normalise: emailNorm,
+        telephone_normalise: telNorm || null,
         sexe: data.sexe || null,
         date_naissance: data.date_naissance || null,
         adresse_ville: data.adresse_ville || null,
@@ -147,8 +236,11 @@ const NouvellesAmes = {
       
       const docRef = await db.collection('nouvelles_ames').add(nouvelleAme);
       
-      // Ajouter au cache
-      const created = { id: docRef.id, ...nouvelleAme, created_at: new Date(), updated_at: new Date() };
+      // Ajouter au cache (avec champs normalisés pour les prochaines vérifications)
+      const created = addNormalizedFields(
+        { id: docRef.id, ...nouvelleAme, created_at: new Date(), updated_at: new Date() },
+        famille.id
+      );
       NouvellesAmesData.cache.unshift(created);
       
       Toast.success('Nouvelle âme ajoutée avec succès');
@@ -157,23 +249,28 @@ const NouvellesAmes = {
       console.error('Erreur création nouvelle âme:', error);
       Toast.error('Erreur lors de l\'ajout de la nouvelle âme');
       return null;
+    } finally {
+      NouvellesAmesData._createLock = false;
     }
   },
 
-  // Modifier une nouvelle âme
+  // Modifier une nouvelle âme (met à jour les champs normalisés si email/telephone/prenom/nom changent)
   async update(id, data, silent = false) {
     try {
       const updateData = {
         ...data,
         updated_at: firebase.firestore.FieldValue.serverTimestamp()
       };
+      if (data.email !== undefined) updateData.email_normalise = normalizeEmail(data.email);
+      if (data.telephone !== undefined) updateData.telephone_normalise = normalizeTelephone(data.telephone);
       
       await db.collection('nouvelles_ames').doc(id).update(updateData);
       
-      // Mettre à jour le cache
+      // Mettre à jour le cache (réappliquer les champs normalisés pour l'unicité)
       const index = NouvellesAmesData.cache.findIndex(na => na.id === id);
       if (index !== -1) {
-        NouvellesAmesData.cache[index] = { ...NouvellesAmesData.cache[index], ...data };
+        const merged = { ...NouvellesAmesData.cache[index], ...data, ...updateData };
+        NouvellesAmesData.cache[index] = addNormalizedFields(merged, merged.famille_id);
       }
       
       if (!silent) {
@@ -368,6 +465,117 @@ const NouvellesAmes = {
       if (d >= debutTrimestre) trimestre++;
     });
     return { semaine, mois, trimestre };
+  },
+
+  /** Retourne une clé de regroupement pour la migration (string). */
+  _getGroupKey(na) {
+    if (na._email_normalise) return (na.famille_id || '') + '|e|' + na._email_normalise;
+    if (na._telephone_normalise) return (na.famille_id || '') + '|t|' + na._telephone_normalise;
+    return (na.famille_id || '') + '|n|' + (na._prenom_normalise || '') + '|' + (na._nom_normalise || '');
+  },
+
+  /**
+   * Migration : fusionne les doublons (même clé d'unicité) en une fiche par personne.
+   * Réattribue les suivis, met à jour la fiche conservée, supprime les autres.
+   * Réservé superviseur+. Ne pas casser la structure Firestore.
+   */
+  async runMigrationMergeDuplicates() {
+    if (!Permissions.hasRole('superviseur')) {
+      Toast.error('Permission refusée (superviseur requis).');
+      return { merged: 0, deleted: 0, error: null };
+    }
+    if (!AppState.famille?.id) {
+      Toast.error('Famille non chargée.');
+      return { merged: 0, deleted: 0, error: null };
+    }
+    try {
+      await this.loadAll();
+      const cache = NouvellesAmesData.cache;
+      const groups = new Map();
+      cache.forEach(na => {
+        const key = this._getGroupKey(na);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(na);
+      });
+      let totalMerged = 0;
+      let totalDeleted = 0;
+      const BATCH_SIZE = 450;
+      let batch = db.batch();
+      let opCount = 0;
+      const flushBatch = async () => {
+        if (opCount === 0) return;
+        await batch.commit();
+        batch = db.batch();
+        opCount = 0;
+      };
+      for (const [, group] of groups) {
+        if (group.length <= 1) continue;
+        const byCreated = [...group].sort((a, b) => {
+          const da = a.created_at?.toDate ? a.created_at.toDate() : new Date(a.created_at || 0);
+          const db_ = b.created_at?.toDate ? b.created_at.toDate() : new Date(b.created_at || 0);
+          return da - db_;
+        });
+        const keeper = group.find(na => na.statut === 'integre') || byCreated[0];
+        const others = group.filter(na => na.id !== keeper.id);
+        let datePremierMin = keeper.date_premier_contact;
+        let dateDernierMax = keeper.date_dernier_contact;
+        const commentairesParts = [keeper.commentaires].filter(Boolean);
+        let categorie = keeper.categorie || 'na';
+        others.forEach(na => {
+          if (na.date_premier_contact) {
+            const d = na.date_premier_contact.toDate ? na.date_premier_contact.toDate() : new Date(na.date_premier_contact);
+            if (!datePremierMin || (datePremierMin.toDate ? datePremierMin.toDate() : new Date(datePremierMin)) > d) datePremierMin = na.date_premier_contact;
+          }
+          if (na.date_dernier_contact) {
+            const d = na.date_dernier_contact.toDate ? na.date_dernier_contact.toDate() : new Date(na.date_dernier_contact);
+            if (!dateDernierMax || (dateDernierMax.toDate ? dateDernierMax.toDate() : new Date(dateDernierMax)) < d) dateDernierMax = na.date_dernier_contact;
+          }
+          if (na.commentaires) commentairesParts.push(na.commentaires);
+          if (na.categorie === 'nc') categorie = 'nc';
+        });
+        const mergedData = {
+          date_premier_contact: datePremierMin,
+          date_dernier_contact: dateDernierMax,
+          commentaires: commentairesParts.join('\n\n') || null,
+          categorie,
+          updated_at: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        for (const na of others) {
+          const snapshot = await db.collection('suivis_ames').where('nouvelle_ame_id', '==', na.id).get();
+          for (const doc of snapshot.docs) {
+            batch.update(doc.ref, { nouvelle_ame_id: keeper.id });
+            opCount++;
+            if (opCount >= BATCH_SIZE) {
+              await batch.commit();
+              batch = db.batch();
+              opCount = 0;
+            }
+          }
+        }
+        batch.update(db.collection('nouvelles_ames').doc(keeper.id), mergedData);
+        opCount++;
+        for (const na of others) {
+          batch.delete(db.collection('nouvelles_ames').doc(na.id));
+          opCount++;
+          if (opCount >= BATCH_SIZE) {
+            await batch.commit();
+            batch = db.batch();
+            opCount = 0;
+          }
+        }
+        totalMerged++;
+        totalDeleted += others.length;
+      }
+      if (opCount > 0) await batch.commit();
+      NouvellesAmesData.loaded = false;
+      await this.loadAll();
+      Toast.success(`Migration terminée : ${totalMerged} groupe(s) fusionné(s), ${totalDeleted} fiche(s) doublon supprimée(s).`);
+      return { merged: totalMerged, deleted: totalDeleted, error: null };
+    } catch (err) {
+      console.error('Erreur migration nouvelles âmes:', err);
+      Toast.error('Erreur lors de la migration : ' + (err && err.message));
+      return { merged: 0, deleted: 0, error: err };
+    }
   },
 
   // Convertir une nouvelle âme en membre
@@ -893,6 +1101,11 @@ const PagesNouvellesAmes = {
           <button class="btn btn-primary" onclick="App.navigate('nouvelles-ames-add')">
             <i class="fas fa-user-plus"></i> Ajouter
           </button>
+          ${Permissions.hasRole('superviseur') ? `
+          <button type="button" class="btn btn-outline" onclick="PagesNouvellesAmes.runMigrationMergeDuplicates()" title="Fusionner les fiches en doublon (même personne) en une seule par personne">
+            <i class="fas fa-compress-arrows-alt"></i> Fusionner doublons
+          </button>
+          ` : ''}
         </div>
       </div>
       
@@ -1206,6 +1419,23 @@ const PagesNouvellesAmes = {
     }
   },
 
+  /** Lance la migration de fusion des doublons (1 fiche = 1 personne), avec confirmation. */
+  runMigrationMergeDuplicates() {
+    const run = async () => {
+      const result = await NouvellesAmes.runMigrationMergeDuplicates();
+      if (result.merged > 0 || result.deleted > 0) this.applyFilters();
+    };
+    if (typeof Modal !== 'undefined' && Modal.confirm) {
+      Modal.confirm(
+        'Fusionner les doublons',
+        'Cette action va regrouper les fiches qui correspondent à la même personne (même email, ou même téléphone, ou même prénom+nom) en une seule fiche. Les suivis seront rattachés à la fiche conservée. Continuer ?',
+        run
+      );
+    } else {
+      if (confirm('Fusionner les fiches doublons (même personne) en une seule ? Les suivis seront rattachés à la fiche conservée.')) run();
+    }
+  },
+
   // Appliquer les filtres
   applyFilters() {
     const search = document.getElementById('search-na')?.value || '';
@@ -1265,8 +1495,8 @@ const PagesNouvellesAmes = {
                 <input type="tel" class="form-control" name="telephone" required>
               </div>
               <div class="form-group">
-                <label class="form-label">Email</label>
-                <input type="email" class="form-control" name="email">
+                <label class="form-label required">Email</label>
+                <input type="email" class="form-control" name="email" required>
               </div>
             </div>
             <div class="form-row">
@@ -1453,8 +1683,13 @@ const PagesNouvellesAmes = {
   async submitAdd(event) {
     event.preventDefault();
     const form = event.target;
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enregistrement...';
+    }
     const formData = new FormData(form);
-    
+
     // Récupérer les défis cochés
     const defis = [];
     form.querySelectorAll('input[name="defis"]:checked').forEach(cb => defis.push(cb.value));
@@ -1467,11 +1702,12 @@ const PagesNouvellesAmes = {
       if (mentor) suiviParNom = `${mentor.prenom} ${mentor.nom}`;
     }
     
+    const email = (formData.get('email') || '').trim() || null;
     const data = {
       prenom: formData.get('prenom'),
       nom: formData.get('nom'),
       telephone: formData.get('telephone'),
-      email: formData.get('email') || null,
+      email: email,
       categorie: formData.get('categorie') === 'nc' ? 'nc' : 'na',
       sexe: formData.get('sexe') || null,
       adresse_ville: formData.get('adresse_ville') || null,
@@ -1487,9 +1723,16 @@ const PagesNouvellesAmes = {
       commentaires: formData.get('commentaires') || null
     };
     
-    const result = await NouvellesAmes.create(data);
-    if (result) {
-      App.navigate('nouvelles-ames');
+    try {
+      const result = await NouvellesAmes.create(data);
+      if (result) {
+        App.navigate('nouvelles-ames');
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-save"></i> Enregistrer';
+      }
     }
   },
 
@@ -1959,8 +2202,8 @@ const PagesNouvellesAmes = {
                   <input type="tel" class="form-control" name="telephone" value="${Utils.escapeHtml(na.telephone || '')}" required>
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Email</label>
-                  <input type="email" class="form-control" name="email" value="${Utils.escapeHtml(na.email || '')}">
+                  <label class="form-label required">Email</label>
+                  <input type="email" class="form-control" name="email" value="${Utils.escapeHtml(na.email || '')}" required>
                 </div>
               </div>
               <div class="form-row">
@@ -2096,11 +2339,16 @@ const PagesNouvellesAmes = {
       if (m) suiviParNom = `${m.prenom} ${m.nom}`;
     }
 
+    const email = (formData.get('email') || '').trim() || null;
+    if (!email) {
+      Toast.error('L\'email est obligatoire.');
+      return;
+    }
     const data = {
       prenom: formData.get('prenom'),
       nom: formData.get('nom'),
       telephone: formData.get('telephone'),
-      email: formData.get('email') || null,
+      email: email,
       sexe: formData.get('sexe') || null,
       adresse_ville: formData.get('adresse_ville') || null,
       categorie: formData.get('categorie') === 'nc' ? 'nc' : 'na',

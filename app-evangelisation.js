@@ -300,6 +300,7 @@ const SessionsEvangelisation = {
         prenom: contactData.prenom,
         nom: contactData.nom || '',
         telephone: contactData.telephone,
+        email: (contactData.email && String(contactData.email).trim()) || null,
         lieu: contactData.lieu || null,
         notes: contactData.notes || null,
         ajoute_par_id: AppState.user.id,
@@ -354,6 +355,7 @@ const SessionsEvangelisation = {
         prenom: contactData.prenom,
         nom: contactData.nom || '',
         telephone: contactData.telephone,
+        email: (contactData.email && String(contactData.email).trim()) || null,
         lieu: contactData.lieu || null,
         notes: contactData.notes || null,
         updated_at: new Date().toISOString()
@@ -418,11 +420,29 @@ const SessionsEvangelisation = {
       const contact = session.contacts?.find(c => c.id === contactId);
       if (!contact) return false;
       
+      const email = (contact.email && String(contact.email).trim()) || null;
+      if (!email) {
+        Toast.error('Veuillez renseigner l\'email du contact (modifier le contact) avant de l\'ajouter aux nouvelles âmes.');
+        return false;
+      }
+      
+      // Vérifier unicité (1 fiche = 1 personne) : si déjà enregistré, rediriger vers la fiche
+      await NouvellesAmes.loadAll();
+      const existing = NouvellesAmes.findByUnicityKey({
+        email, prenom: contact.prenom, nom: contact.nom, telephone: contact.telephone
+      });
+      if (existing) {
+        Toast.warning('Cette personne est déjà enregistrée dans les Nouvelles âmes.');
+        if (typeof App !== 'undefined' && App.navigate) App.navigate('nouvelle-ame-detail', { id: existing.id });
+        return false;
+      }
+      
       // Créer la nouvelle âme
       const nouvelleAme = await NouvellesAmes.create({
         prenom: contact.prenom,
         nom: contact.nom,
         telephone: contact.telephone,
+        email: email,
         canal: 'evangelisation',
         lieu_contact: contact.lieu || session.lieu_rdv,
         commentaires: contact.notes
@@ -1511,6 +1531,7 @@ const PagesEvangelisation = {
         <div class="contact-info">
           <div class="contact-name">${Utils.escapeHtml(contact.prenom)} ${Utils.escapeHtml(contact.nom || '')}</div>
           <div class="contact-phone"><i class="fas fa-phone"></i> ${Utils.escapeHtml(contact.telephone || '-')}</div>
+          <div class="contact-email" style="font-size: 0.8rem; color: var(--text-muted);"><i class="fas fa-envelope"></i> ${Utils.escapeHtml(contact.email || '-')}</div>
           ${contact.lieu ? `<div class="contact-lieu" style="font-size: 0.8rem; color: var(--text-muted);"><i class="fas fa-map-marker-alt"></i> ${Utils.escapeHtml(contact.lieu)}</div>` : ''}
         </div>
         <div class="contact-actions" style="display: flex; gap: 4px;">
@@ -1553,6 +1574,10 @@ const PagesEvangelisation = {
                 <input type="tel" class="form-control" name="telephone" required>
               </div>
               <div class="form-group">
+                <label class="form-label required">Email</label>
+                <input type="email" class="form-control" name="email" required placeholder="Obligatoire pour l'ajout aux nouvelles âmes">
+              </div>
+              <div class="form-group">
                 <label class="form-label">Lieu de contact</label>
                 <input type="text" class="form-control" name="lieu" placeholder="Ex: Rue du marché">
               </div>
@@ -1582,6 +1607,7 @@ const PagesEvangelisation = {
       prenom: formData.get('prenom'),
       nom: formData.get('nom') || '',
       telephone: formData.get('telephone'),
+      email: (formData.get('email') || '').trim() || null,
       lieu: formData.get('lieu') || null,
       notes: formData.get('notes') || null
     };
@@ -1717,6 +1743,10 @@ const PagesEvangelisation = {
                 <input type="tel" class="form-control" name="telephone" value="${Utils.escapeHtml(contact.telephone || '')}" required>
               </div>
               <div class="form-group">
+                <label class="form-label required">Email</label>
+                <input type="email" class="form-control" name="email" value="${Utils.escapeHtml(contact.email || '')}" required placeholder="Obligatoire pour l'ajout aux nouvelles âmes">
+              </div>
+              <div class="form-group">
                 <label class="form-label">Lieu de contact</label>
                 <input type="text" class="form-control" name="lieu" value="${Utils.escapeHtml(contact.lieu || '')}" placeholder="Ex: Rue du marché">
               </div>
@@ -1746,6 +1776,7 @@ const PagesEvangelisation = {
       prenom: formData.get('prenom'),
       nom: formData.get('nom') || '',
       telephone: formData.get('telephone'),
+      email: (formData.get('email') || '').trim() || null,
       lieu: formData.get('lieu') || null,
       notes: formData.get('notes') || null
     };

@@ -455,12 +455,17 @@ const Presences = {
   // Vérifier si un programme est complètement pointé
   async isProgrammeFullyPointed(programmeId) {
     try {
-      // Obtenir les membres à pointer selon le rôle
+      const programme = Programmes.getById(programmeId);
+      if (!programme || !programme.date_debut) return true;
+
+      const dateProg = programme.date_debut.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);
+
+      // Obtenir les membres à pointer selon le rôle (uniquement ceux qui étaient dans la famille à la date du programme)
       let membresAttendus = [];
       if (Permissions.hasRole('adjoint_superviseur')) {
-        membresAttendus = AppState.membres.filter(m => m.statut_compte === 'actif');
+        membresAttendus = AppState.membres.filter(m => m.statut_compte === 'actif' && Utils.membreEtaitDansFamilleALaDate(m, dateProg));
       } else if (Permissions.hasRole('mentor')) {
-        membresAttendus = Membres.getDisciples(AppState.user.id);
+        membresAttendus = Membres.getDisciples(AppState.user.id).filter(m => Utils.membreEtaitDansFamilleALaDate(m, dateProg));
       } else {
         // Les disciples/nouveaux ne peuvent pas pointer
         return true;
@@ -1137,6 +1142,9 @@ const PagesCalendrier = {
     const dateFin = programme.date_fin?.toDate ? programme.date_fin.toDate() : null;
     const createur = Membres.getById(programme.created_by);
 
+    // Disciple/nouveau : n'afficher le bloc "Ma présence" que si le membre était dans la famille à la date du programme
+    const membreEtaitAttendu = !AppState.user ? false : Utils.membreEtaitDansFamilleALaDate(AppState.user, dateDebut);
+
     return `
       <div class="card" style="max-width: 700px; margin: 0 auto;">
         <div class="card-header">
@@ -1160,7 +1168,7 @@ const PagesCalendrier = {
           </div>
         </div>
         <div class="card-body">
-          ${Permissions.canMarkOwnPresence() ? `
+          ${Permissions.canMarkOwnPresence() ? (membreEtaitAttendu ? `
           <div class="ma-presence-block mb-4 p-3" style="background: var(--bg-primary); border-radius: var(--radius-md);">
             <h4 class="mb-2"><i class="fas fa-user-check"></i> Ma présence</h4>
             <p class="text-muted small mb-2">Indiquez votre présence pour ce programme.</p>
@@ -1191,7 +1199,23 @@ const PagesCalendrier = {
               ${PagesCalendrier.renderOwnPresenceStatsInner(statsMonth, byProgrammeMonth)}
             </div>
           </div>
-          ` : ''}
+          ` : `
+          <div class="ma-presence-block mb-4 p-3" style="background: var(--bg-secondary); border-radius: var(--radius-md);">
+            <p class="text-muted mb-0"><i class="fas fa-info-circle"></i> Vous n'étiez pas encore membre de la famille à la date de ce programme. Le pointage de présence ne vous concerne pas.</p>
+          </div>
+          <div class="own-presence-stats-section mt-4 p-3" style="background: var(--bg-primary); border-radius: var(--radius-md);">
+            <h4 class="mb-3"><i class="fas fa-chart-pie"></i> Mes statistiques de présence</h4>
+            <div class="period-tabs mb-3" style="display: flex; gap: var(--spacing-xs); flex-wrap: wrap;">
+              <button type="button" class="btn btn-sm btn-outline" data-period="week" onclick="PagesCalendrier.refreshOwnPresenceStats('week', this)">Semaine</button>
+              <button type="button" class="btn btn-sm btn-primary" data-period="month" onclick="PagesCalendrier.refreshOwnPresenceStats('month', this)">Mois</button>
+              <button type="button" class="btn btn-sm btn-outline" data-period="quarter" onclick="PagesCalendrier.refreshOwnPresenceStats('quarter', this)">Trimestre</button>
+              <button type="button" class="btn btn-sm btn-outline" data-period="year" onclick="PagesCalendrier.refreshOwnPresenceStats('year', this)">Année</button>
+            </div>
+            <div id="own-presence-stats-content">
+              ${PagesCalendrier.renderOwnPresenceStatsInner(statsMonth, byProgrammeMonth)}
+            </div>
+          </div>
+          `) : ''}
           <div class="programme-details">
             <div class="detail-item">
               <i class="fas fa-calendar"></i>

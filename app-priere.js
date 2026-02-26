@@ -649,12 +649,17 @@ const PagesPriere = {
         <div class="priere-categorie-badge"><span class="badge badge-secondary">${Utils.escapeHtml(catLabel)}</span></div>
         <div class="priere-titre-condensed">${Utils.escapeHtml(titre)}</div>
         ${preview ? `<div class="priere-preview">${Utils.escapeHtml(preview).replace(/\n/g, ' ')}</div>` : ''}
-        <div class="priere-footer">
+        <div class="priere-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
           <div class="priere-meta">
             <span><i class="fas fa-user"></i> ${sujet.auteur_prenom ? Utils.escapeHtml(sujet.auteur_prenom) : 'Anonyme'}</span>
             <span><i class="fas fa-clock"></i> ${Utils.formatRelativeDate(date)}</span>
             ${sujet.est_exauce ? '<span class="exauce-badge"><i class="fas fa-check"></i> Exaucé</span>' : '<span class="attente-badge">En attente</span>'}
           </div>
+          ${(sujet.auteur_id === AppState.user?.id || Permissions.isAdmin()) ? `
+          <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); event.preventDefault(); PagesPriere.deleteSujetFromCard('${sujet.id}')" title="Supprimer">
+            <i class="fas fa-trash"></i>
+          </button>
+          ` : ''}
         </div>
       </div>
     `;
@@ -722,6 +727,10 @@ const PagesPriere = {
     Modal.hide('modal-detail-priere');
     await PagesPriere.deleteSujet(id);
     document.getElementById('priere-list').innerHTML = PagesPriere.renderList();
+  },
+
+  deleteSujetFromCard(id) {
+    this.deleteSujet(id);
   },
 
   renderSujetCard(sujet) {
@@ -1133,9 +1142,16 @@ const PagesTemoignages = {
       <div class="temoignage-card temoignage-card-condensed" onclick="PagesTemoignages.showDetailModalTemoignage('${t.id}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();PagesTemoignages.showDetailModalTemoignage('${t.id}');}">
         <div class="temoignage-titre-condensed">${Utils.escapeHtml(titre)}</div>
         ${preview ? `<div class="temoignage-preview">${Utils.escapeHtml(preview).replace(/\n/g, ' ')}</div>` : ''}
-        <div class="temoignage-footer" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color);">
-          <span><i class="fas fa-user"></i> ${author}</span>
-          <span><i class="fas fa-clock"></i> ${Utils.formatRelativeDate(date)}</span>
+        <div class="temoignage-footer" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <span><i class="fas fa-user"></i> ${author}</span>
+            <span><i class="fas fa-clock"></i> ${Utils.formatRelativeDate(date)}</span>
+          </div>
+          ${(t.auteur_id === AppState.user?.id || Permissions.isAdmin()) ? `
+          <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); event.preventDefault(); PagesTemoignages.deleteTemoignageFromCard('${t.id}')" title="Supprimer">
+            <i class="fas fa-trash"></i>
+          </button>
+          ` : ''}
         </div>
       </div>
     `;
@@ -1195,6 +1211,10 @@ const PagesTemoignages = {
     Modal.hide('modal-detail-temoignage');
     await PagesTemoignages.deleteTemoignage(id);
     PagesTemoignages.refreshTemoignagesList();
+  },
+
+  deleteTemoignageFromCard(id) {
+    this.deleteTemoignage(id);
   },
 
   refreshTemoignagesList() {

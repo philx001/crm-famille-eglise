@@ -15,6 +15,23 @@ const PagesPresences = {
       return '<div class="alert alert-danger">Programme non trouvé</div>';
     }
 
+    if (!Programmes.pointageRequis(programme)) {
+      return `
+        <div class="card" style="max-width: 500px; margin: 0 auto;">
+          <div class="card-body text-center">
+            <h3><i class="fas fa-info-circle"></i> Pointage non requis</h3>
+            <p class="text-muted mt-2">Ce programme (${Utils.escapeHtml(programme.nom)}) est informatif. Le pointage des présences n'est pas nécessaire et il n'est pas comptabilisé dans les statistiques.</p>
+            <button type="button" class="btn btn-primary mt-3" onclick="App.navigate('programme-detail', { programmeId: '${programmeId}' })">
+              <i class="fas fa-arrow-left"></i> Voir le programme
+            </button>
+            <button type="button" class="btn btn-outline mt-3" onclick="App.navigate('programmes')">
+              <i class="fas fa-list"></i> Liste des programmes
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
     // Disciple/Nouveau : ils ne peuvent pointer que leur propre présence depuis le détail du programme
     if (Permissions.canMarkOwnPresence() && !Permissions.canAccessPresencesPage()) {
       const dateDebut = programme.date_debut?.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);

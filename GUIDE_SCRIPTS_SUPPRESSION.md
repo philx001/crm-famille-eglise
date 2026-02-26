@@ -103,7 +103,28 @@ node delete-members-except-keep-list.js --key=../serviceAccountKey.json --list=.
 
 ---
 
-### Script 3 : Tout supprimer (reset complet)
+### Script 3 : Supprimer une famille entière
+
+**Fichier** : `scripts/delete-family.js`
+
+**Effet** : Supprime proprement **une famille** et toutes ses données : membres (utilisateurs + comptes Authentication), programmes, présences, notifications, témoignages, documents, nouvelles âmes, évangélisation, notes, logs, fichiers Storage, et le document famille. Les autres familles ne sont pas touchées.
+
+**Commande** :
+```bash
+cd scripts
+node delete-family.js --famille="aaaaaaaaaaa"
+```
+
+Ou avec l'ID Firestore du document :
+```bash
+node delete-family.js --famille_id=abc123xyz
+```
+
+**Prérequis spécifiques** : Aucun fichier à préparer. Indiquer le nom exact de la famille (nom ou nom_affichage) ou son ID.
+
+---
+
+### Script 4 : Tout supprimer (reset complet)
 
 **Fichier** : `scripts/reset-firestore-data.js`
 
@@ -142,6 +163,13 @@ node reset-firestore-data.js
 
 - **Uniquement** : `reset-firestore-data.js`  
   → Tout est supprimé (membres, familles, contenu, optionnellement Auth).
+
+---
+
+### Cas D : Supprimer une famille spécifique
+
+- **Uniquement** : `delete-family.js --famille="nom"`  
+  → Supprime la famille indiquée et toutes ses données. Les autres familles restent intactes.
 
 ---
 

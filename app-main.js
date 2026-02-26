@@ -365,6 +365,9 @@ const App = {
     if (AppState.currentPage === 'statistiques' && typeof PagesStatistiques.initCharts === 'function') {
       setTimeout(() => PagesStatistiques.initCharts(), 50);
     }
+    if (AppState.currentPage === 'programmes-add' && typeof PagesCalendrier.toggleDuplicationSection === 'function') {
+      setTimeout(() => PagesCalendrier.toggleDuplicationSection(), 50);
+    }
   },
 
   renderObjectifsKPI(statsNA, statsEvang, statsMembres) {
@@ -1210,6 +1213,21 @@ const App = {
   editMembre(id) { document.querySelector('.page-content').innerHTML = Pages.renderProfilEdit(id); },
   viewProgramme(id) { this.navigate('programme-detail', { programmeId: id }); },
   editProgramme(id) { this.navigate('programmes-edit', { programmeId: id }); },
+  async deleteProgramme(id) {
+    if (!Permissions.canDeletePrograms()) {
+      Toast.error('Vous n\'avez pas les droits pour supprimer un programme.');
+      return;
+    }
+    const prog = Programmes.getById(id);
+    if (!prog) return;
+    if (!confirm(`Supprimer le programme « ${prog.nom || 'sans nom'} » ? Cette action est irréversible.`)) return;
+    try {
+      await Programmes.delete(id);
+      document.querySelector('.page-content').innerHTML = PagesCalendrier.renderProgrammes();
+    } catch (e) {
+      ErrorHandler.handle(e, 'Suppression programme');
+    }
+  },
   viewHistoriqueMembre(id) { this.navigate('historique-membre', { membreId: id }); },
 
   toggleMentorField() {
@@ -1498,6 +1516,7 @@ const App = {
         return;
       }
 
+      const pointageRequisEl = document.getElementById('prog-pointage-requis');
       const d = {
         nom: document.getElementById('prog-nom').value.trim(),
         type: document.getElementById('prog-type').value,
@@ -1505,13 +1524,24 @@ const App = {
         date_fin: dateFinInput ? firebase.firestore.Timestamp.fromDate(new Date(dateFinInput)) : null,
         lieu: document.getElementById('prog-lieu').value.trim() || null,
         recurrence: document.getElementById('prog-recurrence').value,
-        description: document.getElementById('prog-description').value.trim() || null
+        description: document.getElementById('prog-description').value.trim() || null,
+        pointage_requis: pointageRequisEl ? pointageRequisEl.checked : true
       };
 
       if (programmeId) {
         await Programmes.update(programmeId, d);
       } else {
-        await Programmes.create(d);
+        const recurrence = d.recurrence;
+        const countEl = document.getElementById('prog-duplication-count');
+        const count = (countEl && recurrence === 'hebdomadaire') || (countEl && recurrence === 'mensuel')
+          ? Math.max(1, Math.min(parseInt(countEl.value, 10) || 1, recurrence === 'mensuel' ? 12 : 52))
+          : 1;
+
+        if ((recurrence === 'hebdomadaire' || recurrence === 'mensuel') && count > 1) {
+          await Programmes.createMultiple(d, count, recurrence);
+        } else {
+          await Programmes.create(d);
+        }
         // Recharger les programmes pour mettre à jour le dashboard
         await Programmes.loadAll();
       }

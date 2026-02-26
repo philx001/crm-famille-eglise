@@ -457,11 +457,18 @@ const PagesNotifications = {
         </div>
         <div class="notif-titre-condensed">${Utils.escapeHtml(titre)}</div>
         ${preview ? `<div class="notif-preview">${Utils.escapeHtml(preview).replace(/\n/g, ' ')}</div>` : ''}
-        <div class="notif-footer" style="margin-top: 8px;">
-          <div class="notif-author">
-            <i class="fas fa-user"></i> ${Utils.escapeHtml(notif.auteur_prenom || 'Anonyme')}
+        <div class="notif-footer" style="margin-top: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <div class="notif-author">
+              <i class="fas fa-user"></i> ${Utils.escapeHtml(notif.auteur_prenom || 'Anonyme')}
+            </div>
+            <div class="notif-date"><i class="fas fa-clock"></i> ${Utils.formatRelativeDate(date)}</div>
           </div>
-          <div class="notif-date"><i class="fas fa-clock"></i> ${Utils.formatRelativeDate(date)}</div>
+          ${(notif.auteur_id === AppState.user?.id || Permissions.hasRole('adjoint_superviseur') || Permissions.isAdmin()) ? `
+          <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); event.preventDefault(); PagesNotifications.deleteNotification('${notif.id}')" title="Supprimer">
+            <i class="fas fa-trash"></i>
+          </button>
+          ` : ''}
         </div>
       </div>
     `;

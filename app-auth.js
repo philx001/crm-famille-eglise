@@ -593,6 +593,11 @@ const Permissions = {
     return this.hasRole('adjoint_superviseur');
   },
 
+  /** Suppression de programmes : superviseur ou admin uniquement (cohérent avec Firestore). */
+  canDeletePrograms() {
+    return this.hasRole('superviseur') || this.isAdmin();
+  },
+
   /** Disciple ou Nouveau : accès à la page Programmes en lecture seule. */
   canViewProgrammesReadOnly() {
     if (!AppState.user) return false;

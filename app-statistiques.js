@@ -14,9 +14,10 @@ const Statistiques = {
       membreId = null
     } = options;
 
-    // Filtrer les programmes
+    // Filtrer les programmes (uniquement ceux avec pointage requis, exclus des stats)
     let programmes = AppState.programmes.filter(p => {
       if (!p.date_debut) return false;
+      if (!Programmes.pointageRequis(p)) return false; // Exclure les programmes sans pointage
       const d = p.date_debut.toDate ? p.date_debut.toDate() : new Date(p.date_debut);
       
       if (dateDebut && d < dateDebut) return false;

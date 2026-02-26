@@ -1,4 +1,9 @@
 # Ne jamais committer la clé Firebase
 serviceAccountKey.json
 
+# Données sensibles (emails des membres à garder)
+membres-a-garder.txt
+
 node_modules/
+
+*adminsdk*.json

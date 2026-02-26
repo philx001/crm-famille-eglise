@@ -103,6 +103,84 @@ const Programmes = {
       });
   },
 
+  /**
+   * Crée plusieurs programmes récurrents (même jour de semaine + mêmes horaires).
+   * @param {Object} data - Données du programme (nom, type, date_debut, date_fin, lieu, recurrence, description)
+   * @param {number} count - Nombre d'occurrences à créer
+   * @param {'hebdomadaire'|'mensuel'} recurrence - Type de récurrence
+   * @returns {Promise<Object[]>} Les programmes créés
+   */
+  async createMultiple(data, count, recurrence) {
+    if (!Permissions.canManagePrograms()) {
+      throw new Error('Permission refusée');
+    }
+    if (count < 1 || count > 100) {
+      throw new Error('Le nombre d\'occurrences doit être entre 1 et 100');
+    }
+
+    const dateDebut = data.date_debut instanceof Date
+      ? data.date_debut
+      : (data.date_debut?.toDate ? data.date_debut.toDate() : new Date(data.date_debut));
+    const dateFin = data.date_fin ? (
+      data.date_fin instanceof Date
+        ? data.date_fin
+        : (data.date_fin?.toDate ? data.date_fin.toDate() : new Date(data.date_fin))
+    ) : null;
+
+    const durationMs = dateFin ? (dateFin.getTime() - dateDebut.getTime()) : 0;
+    const programmes = [];
+
+    for (let i = 0; i < count; i++) {
+      let newDateDebut;
+      let newDateFin = null;
+
+      if (recurrence === 'hebdomadaire') {
+        newDateDebut = new Date(dateDebut);
+        newDateDebut.setDate(newDateDebut.getDate() + (i * 7));
+        if (dateFin) {
+          newDateFin = new Date(newDateDebut.getTime() + durationMs);
+        }
+      } else if (recurrence === 'mensuel') {
+        newDateDebut = new Date(dateDebut);
+        newDateDebut.setMonth(newDateDebut.getMonth() + i);
+        if (dateFin) {
+          newDateFin = new Date(newDateDebut.getTime() + durationMs);
+        }
+      } else {
+        newDateDebut = new Date(dateDebut);
+        newDateFin = dateFin ? new Date(dateFin) : null;
+      }
+
+      const programmeData = {
+        nom: data.nom,
+        type: data.type,
+        date_debut: firebase.firestore.Timestamp.fromDate(newDateDebut),
+        date_fin: newDateFin ? firebase.firestore.Timestamp.fromDate(newDateFin) : null,
+        lieu: data.lieu,
+        recurrence: data.recurrence,
+        description: data.description,
+        pointage_requis: data.pointage_requis !== false,
+        famille_id: AppState.famille.id,
+        created_by: AppState.user.id,
+        created_at: firebase.firestore.FieldValue.serverTimestamp(),
+        updated_at: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      const docRef = await db.collection('programmes').add(programmeData);
+      const newProgramme = {
+        id: docRef.id,
+        ...programmeData,
+        date_debut: programmeData.date_debut,
+        date_fin: programmeData.date_fin
+      };
+      AppState.programmes.push(newProgramme);
+      programmes.push(newProgramme);
+    }
+
+    Toast.success(`${programmes.length} programme(s) créé(s) avec succès`);
+    return programmes;
+  },
+
   // Créer un programme
   async create(data) {
     try {
@@ -123,6 +201,7 @@ const Programmes = {
         lieu: data.lieu,
         recurrence: data.recurrence,
         description: data.description,
+        pointage_requis: data.pointage_requis !== false,
         famille_id: AppState.famille.id,
         created_by: AppState.user.id,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
@@ -176,7 +255,7 @@ const Programmes = {
   // Supprimer un programme
   async delete(id) {
     try {
-      if (!Permissions.hasRole('superviseur')) {
+      if (!Permissions.canDeletePrograms()) {
         throw new Error('Permission refusée');
       }
 
@@ -233,6 +312,11 @@ const Programmes = {
   getTypeColor(type) {
     const found = this.getTypes().find(t => t.value === type);
     return found ? found.color : '#607D8B';
+  },
+
+  /** Indique si le pointage des présences est requis pour ce programme (rétrocompat : true par défaut). */
+  pointageRequis(programme) {
+    return programme && programme.pointage_requis !== false;
   }
 };
 
@@ -424,11 +508,15 @@ const Presences = {
     const dateFin = new Date();
     const dateDebut = new Date(dateFin.getTime() - days * 24 * 60 * 60 * 1000);
     const presences = await this.loadByMembre(AppState.user.id, dateDebut, dateFin);
-    const total = presences.length;
-    const present = presences.filter(p => p.statut === 'present').length;
-    const absent = presences.filter(p => p.statut === 'absent').length;
-    const excuse = presences.filter(p => p.statut === 'excuse').length;
-    const non_renseigne = presences.filter(p => p.statut === 'non_renseigne').length;
+    const presencesAvecPointage = presences.filter(p => {
+      const prog = Programmes.getById(p.programme_id);
+      return prog && Programmes.pointageRequis(prog);
+    });
+    const total = presencesAvecPointage.length;
+    const present = presencesAvecPointage.filter(p => p.statut === 'present').length;
+    const absent = presencesAvecPointage.filter(p => p.statut === 'absent').length;
+    const excuse = presencesAvecPointage.filter(p => p.statut === 'excuse').length;
+    const non_renseigne = presencesAvecPointage.filter(p => p.statut === 'non_renseigne').length;
     const rate = total > 0 ? Math.round((present / total) * 100) : 0;
     return { present, absent, excuse, non_renseigne, total, rate };
   },
@@ -443,7 +531,7 @@ const Presences = {
     const withProgramme = presences.map(p => {
       const programme = Programmes.getById(p.programme_id);
       return programme ? { programme, presence: p } : null;
-    }).filter(Boolean);
+    }).filter(Boolean).filter(wp => Programmes.pointageRequis(wp.programme));
     withProgramme.sort((a, b) => {
       const da = a.programme.date_debut?.toDate ? a.programme.date_debut.toDate() : new Date(0);
       const db = b.programme.date_debut?.toDate ? b.programme.date_debut.toDate() : new Date(0);
@@ -457,6 +545,7 @@ const Presences = {
     try {
       const programme = Programmes.getById(programmeId);
       if (!programme || !programme.date_debut) return true;
+      if (!Programmes.pointageRequis(programme)) return true; // Pas de pointage requis = considéré comme pointé
 
       const dateProg = programme.date_debut.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);
 
@@ -491,10 +580,10 @@ const Presences = {
     }
   },
 
-  // Obtenir les programmes passés récents non complètement pointés
+  // Obtenir les programmes passés récents non complètement pointés (uniquement ceux avec pointage requis)
   async getUnpointedProgrammes(days = 7) {
     try {
-      const programmesRecents = Programmes.getRecentPast(days);
+      const programmesRecents = Programmes.getRecentPast(days).filter(p => Programmes.pointageRequis(p));
       const programmesNonPointes = [];
 
       for (const programme of programmesRecents) {
@@ -1001,7 +1090,7 @@ const PagesCalendrier = {
           <button class="btn btn-sm btn-secondary" onclick="App.viewProgramme('${programme.id}')" title="Voir">
             <i class="fas fa-eye"></i>
           </button>
-          ${Permissions.canAccessPresencesPage() ? `
+          ${Permissions.canAccessPresencesPage() && Programmes.pointageRequis(programme) ? `
           <button class="btn btn-sm btn-primary" onclick="App.navigate('presences', {programmeId: '${programme.id}'})" title="Présences">
             <i class="fas fa-clipboard-check"></i>
           </button>
@@ -1009,6 +1098,11 @@ const PagesCalendrier = {
           ${Permissions.canManagePrograms() ? `
           <button class="btn btn-sm btn-secondary" onclick="App.editProgramme('${programme.id}')" title="Modifier">
             <i class="fas fa-edit"></i>
+          </button>
+          ` : ''}
+          ${Permissions.canDeletePrograms() ? `
+          <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); App.deleteProgramme('${programme.id}')" title="Supprimer">
+            <i class="fas fa-trash"></i>
           </button>
           ` : ''}
         </div>
@@ -1096,12 +1190,31 @@ const PagesCalendrier = {
 
             <div class="form-group">
               <label class="form-label">Récurrence</label>
-              <select class="form-control" id="prog-recurrence">
+              <select class="form-control" id="prog-recurrence" onchange="PagesCalendrier.toggleDuplicationSection()">
                 <option value="unique" ${programme?.recurrence === 'unique' ? 'selected' : ''}>Unique</option>
                 <option value="hebdomadaire" ${programme?.recurrence === 'hebdomadaire' ? 'selected' : ''}>Hebdomadaire</option>
                 <option value="mensuel" ${programme?.recurrence === 'mensuel' ? 'selected' : ''}>Mensuel</option>
               </select>
             </div>
+
+            <div class="form-group">
+              <label class="form-label d-flex align-items-center gap-2" style="cursor: pointer;">
+                <input type="checkbox" id="prog-pointage-requis" ${(programme?.pointage_requis !== false) ? 'checked' : ''}>
+                Pointage des présences requis
+              </label>
+              <p class="text-muted small mb-0 mt-1">Décochez pour les programmes informatifs (ex. temps de prière) : ils apparaîtront au calendrier mais ne seront pas comptabilisés dans les statistiques.</p>
+            </div>
+
+            ${!isEdit ? `
+            <div id="prog-duplication-section" class="form-group" style="display: none;">
+              <label class="form-label">Dupliquer sur plusieurs occurrences</label>
+              <p class="text-muted small mb-2">Crée plusieurs programmes identiques (même jour, mêmes horaires) pour éviter de les recréer chaque semaine ou chaque mois.</p>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <input type="number" class="form-control" id="prog-duplication-count" min="1" max="52" value="1" style="width: 80px;">
+                <span id="prog-duplication-label">occurrence(s)</span>
+              </div>
+            </div>
+            ` : ''}
 
             <div class="form-group">
               <label class="form-label">Description</label>
@@ -1118,6 +1231,30 @@ const PagesCalendrier = {
         </div>
       </div>
     `;
+  },
+
+  /** Affiche/masque la section duplication selon la récurrence (uniquement en création). */
+  toggleDuplicationSection() {
+    const section = document.getElementById('prog-duplication-section');
+    const countInput = document.getElementById('prog-duplication-count');
+    const labelEl = document.getElementById('prog-duplication-label');
+    if (!section || !countInput || !labelEl) return;
+
+    const recurrence = document.getElementById('prog-recurrence')?.value;
+    if (recurrence === 'hebdomadaire') {
+      section.style.display = 'block';
+      countInput.max = 52;
+      countInput.placeholder = 'ex: 4';
+      labelEl.textContent = 'semaine(s)';
+    } else if (recurrence === 'mensuel') {
+      section.style.display = 'block';
+      countInput.max = 12;
+      countInput.placeholder = 'ex: 3';
+      labelEl.textContent = 'mois';
+    } else {
+      section.style.display = 'none';
+      countInput.value = 1;
+    }
   },
 
   // Détails d'un programme
@@ -1155,7 +1292,7 @@ const PagesCalendrier = {
             </span>
           </div>
           <div class="d-flex gap-1">
-            ${Permissions.canAccessPresencesPage() ? `
+            ${Permissions.canAccessPresencesPage() && Programmes.pointageRequis(programme) ? `
             <button class="btn btn-primary" onclick="App.navigate('presences', {programmeId: '${programmeId}'})">
               <i class="fas fa-clipboard-check"></i> Pointer
             </button>
@@ -1165,10 +1302,20 @@ const PagesCalendrier = {
               <i class="fas fa-edit"></i>
             </button>
             ` : ''}
+            ${Permissions.canDeletePrograms() ? `
+            <button class="btn btn-danger" onclick="App.deleteProgramme('${programmeId}')" title="Supprimer">
+              <i class="fas fa-trash"></i>
+            </button>
+            ` : ''}
           </div>
         </div>
         <div class="card-body">
-          ${Permissions.canMarkOwnPresence() ? (membreEtaitAttendu ? `
+          ${!Programmes.pointageRequis(programme) ? `
+          <div class="ma-presence-block mb-4 p-3" style="background: var(--bg-secondary); border-radius: var(--radius-md);">
+            <p class="text-muted mb-0"><i class="fas fa-info-circle"></i> Programme informatif — le pointage des présences n'est pas requis. Ce programme n'est pas comptabilisé dans les statistiques.</p>
+          </div>
+          ` : ''}
+          ${Programmes.pointageRequis(programme) && Permissions.canMarkOwnPresence() ? (membreEtaitAttendu ? `
           <div class="ma-presence-block mb-4 p-3" style="background: var(--bg-primary); border-radius: var(--radius-md);">
             <h4 class="mb-2"><i class="fas fa-user-check"></i> Ma présence</h4>
             <p class="text-muted small mb-2">Indiquez votre présence pour ce programme.</p>

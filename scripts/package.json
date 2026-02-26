@@ -6,7 +6,8 @@
   "scripts": {
     "reset": "node reset-firestore-data.js",
     "delete-content": "node delete-content-data-only.js",
-    "delete-members-except": "node delete-members-except-keep-list.js"
+    "delete-members-except": "node delete-members-except-keep-list.js",
+    "delete-family": "node delete-family.js"
   },
   "dependencies": {
     "firebase-admin": "^11.0.0"

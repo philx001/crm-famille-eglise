@@ -1,4 +1,4 @@
-# Guide des scripts de suppression
+ # Guide des scripts de suppression
 
 Ce document décrit les scripts disponibles pour supprimer des données, les **prérequis**, le **mode d'exécution** et l'**ordre de lancement** si vous utilisez plusieurs scripts.
 

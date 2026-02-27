@@ -62,12 +62,15 @@ const PagesPresences = {
     const dateDebutProg = programme.date_debut?.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);
 
     // Obtenir les membres à pointer (uniquement ceux qui étaient dans la famille à la date du programme)
+    // Adjoints superviseur exclus : comptes de service, jamais dans pointage ni statistiques
     let membres = [];
     if (Permissions.hasRole('adjoint_superviseur')) {
-      membres = AppState.membres.filter(m => m.statut_compte === 'actif' && Utils.membreEtaitDansFamilleALaDate(m, dateDebutProg));
+      membres = (Membres.getVisibleActifs ? Membres.getVisibleActifs() : AppState.membres.filter(m => m.statut_compte === 'actif'))
+        .filter(m => Utils.membreEtaitDansFamilleALaDate(m, dateDebutProg));
     } else {
       membres = Membres.getDisciples(AppState.user.id).filter(m => Utils.membreEtaitDansFamilleALaDate(m, dateDebutProg));
     }
+    membres = membres.filter(m => m.role !== 'adjoint_superviseur');
 
     // Préparer les données de présence
     this.presencesData = membres.map(membre => {

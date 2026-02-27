@@ -58,15 +58,19 @@ const Pages = {
 
   renderMembres() {
     let membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+    // Adjoints superviseur : comptes de service, visibles uniquement par l'admin
+    if (!Permissions.isAdmin()) {
+      membres = membres.filter(m => m.role !== 'adjoint_superviseur');
+    }
     const isMesDisciples = AppState.currentPage === 'mes-disciples';
     const canSeeFullList = Permissions.canViewAllMembers() || Permissions.canViewMembersListReadOnly();
 
     if (canSeeFullList) {
       if (isMesDisciples) {
-        membres = membres.filter(m => m.mentor_id === AppState.user.id);
+        membres = membres.filter(m => m.mentor_id === AppState.user.id && m.role !== 'superviseur');
       }
     } else {
-      membres = membres.filter(m => m.mentor_id === AppState.user.id);
+      membres = membres.filter(m => m.mentor_id === AppState.user.id && m.role !== 'superviseur');
     }
 
     // Export : superviseur/admin sur "Tous les membres", ou mentor sur "Mes disciples"
@@ -121,7 +125,7 @@ const Pages = {
             <option value="nouveau">Nouveaux</option>
             ${(isMesDisciples && AppState.user && AppState.user.role === 'mentor') ? '' : `
             <option value="mentor">Mentors</option>
-            <option value="adjoint_superviseur">Adjoints</option>
+            ${Permissions.isAdmin() ? '<option value="adjoint_superviseur">Adjoints</option>' : ''}
             <option value="superviseur">Superviseurs</option>
             `}
           </select>
@@ -129,7 +133,7 @@ const Pages = {
           <select class="form-control" id="filter-mentor" onchange="App.filterMembres()" style="width: auto;">
             <option value="">Tous les mentors</option>
             <option value="none">Non affecté</option>
-            ${(AppState.membres || []).filter(m => m.statut_compte === 'actif' && ['mentor', 'adjoint_superviseur', 'superviseur'].includes(m.role)).map(m => `<option value="${m.id}">${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)}</option>`).join('')}
+            ${(AppState.membres || []).filter(m => m.statut_compte === 'actif' && ['mentor', 'superviseur', 'admin'].includes(m.role)).map(m => `<option value="${m.id}">${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)}${m.role === 'admin' ? ' (Admin)' : ''}</option>`).join('')}
           </select>
           ` : ''}
         </div>
@@ -246,7 +250,10 @@ const Pages = {
     if (!Permissions.canViewArchivesMembres()) {
       return '<div class="alert alert-warning">Accès non autorisé.</div>';
     }
-    const archives = (AppState.membres || []).filter(m => m.statut_compte === 'inactif');
+    let archives = (AppState.membres || []).filter(m => m.statut_compte === 'inactif');
+    if (!Permissions.isAdmin()) {
+      archives = archives.filter(m => m.role !== 'adjoint_superviseur');
+    }
     return `
       <div class="card">
         <div class="card-header">
@@ -303,9 +310,10 @@ const Pages = {
   },
 
   renderAddMembre() {
-    const mentors = Membres.getMentors();
+    const possibleMentors = Membres.getPossibleMentorsForReassign();
     const canAddNouveau = Permissions.canAddNouveau();
     const isAdminOrSuperviseur = Permissions.hasRole('superviseur') || Permissions.isAdmin();
+    const canAssignToAnyMentor = Permissions.canAssignToAnyMentor();
 
     return `
       <div class="card" style="max-width: 600px; margin: 0 auto;">
@@ -346,9 +354,9 @@ const Pages = {
               <label class="form-label">Mentor</label>
               <select class="form-control" id="membre-mentor">
                 <option value="${AppState.user.id}">Moi-même (${Utils.escapeHtml(AppState.user.prenom)})</option>
-                ${isAdminOrSuperviseur ? mentors
+                ${canAssignToAnyMentor ? (possibleMentors || [])
                   .filter(m => m.id !== AppState.user.id)
-                  .map(m => `<option value="${m.id}">${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)}</option>`)
+                  .map(m => `<option value="${m.id}">${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)} (${Utils.getRoleLabel(m.role)})</option>`)
                   .join('') : ''}
               </select>
               <span class="form-hint">Optionnel pour les rôles Mentor et supérieurs</span>
@@ -478,7 +486,7 @@ const Pages = {
                 ${Permissions.isAdmin() ? `<option value="admin" ${membre.role === 'admin' ? 'selected' : ''}>Administrateur</option>` : ''}
               </select>
             </div>
-            <div class="form-group" id="edit-mentor-group" style="display: ${['nouveau', 'mentor', 'adjoint_superviseur', 'superviseur', 'admin'].includes(membre.role) ? 'none' : 'block'};">
+            <div class="form-group" id="edit-mentor-group" style="display: ${['nouveau', 'mentor', 'adjoint_superviseur', 'superviseur'].includes(membre.role) ? 'none' : 'block'};">
               <label class="form-label">Mentor</label>
               <select class="form-control" id="edit-mentor">
                 <option value="">Non affecté</option>
@@ -503,8 +511,8 @@ const Pages = {
             </div>
             
             <div class="form-group">
-              <label class="form-label">Sexe</label>
-              <select class="form-control" id="edit-sexe">
+              <label class="form-label required">Sexe</label>
+              <select class="form-control" id="edit-sexe" required>
                 <option value="">-- Sélectionner --</option>
                 <option value="M" ${membre.sexe === 'M' ? 'selected' : ''}>Homme</option>
                 <option value="F" ${membre.sexe === 'F' ? 'selected' : ''}>Femme</option>
@@ -513,27 +521,27 @@ const Pages = {
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);">
               <div class="form-group">
-                <label class="form-label">Date de naissance</label>
-                <input type="date" class="form-control input-date" id="edit-date-naissance" min="${datePastBounds.min}" max="${datePastBounds.max}" value="${Utils.toDateInputValue(membre.date_naissance)}" title="Cliquez pour ouvrir le calendrier">
+                <label class="form-label required">Date de naissance</label>
+                <input type="date" class="form-control input-date" id="edit-date-naissance" min="${datePastBounds.min}" max="${datePastBounds.max}" value="${Utils.toDateInputValue(membre.date_naissance)}" title="Cliquez pour ouvrir le calendrier" required>
               </div>
               <div class="form-group">
-                <label class="form-label">Téléphone</label>
+                <label class="form-label required">Téléphone</label>
                 <div class="phone-edit-row" style="display: flex; gap: var(--spacing-sm); align-items: flex-start;">
                   <select class="form-control edit-indicatif" id="edit-indicatif-telephone" title="Indicatif pays">${Utils.INDICATIFS_PAYS.map(ind => `<option value="${Utils.escapeHtml(ind.value)}" ${(membre.indicatif_telephone || '+33') === ind.value ? 'selected' : ''}>${Utils.escapeHtml(ind.label)}</option>`).join('')}</select>
-                  <input type="tel" class="form-control edit-numero" id="edit-telephone" placeholder="6 12 34 56 78" value="${Utils.escapeHtml(membre.telephone || '')}">
+                  <input type="tel" class="form-control edit-numero" id="edit-telephone" placeholder="06 12 34 56 78" value="${Utils.escapeHtml(membre.telephone || '')}" required>
                 </div>
-                <span class="form-hint">Ex. France : 6 12 34 56 78 (sans le 0 initial)</span>
+                <span class="form-hint">Ex. France : 06 12 34 56 78  (10 chiffres)</span>
               </div>
             </div>
             
             <div style="display: grid; grid-template-columns: 2fr 1fr; gap: var(--spacing-md);">
               <div class="form-group">
-                <label class="form-label">Ville</label>
-                <input type="text" class="form-control" id="edit-ville" value="${membre.adresse_ville || ''}">
+                <label class="form-label required">Ville</label>
+                <input type="text" class="form-control" id="edit-ville" value="${membre.adresse_ville || ''}" required>
               </div>
               <div class="form-group">
-                <label class="form-label">Code postal</label>
-                <input type="text" class="form-control" id="edit-cp" value="${membre.adresse_code_postal || ''}">
+                <label class="form-label required">Code postal</label>
+                <input type="text" class="form-control" id="edit-cp" value="${membre.adresse_code_postal || ''}" required>
               </div>
             </div>
             
@@ -548,9 +556,13 @@ const Pages = {
             <div class="form-group">
               <label class="form-label">Formations suivies</label>
               <div style="display: flex; flex-wrap: wrap; gap: var(--spacing-md);">
+                <div class="form-check">
+                  <input type="checkbox" id="formation-aucune" class="formation-aucune-cb" ${membreFormations.length === 0 ? 'checked' : ''} onchange="App.toggleFormationAucune(this)">
+                  <label for="formation-aucune">Aucune</label>
+                </div>
                 ${formations.map(f => `
                   <div class="form-check">
-                    <input type="checkbox" id="formation-${f.replace(/[^a-zA-Z0-9_]/g, '_')}" value="${f}" ${membreFormations.includes(f) ? 'checked' : ''}>
+                    <input type="checkbox" id="formation-${f.replace(/[^a-zA-Z0-9_]/g, '_')}" class="formation-cb" value="${f}" ${membreFormations.includes(f) ? 'checked' : ''} onchange="App.toggleFormationAucune(this)">
                     <label for="formation-${f.replace(/[^a-zA-Z0-9_]/g, '_')}">${formationLabels[f] || f}</label>
                   </div>
                 `).join('')}
@@ -757,9 +769,10 @@ const Pages = {
   },
 
   renderAnnuaire() {
-    const membres = AppState.membres
-      .filter(m => m.statut_compte === 'actif')
-      .sort((a, b) => a.nom.localeCompare(b.nom));
+    const membres = (typeof Membres !== 'undefined' && Membres.getVisibleActifs
+      ? Membres.getVisibleActifs()
+      : AppState.membres.filter(m => m.statut_compte === 'actif')
+    ).sort((a, b) => a.nom.localeCompare(b.nom));
     const moisLabels = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
     const poleOptionsForFilter = [{ value: '', label: 'Tous les pôles' }, ...Utils.POLE_OPTIONS.filter(o => o.value !== 'aucun'), { value: 'aucun', label: 'Aucun' }];
@@ -925,9 +938,10 @@ const Pages = {
                 ${Membres.getMentors().map(m => {
                   const disciples = Membres.getDisciples(m.id);
                   const percent = stats.total > 0 ? ((disciples.length / stats.total) * 100).toFixed(1) : 0;
+                  const nomAffichage = `${m.prenom} ${m.nom}${m.role === 'admin' ? ' (Admin)' : ''}`;
                   return `
                     <tr>
-                      <td>${Utils.escapeHtml(m.prenom)} ${Utils.escapeHtml(m.nom)}</td>
+                      <td>${Utils.escapeHtml(nomAffichage)}</td>
                       <td>${disciples.length}</td>
                       <td>${percent}%</td>
                     </tr>

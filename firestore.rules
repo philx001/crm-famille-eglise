@@ -45,7 +45,7 @@ service cloud.firestore {
 
       allow update: if isAuthenticated() && (
         request.auth.uid == userId ||
-        (hasRole('superviseur') && resource.data.famille_id == getUserData().famille_id) ||
+        (hasRole('superviseur') && resource.data.famille_id == getUserData().famille_id && resource.data.role != 'admin') ||
         isAdmin()
       );
 
@@ -100,6 +100,17 @@ service cloud.firestore {
       allow update, delete: if isAuthenticated() && belongsToFamily(resource.data.famille_id) && (
         resource.data.auteur_id == request.auth.uid || isAdmin()
       );
+    }
+
+    // PLANNING CONDUCTEURS PRIÈRE (adjoint_superviseur, superviseur, admin : écriture ; autres : lecture)
+    match /planning_conducteurs_priere/{slotId} {
+      allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
+      allow create: if isAuthenticated() &&
+        belongsToFamily(request.resource.data.famille_id) &&
+        (hasRole('adjoint_superviseur') || hasRole('superviseur') || isAdmin());
+      allow update, delete: if isAuthenticated() &&
+        belongsToFamily(resource.data.famille_id) &&
+        (hasRole('adjoint_superviseur') || hasRole('superviseur') || isAdmin());
     }
 
     // NOTIFICATIONS (auteur, adjoint_superviseur+, ou admin peut modifier/supprimer)

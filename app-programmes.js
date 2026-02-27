@@ -298,7 +298,12 @@ const Programmes = {
     return this.getTypes().filter(t => t.category === 'exhortation');
   },
 
-  // Vérifier si un programme est de type exhortation
+  /** Types de programmes liés à la prière (pour planning conducteurs). */
+  getTypesPriere() {
+    return this.getTypes().filter(t => t.category === 'priere');
+  },
+
+  /** Vérifier si un programme est de type exhortation */
   isExhortation(type) {
     const found = this.getTypes().find(t => t.value === type);
     return found?.category === 'exhortation';

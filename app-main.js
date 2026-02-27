@@ -282,14 +282,16 @@ const App = {
     switch (AppState.currentPage) {
       case 'dashboard': pageTitle = 'Tableau de bord'; pageContent = await this.renderDashboardEnhanced(); break;
       case 'membres': {
-        const nbMembres = (AppState.membres || []).filter(m => m.statut_compte === 'actif').length;
+        const nbMembres = (typeof Membres !== 'undefined' && Membres.getVisibleActifs) ? Membres.getVisibleActifs().length : (AppState.membres || []).filter(m => m.statut_compte === 'actif').length;
         pageTitle = `Membres (${nbMembres})`;
         pageContent = Pages.renderMembres();
         break;
       }
       case 'membres-add': pageTitle = 'Ajouter un membre'; pageContent = Pages.renderAddMembre(); break;
       case 'archives-membres': {
-        const nbArchives = (AppState.membres || []).filter(m => m.statut_compte === 'inactif').length;
+        let archives = (AppState.membres || []).filter(m => m.statut_compte === 'inactif');
+        if (typeof Permissions !== 'undefined' && !Permissions.isAdmin()) archives = archives.filter(m => m.role !== 'adjoint_superviseur');
+        const nbArchives = archives.length;
         pageTitle = `Archivage des membres (${nbArchives})`;
         pageContent = Pages.renderArchivesMembres();
         break;
@@ -298,7 +300,7 @@ const App = {
       case 'profil-edit': pageTitle = 'Modifier le profil'; pageContent = Pages.renderProfilEdit(); break;
       case 'mon-compte': pageTitle = 'Mon compte'; pageContent = Pages.renderMonCompte(); break;
       case 'annuaire': {
-        const nbAnnuaire = (AppState.membres || []).filter(m => m.statut_compte === 'actif').length;
+        const nbAnnuaire = (typeof Membres !== 'undefined' && Membres.getVisibleActifs) ? Membres.getVisibleActifs().length : (AppState.membres || []).filter(m => m.statut_compte === 'actif').length;
         pageTitle = `Annuaire (${nbAnnuaire})`;
         pageContent = Pages.renderAnnuaire();
         break;
@@ -317,7 +319,8 @@ const App = {
       case 'presences': pageTitle = 'Pointage des présences'; pageContent = await PagesPresences.renderPresences(this.currentParams.programmeId); break;
       case 'historique-membre': pageTitle = 'Historique de présence'; pageContent = await PagesPresences.renderHistoriqueMembre(this.currentParams.membreId); break;
       case 'statistiques': {
-        const nbStatsMembres = (AppState.membres || []).filter(m => m.statut_compte === 'actif').length;
+        const stats = typeof Membres !== 'undefined' && Membres.getStats ? Membres.getStats() : null;
+        const nbStatsMembres = stats ? stats.total : (AppState.membres || []).filter(m => m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur').length;
         pageTitle = `Statistiques (${nbStatsMembres} membre${nbStatsMembres !== 1 ? 's' : ''})`;
         pageContent = await PagesStatistiques.renderStatistiques();
         break;
@@ -927,7 +930,7 @@ const App = {
     if (!dd) return;
     if (q.length < 2) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
     const results = [];
-    const membres = AppState.membres?.filter(m => m.statut_compte === 'actif') || [];
+    const membres = (typeof Membres !== 'undefined' && Membres.getVisibleActifs) ? Membres.getVisibleActifs() : (AppState.membres?.filter(m => m.statut_compte === 'actif') || []);
     membres.forEach(m => {
       const name = `${(m.prenom || '')} ${(m.nom || '')}`.toLowerCase();
       if (name.includes(q)) results.push({ type: 'membre', id: m.id, label: `${m.prenom} ${m.nom}`, sub: 'Membre', icon: 'fa-user' });
@@ -1022,10 +1025,10 @@ const App = {
     let membres;
     if (isMesDisciples || !Permissions.canViewAllMembers()) {
       // Mentor ou page "Mes disciples" : exporter uniquement ses disciples
-      membres = AppState.membres.filter(m => m.statut_compte === 'actif' && m.mentor_id === AppState.user.id);
+      membres = AppState.membres.filter(m => m.statut_compte === 'actif' && m.mentor_id === AppState.user.id && m.role !== 'superviseur');
     } else {
-      // Admin/Superviseur sur page membres : exporter tous les membres
-      membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+      // Admin/Superviseur : exporter les membres visibles (adjoints exclus pour non-admin)
+      membres = (typeof Membres !== 'undefined' && Membres.getVisibleActifs) ? Membres.getVisibleActifs() : AppState.membres.filter(m => m.statut_compte === 'actif');
     }
     if (membres.length === 0) {
       Toast.warning('Aucun membre à exporter.');
@@ -1133,10 +1136,10 @@ const App = {
     let membres;
     if (isMesDisciples || !Permissions.canViewAllMembers()) {
       // Mentor ou page "Mes disciples" : exporter uniquement ses disciples
-      membres = AppState.membres.filter(m => m.statut_compte === 'actif' && m.mentor_id === AppState.user.id);
+      membres = AppState.membres.filter(m => m.statut_compte === 'actif' && m.mentor_id === AppState.user.id && m.role !== 'superviseur');
     } else {
-      // Admin/Superviseur sur page membres : exporter tous les membres
-      membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+      // Admin/Superviseur : exporter les membres visibles (adjoints exclus pour non-admin)
+      membres = (typeof Membres !== 'undefined' && Membres.getVisibleActifs) ? Membres.getVisibleActifs() : AppState.membres.filter(m => m.statut_compte === 'actif');
     }
     if (membres.length === 0) {
       Toast.warning('Aucun membre à exporter.');
@@ -1244,8 +1247,18 @@ const App = {
     const r = document.getElementById('edit-role');
     const m = document.getElementById('edit-mentor-group');
     if (r && m) {
-      const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_superviseur', 'superviseur', 'admin'];
+      const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_superviseur', 'superviseur'];
       m.style.display = rolesWithoutMentor.includes(r.value) ? 'none' : 'block';
+    }
+  },
+
+  toggleFormationAucune(checkbox) {
+    const aucuneCb = document.getElementById('formation-aucune');
+    const formationCbs = document.querySelectorAll('.formation-cb');
+    if (checkbox.id === 'formation-aucune') {
+      if (checkbox.checked) formationCbs.forEach(cb => { cb.checked = false; });
+    } else {
+      if (checkbox.checked && aucuneCb) aucuneCb.checked = false;
     }
   },
 
@@ -1465,8 +1478,8 @@ const App = {
       Toast.warning('Veuillez accepter les informations RGPD (case obligatoire).');
       return;
     }
-    const formations = [];
-    document.querySelectorAll('[id^="formation-"]:checked').forEach(cb => formations.push(cb.value));
+    const aucuneChecked = document.getElementById('formation-aucune')?.checked;
+    const formations = aucuneChecked ? [] : Array.from(document.querySelectorAll('.formation-cb:checked')).map(cb => cb.value);
     const poleCheckboxes = document.querySelectorAll('.pole-check input[type="checkbox"]:checked');
     let pole_interne = [];
     const hasAucun = Array.from(poleCheckboxes).some(cb => cb.value === 'aucun');
@@ -1498,7 +1511,7 @@ const App = {
     const editRoleEl = document.getElementById('edit-role');
     const editMentorEl = document.getElementById('edit-mentor');
     if (editRoleEl) {
-      const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_superviseur', 'superviseur', 'admin'];
+      const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_superviseur', 'superviseur'];
       data.role = editRoleEl.value;
       data.mentor_id = (rolesWithoutMentor.includes(editRoleEl.value) || !editMentorEl?.value) ? null : editMentorEl.value;
     }

@@ -293,6 +293,133 @@ const Temoignages = {
 };
 
 // ============================================
+// PLANNING CONDUCTEURS DE PRIÈRE
+// ============================================
+
+const PlanningConducteurs = {
+  items: [],
+
+  async loadAll() {
+    try {
+      const familleId = AppState.famille?.id;
+      if (!familleId) return [];
+
+      const snapshot = await db.collection('planning_conducteurs_priere')
+        .where('famille_id', '==', familleId)
+        .orderBy('date', 'asc')
+        .get();
+
+      this.items = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      return this.items;
+    } catch (error) {
+      console.error('Erreur chargement planning conducteurs:', error);
+      return [];
+    }
+  },
+
+  getByDate(dateStr) {
+    return this.items.filter(s => s.date === dateStr).sort((a, b) => (a.heure_debut || '').localeCompare(b.heure_debut || ''));
+  },
+
+  getByMonth(year, month) {
+    const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+    return this.items.filter(s => s.date && s.date.startsWith(prefix));
+  },
+
+  getByWeek(startDate) {
+    const end = new Date(startDate);
+    end.setDate(end.getDate() + 6);
+    const startStr = startDate.toISOString().split('T')[0];
+    const endStr = end.toISOString().split('T')[0];
+    return this.items.filter(s => s.date >= startStr && s.date <= endStr)
+      .sort((a, b) => (a.date + (a.heure_debut || '')).localeCompare(b.date + (b.heure_debut || '')));
+  },
+
+  getConducteurLabel(slot, num) {
+    const c = num === 1 ? slot.conducteur1_nom : slot.conducteur2_nom;
+    if (c && (c.trim || c).trim) return (c.trim || c).trim();
+    return 'Conducteur à Désigner';
+  },
+
+  async create(data) {
+    try {
+      if (!Permissions.canManagePlanningConducteurs()) throw new Error('Permission refusée');
+
+      const slot = {
+        famille_id: AppState.famille.id,
+        date: data.date,
+        heure_debut: data.heure_debut || '00:00',
+        heure_fin: data.heure_fin || null,
+        titre: (data.titre || '').trim() || null,
+        programme_id: data.programme_id || null,
+        conducteur1_id: data.conducteur1_id || null,
+        conducteur1_nom: data.conducteur1_nom || null,
+        conducteur1_prenom: data.conducteur1_prenom || null,
+        conducteur2_id: data.conducteur2_id || null,
+        conducteur2_nom: data.conducteur2_nom || null,
+        conducteur2_prenom: data.conducteur2_prenom || null,
+        created_at: firebase.firestore.FieldValue.serverTimestamp(),
+        updated_at: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      const docRef = await db.collection('planning_conducteurs_priere').add(slot);
+      const newSlot = { id: docRef.id, ...slot };
+      this.items.push(newSlot);
+      this.items.sort((a, b) => (a.date + (a.heure_debut || '')).localeCompare(b.date + (b.heure_debut || '')));
+
+      Toast.success('Créneau ajouté');
+      return newSlot;
+    } catch (error) {
+      console.error('Erreur création créneau:', error);
+      Toast.error(error.message || 'Erreur lors de l\'ajout');
+      throw error;
+    }
+  },
+
+  async update(id, data) {
+    try {
+      if (!Permissions.canManagePlanningConducteurs()) throw new Error('Permission refusée');
+
+      const updates = {
+        ...data,
+        updated_at: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      await db.collection('planning_conducteurs_priere').doc(id).update(updates);
+      const idx = this.items.findIndex(s => s.id === id);
+      if (idx !== -1) this.items[idx] = { ...this.items[idx], ...updates };
+
+      Toast.success('Créneau modifié');
+      return true;
+    } catch (error) {
+      console.error('Erreur modification créneau:', error);
+      Toast.error(error.message || 'Erreur lors de la modification');
+      throw error;
+    }
+  },
+
+  async delete(id) {
+    try {
+      if (!Permissions.canManagePlanningConducteurs()) throw new Error('Permission refusée');
+
+      await db.collection('planning_conducteurs_priere').doc(id).delete();
+      this.items = this.items.filter(s => s.id !== id);
+
+      Toast.success('Créneau supprimé');
+      return true;
+    } catch (error) {
+      console.error('Erreur suppression créneau:', error);
+      Toast.error(error.message || 'Erreur lors de la suppression');
+      throw error;
+    }
+  }
+};
+
+// ============================================
 // PAGES SUJETS DE PRIÈRE
 // ============================================
 
@@ -301,15 +428,37 @@ const DEFAULT_PAGE_SIZE_PRIERE = 10;
 const PagesPriere = {
   currentTab: 'attente',
   showAllPriere: false,
+  planningView: 'calendrier', // 'calendrier' | 'liste'
+  planningYear: new Date().getFullYear(),
+  planningMonth: new Date().getMonth(),
+  planningWeekStart: null, // Date du lundi pour la vue liste
 
   async render() {
     await SujetsPriere.loadAll();
+    await PlanningConducteurs.loadAll();
     const enAttente = SujetsPriere.getEnAttente();
     const exauces = SujetsPriere.getExauces();
     const stats = SujetsPriere.getStats();
     const evolution = SujetsPriere.getEvolutionMensuelle(6);
 
+    const pageTabs = `
+      <div class="priere-page-tabs" style="display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-lg); border-bottom: 1px solid var(--border-color); padding-bottom: var(--spacing-sm);">
+        <button type="button" class="btn ${this.currentTab === 'attente' || this.currentTab === 'exauces' ? 'btn-primary' : 'btn-outline'}" 
+                onclick="PagesPriere.setMainTab('sujets')">
+          <i class="fas fa-praying-hands"></i> Sujets de prière
+        </button>
+        <button type="button" class="btn ${this.currentTab === 'planning' ? 'btn-primary' : 'btn-outline'}" 
+                onclick="PagesPriere.setMainTab('planning')">
+          <i class="fas fa-calendar-alt"></i> Planning conducteurs
+        </button>
+      </div>
+    `;
+
+    const planningSection = this.renderPlanningSection();
+
     return `
+      ${pageTabs}
+      <div id="priere-sujets-section" style="display: ${this.currentTab !== 'planning' ? 'block' : 'none'};">
       <!-- Statistiques Prière -->
       <div class="priere-stats-section" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--spacing-md); margin-bottom: var(--spacing-lg);">
         <div class="stat-card-mini" style="background: var(--bg-secondary); padding: var(--spacing-md); border-radius: var(--radius-md); text-align: center;">
@@ -365,6 +514,11 @@ const PagesPriere = {
 
       <div class="priere-list" id="priere-list">
         ${this.renderList()}
+      </div>
+      </div>
+
+      <div id="priere-planning-section" style="display: ${this.currentTab === 'planning' ? 'block' : 'none'};">
+        ${planningSection}
       </div>
 
       <!-- Modal ajout -->
@@ -449,6 +603,87 @@ const PagesPriere = {
             <button type="button" class="btn btn-outline" id="btn-detail-priere-delete" style="display: none;" onclick="PagesPriere.deleteFromDetailModalPriere()">Supprimer</button>
             <button type="button" class="btn btn-secondary" onclick="Modal.hide('modal-detail-priere')">Fermer</button>
           </div>
+        </div>
+      </div>
+
+      <!-- Modal créneau conducteur (planning) -->
+      <div class="modal-overlay" id="modal-slot-conducteur">
+        <div class="modal" style="max-width: 500px;">
+          <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-user-clock"></i> Créneau conducteur de prière</h3>
+            <button class="modal-close" onclick="Modal.hide('modal-slot-conducteur')">&times;</button>
+          </div>
+          <form id="form-slot-conducteur" onsubmit="PagesPriere.submitSlot(event)">
+            <div class="modal-body">
+              <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-md);">
+                <div class="form-group">
+                  <label class="form-label required">Date</label>
+                  <input type="date" class="form-control" id="slot-date" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Heure début</label>
+                  <input type="time" class="form-control" id="slot-heure-debut" value="19:00">
+                </div>
+              </div>
+              <div class="form-group" id="slot-recurrence-group">
+                <label class="form-label">Récurrence</label>
+                <select class="form-control" id="slot-recurrence">
+                  <option value="1">Une seule fois</option>
+                  <option value="2">2 semaines</option>
+                  <option value="4">4 semaines</option>
+                  <option value="8">8 semaines</option>
+                  <option value="12">12 semaines</option>
+                </select>
+                <span class="form-hint">Pour un créneau récurrent, le même horaire sera créé chaque semaine.</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Heure fin</label>
+                <input type="time" class="form-control" id="slot-heure-fin" placeholder="Optionnel">
+              </div>
+              <div class="form-group">
+                <label class="form-label required">Titre / Lieu</label>
+                <input type="text" class="form-control" id="slot-titre" placeholder="Ex: Salle principale" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Lier à un programme (optionnel)</label>
+                <select class="form-control" id="slot-programme">
+                  <option value="">— Aucun —</option>
+                  ${(typeof Programmes !== 'undefined' ? (AppState.programmes || []).filter(p => Programmes.getTypesPriere && Programmes.getTypesPriere().some(t => t.value === p.type)) : []).map(p => {
+                    const d = p.date_debut?.toDate ? p.date_debut.toDate() : new Date(p.date_debut);
+                    return `<option value="${p.id}">${Utils.escapeHtml(p.nom || '')} — ${Utils.formatDate(d, 'short')}</option>`;
+                  }).join('')}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Conducteur 1</label>
+                <input type="text" class="form-control" placeholder="Rechercher un membre..." id="slot-search1" oninput="PagesPriere.filterConducteurOptions(this, 'conducteur1')" autocomplete="off">
+                <select class="form-control mt-1" id="slot-conducteur1" style="max-height: 120px;">
+                  <option value="">Conducteur à Désigner</option>
+                  ${(AppState.membres || []).filter(m => m.statut_compte !== 'inactif').map(m => `
+                    <option value="${m.id}" data-search="${Utils.escapeHtml(((m.prenom || '') + ' ' + (m.nom || '') + ' ' + (m.email || '')).toLowerCase())}">
+                      ${Utils.escapeHtml((m.prenom || '') + ' ' + (m.nom || ''))} ${m.email ? `(${Utils.escapeHtml(m.email)})` : ''}
+                    </option>
+                  `).join('')}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Conducteur 2</label>
+                <input type="text" class="form-control" placeholder="Rechercher un membre..." id="slot-search2" oninput="PagesPriere.filterConducteurOptions(this, 'conducteur2')" autocomplete="off">
+                <select class="form-control mt-1" id="slot-conducteur2" style="max-height: 120px;">
+                  <option value="">Conducteur à Désigner</option>
+                  ${(AppState.membres || []).filter(m => m.statut_compte !== 'inactif').map(m => `
+                    <option value="${m.id}" data-search="${Utils.escapeHtml(((m.prenom || '') + ' ' + (m.nom || '') + ' ' + (m.email || '')).toLowerCase())}">
+                      ${Utils.escapeHtml((m.prenom || '') + ' ' + (m.nom || ''))} ${m.email ? `(${Utils.escapeHtml(m.email)})` : ''}
+                    </option>
+                  `).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" onclick="Modal.hide('modal-slot-conducteur')">Annuler</button>
+              <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Enregistrer</button>
+            </div>
+          </form>
         </div>
       </div>
 
@@ -584,6 +819,28 @@ const PagesPriere = {
           font-size: 0.85rem;
           font-weight: 500;
         }
+        .planning-slot-badge {
+          font-size: 0.75rem;
+          padding: 2px 6px;
+          background: rgba(156, 39, 176, 0.2);
+          border-radius: var(--radius-sm);
+          margin-top: 2px;
+          display: block;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .planning-slot-badge .slot-titre { font-weight: 600; display: block; margin-bottom: 2px; }
+        .planning-slot-badge .slot-time { font-weight: 600; margin-right: 4px; }
+        .slot-add-hint { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
+        #priere-planning-section .calendar-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        #priere-planning-section .calendar-table th { padding: var(--spacing-sm); text-align: center; background: var(--bg-primary); font-weight: 600; font-size: 0.85rem; }
+        #priere-planning-section .calendar-day { border: 1px solid var(--border-color); vertical-align: top; height: 100px; padding: var(--spacing-xs); transition: background 0.2s; }
+        #priere-planning-section .calendar-day:hover { background: var(--bg-primary); }
+        #priere-planning-section .calendar-day.empty { background: var(--bg-tertiary); cursor: default; }
+        #priere-planning-section .calendar-day.today { background: rgba(45, 90, 123, 0.1); }
+        #priere-planning-section .day-number { font-weight: 600; font-size: 0.9rem; margin-bottom: var(--spacing-xs); }
+        #priere-planning-section .day-events { display: flex; flex-direction: column; gap: 2px; }
       </style>
     `;
   },
@@ -790,6 +1047,331 @@ const PagesPriere = {
     });
     const listEl = document.getElementById('priere-list');
     if (listEl) listEl.innerHTML = this.renderList();
+  },
+
+  setMainTab(tab) {
+    this.currentTab = tab;
+    const sujetsEl = document.getElementById('priere-sujets-section');
+    const planningEl = document.getElementById('priere-planning-section');
+    if (sujetsEl) sujetsEl.style.display = tab !== 'planning' ? 'block' : 'none';
+    if (planningEl) planningEl.style.display = tab === 'planning' ? 'block' : 'none';
+    document.querySelectorAll('.priere-page-tabs .btn').forEach((btn, i) => {
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-outline');
+      if ((tab !== 'planning' && i === 0) || (tab === 'planning' && i === 1)) {
+        btn.classList.remove('btn-outline');
+        btn.classList.add('btn-primary');
+      }
+    });
+    if (tab === 'planning' && planningEl) {
+      planningEl.innerHTML = this.renderPlanningSection();
+    }
+    if (tab !== 'planning' && typeof this.initCharts === 'function') this.initCharts();
+  },
+
+  renderPlanningSection() {
+    const canManage = Permissions.canManagePlanningConducteurs();
+    const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+    const year = this.planningYear;
+    const month = this.planningMonth;
+
+    const viewTabs = `
+      <div style="display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-md); flex-wrap: wrap;">
+        <button type="button" class="btn ${this.planningView === 'calendrier' ? 'btn-primary' : 'btn-outline'}" onclick="PagesPriere.setPlanningView('calendrier')">
+          <i class="fas fa-calendar-alt"></i> Calendrier
+        </button>
+        <button type="button" class="btn ${this.planningView === 'liste' ? 'btn-primary' : 'btn-outline'}" onclick="PagesPriere.setPlanningView('liste')">
+          <i class="fas fa-list"></i> Liste hebdomadaire
+        </button>
+      </div>
+    `;
+
+    if (this.planningView === 'calendrier') {
+      const slotsByDay = {};
+      PlanningConducteurs.getByMonth(year, month).forEach(s => {
+        const day = s.date ? parseInt(s.date.split('-')[2], 10) : 0;
+        if (!slotsByDay[day]) slotsByDay[day] = [];
+        slotsByDay[day].push(s);
+      });
+      Object.keys(slotsByDay).forEach(day => {
+        slotsByDay[day].sort((a, b) => (a.heure_debut || '').localeCompare(b.heure_debut || ''));
+      });
+
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const firstDay = new Date(year, month, 1).getDay();
+      const startDay = firstDay === 0 ? 6 : firstDay - 1;
+      const today = new Date();
+
+      let calHtml = '';
+      let dayCount = 1;
+      for (let week = 0; week < 6; week++) {
+        let weekHtml = '<tr>';
+        for (let d = 0; d < 7; d++) {
+          if ((week === 0 && d < startDay) || dayCount > daysInMonth) {
+            weekHtml += '<td class="calendar-day empty"></td>';
+          } else {
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayCount).padStart(2, '0')}`;
+            const isToday = today.getDate() === dayCount && today.getMonth() === month && today.getFullYear() === year;
+            const daySlots = slotsByDay[dayCount] || [];
+            weekHtml += `
+              <td class="calendar-day ${isToday ? 'today' : ''}" data-date="${dateStr}" ${canManage ? `onclick="PagesPriere.openSlotModal('${dateStr}')" style="cursor: pointer;"` : ''}>
+                <div class="day-number">${dayCount}</div>
+                <div class="day-events planning-slots">
+                  ${daySlots.map(slot => {
+                    const titre = (slot.titre || '').trim();
+                    const c1 = PlanningConducteurs.getConducteurLabel(slot, 1);
+                    const c2 = PlanningConducteurs.getConducteurLabel(slot, 2);
+                    const conducteurs = `${c1}${slot.conducteur2_id || slot.conducteur2_nom ? ' / ' + c2 : ''}`;
+                    return `
+                    <div class="planning-slot-badge" ${canManage ? `onclick="event.stopPropagation(); PagesPriere.editSlot('${slot.id}')"` : ''}>
+                      ${titre ? `<span class="slot-titre">${Utils.escapeHtml(titre)}</span>` : ''}
+                      <span class="slot-time">${slot.heure_debut || '—'}</span>
+                      <span class="slot-conducteurs">${Utils.escapeHtml(conducteurs)}</span>
+                    </div>
+                  `;
+                  }).join('')}
+                  ${canManage && daySlots.length === 0 ? '<div class="slot-add-hint"><i class="fas fa-plus"></i> Ajouter</div>' : ''}
+                </div>
+              </td>
+            `;
+            dayCount++;
+          }
+        }
+        weekHtml += '</tr>';
+        calHtml += weekHtml;
+        if (dayCount > daysInMonth) break;
+      }
+
+      return `
+        <div class="card">
+          <div class="card-header" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--spacing-md);">
+            <div style="display: flex; align-items: center; gap: var(--spacing-md);">
+              <button class="btn btn-icon btn-secondary" onclick="PagesPriere.planningPrevMonth()"><i class="fas fa-chevron-left"></i></button>
+              <h3 class="card-title mb-0">${monthNames[month]} ${year}</h3>
+              <button class="btn btn-icon btn-secondary" onclick="PagesPriere.planningNextMonth()"><i class="fas fa-chevron-right"></i></button>
+            </div>
+            ${canManage ? `<button class="btn btn-primary" onclick="PagesPriere.openSlotModal()"><i class="fas fa-plus"></i> Ajouter un créneau</button>` : ''}
+          </div>
+          <div class="card-body" style="overflow-x: auto;">
+            ${viewTabs}
+            <table class="calendar-table" style="width: 100%; border-collapse: collapse;">
+              <thead><tr><th>Lun</th><th>Mar</th><th>Mer</th><th>Jeu</th><th>Ven</th><th>Sam</th><th>Dim</th></tr></thead>
+              <tbody>${calHtml}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    let weekStart = this.planningWeekStart;
+    if (!weekStart) {
+      weekStart = new Date(year, month, 1);
+      while (weekStart.getDay() !== 1) weekStart.setDate(weekStart.getDate() - 1);
+    }
+    const weekSlots = PlanningConducteurs.getByWeek(weekStart);
+
+    const listHtml = weekSlots.length === 0
+      ? '<div class="empty-state"><i class="fas fa-calendar-plus"></i><h3>Aucun créneau cette semaine</h3><p>Cliquez sur un jour du calendrier ou sur "Ajouter un créneau" pour planifier les conducteurs.</p></div>'
+      : weekSlots.map(slot => {
+          const c1 = PlanningConducteurs.getConducteurLabel(slot, 1);
+          const c2 = PlanningConducteurs.getConducteurLabel(slot, 2);
+          return `
+            <div class="planning-list-item" style="display: flex; align-items: center; justify-content: space-between; padding: var(--spacing-md); background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: var(--spacing-sm);">
+              <div>
+                <strong>${Utils.formatDate(new Date(slot.date + 'T12:00:00'), 'full')}</strong> — ${slot.heure_debut || '—'}
+                ${slot.titre ? `<span class="badge badge-secondary">${Utils.escapeHtml(slot.titre)}</span>` : ''}
+              </div>
+              <div style="display: flex; align-items: center; gap: var(--spacing-md);">
+                <span>${Utils.escapeHtml(c1)} / ${Utils.escapeHtml(c2)}</span>
+                ${canManage ? `
+                  <button class="btn btn-sm btn-secondary" onclick="PagesPriere.editSlot('${slot.id}')"><i class="fas fa-edit"></i></button>
+                  <button class="btn btn-sm btn-danger" onclick="PagesPriere.deleteSlot('${slot.id}')"><i class="fas fa-trash"></i></button>
+                ` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+    return `
+      <div class="card">
+        <div class="card-header" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--spacing-md);">
+          <h3 class="card-title mb-0"><i class="fas fa-list"></i> Semaine du ${Utils.formatDate(weekStart, 'full')}</h3>
+          ${canManage ? `<button class="btn btn-primary" onclick="PagesPriere.openSlotModal()"><i class="fas fa-plus"></i> Ajouter un créneau</button>` : ''}
+        </div>
+        <div class="card-body">
+          ${viewTabs}
+          <div id="planning-list-content">${listHtml}</div>
+        </div>
+      </div>
+      <div style="margin-top: var(--spacing-md);">
+        <button class="btn btn-outline btn-sm" onclick="PagesPriere.planningPrevWeek()"><i class="fas fa-chevron-left"></i> Semaine précédente</button>
+        <button class="btn btn-outline btn-sm" onclick="PagesPriere.planningNextWeek()" style="margin-left: var(--spacing-sm);"><i class="fas fa-chevron-right"></i> Semaine suivante</button>
+      </div>
+    `;
+  },
+
+  setPlanningView(view) {
+    this.planningView = view;
+    if (view === 'liste' && !this.planningWeekStart) {
+      const d = new Date();
+      while (d.getDay() !== 1) d.setDate(d.getDate() - 1);
+      this.planningWeekStart = new Date(d);
+    }
+    const section = document.getElementById('priere-planning-section');
+    if (section) section.innerHTML = this.renderPlanningSection();
+  },
+
+  planningPrevMonth() {
+    this.planningMonth--;
+    if (this.planningMonth < 0) { this.planningMonth = 11; this.planningYear--; }
+    const section = document.getElementById('priere-planning-section');
+    if (section) section.innerHTML = this.renderPlanningSection();
+  },
+
+  planningNextMonth() {
+    this.planningMonth++;
+    if (this.planningMonth > 11) { this.planningMonth = 0; this.planningYear++; }
+    const section = document.getElementById('priere-planning-section');
+    if (section) section.innerHTML = this.renderPlanningSection();
+  },
+
+  planningPrevWeek() {
+    const base = this.planningWeekStart || (() => { const d = new Date(this.planningYear, this.planningMonth, 1); while (d.getDay() !== 1) d.setDate(d.getDate() - 1); return d; })();
+    this.planningWeekStart = new Date(base);
+    this.planningWeekStart.setDate(this.planningWeekStart.getDate() - 7);
+    const section = document.getElementById('priere-planning-section');
+    if (section) section.innerHTML = this.renderPlanningSection();
+  },
+
+  planningNextWeek() {
+    const base = this.planningWeekStart || (() => { const d = new Date(this.planningYear, this.planningMonth, 1); while (d.getDay() !== 1) d.setDate(d.getDate() - 1); return d; })();
+    this.planningWeekStart = new Date(base);
+    this.planningWeekStart.setDate(this.planningWeekStart.getDate() + 7);
+    const section = document.getElementById('priere-planning-section');
+    if (section) section.innerHTML = this.renderPlanningSection();
+  },
+
+  openSlotModal(dateStr = null) {
+    if (!Permissions.canManagePlanningConducteurs()) return;
+    const modal = document.getElementById('modal-slot-conducteur');
+    if (modal) {
+      const dateEl = document.getElementById('slot-date');
+      const titreEl = document.getElementById('slot-titre');
+      const progEl = document.getElementById('slot-programme');
+      const recurEl = document.getElementById('slot-recurrence-group');
+      if (dateEl) dateEl.value = dateStr || Utils.toDateInputValue(new Date());
+      if (document.getElementById('slot-heure-debut')) document.getElementById('slot-heure-debut').value = '19:00';
+      if (document.getElementById('slot-heure-fin')) document.getElementById('slot-heure-fin').value = '';
+      if (titreEl) titreEl.value = '';
+      if (progEl) progEl.value = '';
+      if (document.getElementById('slot-recurrence')) document.getElementById('slot-recurrence').value = '1';
+      if (recurEl) recurEl.style.display = '';
+      PagesPriere.resetConducteurSelects();
+      ['slot-search1', 'slot-search2'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+      modal.dataset.slotId = '';
+      Modal.show('modal-slot-conducteur');
+    }
+  },
+
+  async editSlot(slotId) {
+    if (!Permissions.canManagePlanningConducteurs()) return;
+    const slot = PlanningConducteurs.items.find(s => s.id === slotId);
+    if (!slot) return;
+    const modal = document.getElementById('modal-slot-conducteur');
+    if (modal) {
+      modal.dataset.slotId = slotId;
+      const dateEl = document.getElementById('slot-date');
+      if (dateEl) dateEl.value = slot.date || '';
+      const hd = document.getElementById('slot-heure-debut');
+      if (hd) hd.value = slot.heure_debut || '19:00';
+      const hf = document.getElementById('slot-heure-fin');
+      if (hf) hf.value = slot.heure_fin || '';
+      const titreEl = document.getElementById('slot-titre');
+      if (titreEl) titreEl.value = slot.titre || '';
+      const progEl = document.getElementById('slot-programme');
+      if (progEl) progEl.value = slot.programme_id || '';
+      const recurGroup = document.getElementById('slot-recurrence-group');
+      if (recurGroup) recurGroup.style.display = 'none';
+      PagesPriere.setConducteurSelects(slot);
+      Modal.show('modal-slot-conducteur');
+    }
+  },
+
+  resetConducteurSelects() {
+    ['conducteur1', 'conducteur2'].forEach(name => {
+      const el = document.getElementById(`slot-${name}`);
+      if (el) el.value = '';
+    });
+  },
+
+  setConducteurSelects(slot) {
+    const c1 = document.getElementById('slot-conducteur1');
+    const c2 = document.getElementById('slot-conducteur2');
+    if (c1) c1.value = slot.conducteur1_id || '';
+    if (c2) c2.value = slot.conducteur2_id || '';
+  },
+
+  async submitSlot(event) {
+    event.preventDefault();
+    if (!Permissions.canManagePlanningConducteurs()) return;
+    const modalEl = document.getElementById('modal-slot-conducteur');
+    const slotId = (modalEl?.dataset?.slotId || '').trim();
+    const dateEl = document.getElementById('slot-date');
+    const data = {
+      date: dateEl?.value || '',
+      heure_debut: document.getElementById('slot-heure-debut')?.value || '19:00',
+      heure_fin: (document.getElementById('slot-heure-fin')?.value || '').trim() || null,
+      titre: (document.getElementById('slot-titre')?.value || '').trim() || null,
+      programme_id: (document.getElementById('slot-programme')?.value || '').trim() || null,
+      conducteur1_id: (document.getElementById('slot-conducteur1')?.value || '').trim() || null,
+      conducteur2_id: (document.getElementById('slot-conducteur2')?.value || '').trim() || null
+    };
+    const c1 = data.conducteur1_id ? (AppState.membres.find(m => m.id === data.conducteur1_id)) : null;
+    const c2 = data.conducteur2_id ? (AppState.membres.find(m => m.id === data.conducteur2_id)) : null;
+    data.conducteur1_nom = c1 ? `${c1.prenom || ''} ${c1.nom || ''}`.trim() : null;
+    data.conducteur1_prenom = c1?.prenom || null;
+    data.conducteur2_nom = c2 ? `${c2.prenom || ''} ${c2.nom || ''}`.trim() : null;
+    data.conducteur2_prenom = c2?.prenom || null;
+    if (!data.date) { Toast.error('Veuillez sélectionner une date'); return; }
+    if (!data.titre) { Toast.error('Veuillez renseigner le titre ou lieu du créneau'); return; }
+    try {
+      if (slotId) {
+        await PlanningConducteurs.update(slotId, data);
+      } else {
+        const count = parseInt(document.getElementById('slot-recurrence')?.value || '1', 10) || 1;
+        const baseDate = new Date(data.date + 'T12:00:00');
+        for (let i = 0; i < count; i++) {
+          const d = new Date(baseDate);
+          d.setDate(d.getDate() + (i * 7));
+          const slotData = { ...data, date: d.toISOString().split('T')[0] };
+          await PlanningConducteurs.create(slotData);
+        }
+      }
+      Modal.hide('modal-slot-conducteur');
+      const section = document.getElementById('priere-planning-section');
+      if (section) section.innerHTML = this.renderPlanningSection();
+    } catch (e) {}
+  },
+
+  async deleteSlot(slotId) {
+    if (!Permissions.canManagePlanningConducteurs()) return;
+    if (!confirm('Supprimer ce créneau ?')) return;
+    try {
+      await PlanningConducteurs.delete(slotId);
+      const section = document.getElementById('priere-planning-section');
+      if (section) section.innerHTML = this.renderPlanningSection();
+    } catch (e) {}
+  },
+
+  filterConducteurOptions(searchInput, selectName) {
+    const q = (searchInput.value || '').toLowerCase().trim();
+    const select = document.getElementById(`slot-${selectName}`);
+    if (!select) return;
+    const options = select.querySelectorAll('option');
+    options.forEach(opt => {
+      const search = (opt.dataset.search || opt.textContent || '').toLowerCase();
+      opt.style.display = !q || search.includes(q) ? '' : 'none';
+    });
   },
 
   showAddModal() {

@@ -213,7 +213,8 @@ const Auth = {
       const adminFamilleId = AppState.famille.id;
       const adminFamilleNom = AppState.famille.nom;
       const adminUserId = AppState.user.id;
-      const adminMentorId = membreData.mentor_id || adminUserId;
+      const role = membreData.role || 'disciple';
+      const mentorId = (role === 'superviseur') ? null : (membreData.mentor_id || adminUserId);
 
       const tempPassword = Math.random().toString(36).slice(-8) + 'A1!';
 
@@ -231,8 +232,8 @@ const Auth = {
         nom: membreData.nom.trim(),
         prenom: membreData.prenom.trim(),
         famille_id: adminFamilleId,
-        mentor_id: adminMentorId,
-        role: membreData.role || 'disciple',
+        mentor_id: mentorId,
+        role: role,
         statut_compte: 'actif',
         sexe: null,
         date_naissance: null,
@@ -598,6 +599,11 @@ const Permissions = {
     return this.hasRole('superviseur') || this.isAdmin();
   },
 
+  /** Peut créer/modifier/supprimer le planning des conducteurs de prière. Lecture pour tous. */
+  canManagePlanningConducteurs() {
+    return this.hasRole('adjoint_superviseur') || this.hasRole('superviseur') || this.isAdmin();
+  },
+
   /** Disciple ou Nouveau : accès à la page Programmes en lecture seule. */
   canViewProgrammesReadOnly() {
     if (!AppState.user) return false;
@@ -648,6 +654,8 @@ const Permissions = {
   canEditMember(membreId) {
     if (!AppState.user) return false;
     if (membreId === AppState.user.id) return true;
+    const membre = AppState.membres?.find(m => m.id === membreId);
+    if (membre?.role === 'admin' && !this.isAdmin()) return false; // Seul un admin peut modifier un admin
     if (this.hasRole('superviseur')) return true;
     return false;
   },
@@ -664,12 +672,17 @@ const Permissions = {
     return this.hasRole('superviseur') || this.isAdmin();
   },
 
-  /** Peut réaffecter ce membre (disciple, nouveau, mentor, adjoint) à un autre mentor (page Mes disciples ou Membres) */
+  /** Peut affecter un nouveau membre à n'importe quel mentor (formulaire d'ajout). Adjoint superviseur, superviseur, admin. */
+  canAssignToAnyMentor() {
+    return this.hasRole('adjoint_superviseur') || this.hasRole('superviseur') || this.isAdmin();
+  },
+
+  /** Peut réaffecter ce membre (disciple, nouveau, mentor, adjoint, admin) à un autre mentor */
   canReassignMentor(membre) {
     if (!AppState.user || !membre) return false;
-    const rolesAvecMentor = ['disciple', 'nouveau', 'mentor', 'adjoint_superviseur'];
+    const rolesAvecMentor = ['disciple', 'nouveau', 'mentor', 'adjoint_superviseur', 'admin'];
     if (!rolesAvecMentor.includes(membre.role)) return false;
-    if (this.hasRole('superviseur') || this.isAdmin()) return true;
+    if (this.hasRole('adjoint_superviseur') || this.hasRole('superviseur') || this.isAdmin()) return true;
     if (this.hasRole('mentor') && membre.mentor_id === AppState.user.id) return true;
     return false;
   },
@@ -706,8 +719,13 @@ const Membres = {
     }
   },
 
+  /** Disciples d'un mentor. Superviseurs et adjoints exclus : ils ne sont pas des disciples. */
   getDisciples(mentorId) {
-    return AppState.membres.filter(m => m.mentor_id === mentorId);
+    return AppState.membres.filter(m =>
+      m.mentor_id === mentorId &&
+      m.role !== 'superviseur' &&
+      m.role !== 'adjoint_superviseur'
+    );
   },
 
   getById(id) {
@@ -719,19 +737,23 @@ const Membres = {
       if (!Permissions.canEditMember(id)) {
         throw new Error('Permission refusée');
       }
+      // Superviseur : son propre mentor, jamais de mentor_id
+      const payload = { ...data };
+      const finalRole = payload.role ?? this.getById(id)?.role;
+      if (finalRole === 'superviseur') payload.mentor_id = null;
 
       await db.collection('utilisateurs').doc(id).update({
-        ...data,
+        ...payload,
         updated_at: firebase.firestore.FieldValue.serverTimestamp()
       });
 
       const index = AppState.membres.findIndex(m => m.id === id);
       if (index !== -1) {
-        AppState.membres[index] = { ...AppState.membres[index], ...data };
+        AppState.membres[index] = { ...AppState.membres[index], ...payload };
       }
 
       if (id === AppState.user.id) {
-        AppState.user = { ...AppState.user, ...data };
+        AppState.user = { ...AppState.user, ...payload };
       }
 
       Toast.success('Profil mis à jour');
@@ -821,6 +843,13 @@ const Membres = {
     return this.block(id, commentaireArchivage);
   },
 
+  /** Membres actifs visibles (adjoints superviseur masqués sauf pour admin). */
+  getVisibleActifs() {
+    const actifs = AppState.membres.filter(m => m.statut_compte === 'actif');
+    if (Permissions.isAdmin()) return actifs;
+    return actifs.filter(m => m.role !== 'adjoint_superviseur');
+  },
+
   getMentors() {
     return AppState.membres.filter(m => 
       ['mentor', 'superviseur', 'admin'].includes(m.role) && 
@@ -828,23 +857,27 @@ const Membres = {
     );
   },
 
-  /** Liste des membres pouvant être choisis comme mentor (pour réaffectation disciple/nouveau) */
+  /** Liste des membres pouvant être choisis comme mentor (pour réaffectation disciple/nouveau).
+   * Les adjoints superviseur sont exclus : comptes de service, pas mentors. */
   getPossibleMentorsForReassign() {
     return AppState.membres.filter(m =>
       m.statut_compte === 'actif' &&
-      ['mentor', 'adjoint_superviseur', 'superviseur', 'admin'].includes(m.role)
+      ['mentor', 'superviseur', 'admin'].includes(m.role)
     );
   },
 
+  /** Stats : adjoints superviseur exclus (comptes de service, pas membres réels). */
   getStats() {
-    const actifs = AppState.membres.filter(m => m.statut_compte === 'actif');
+    const actifs = AppState.membres.filter(m =>
+      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur'
+    );
     return {
       total: actifs.length,
       parRole: {
         disciples: actifs.filter(m => m.role === 'disciple').length,
         nouveaux: actifs.filter(m => m.role === 'nouveau').length,
-        mentors: actifs.filter(m => m.role === 'mentor').length,
-        adjoints: actifs.filter(m => m.role === 'adjoint_superviseur').length,
+        mentors: actifs.filter(m => ['mentor', 'admin'].includes(m.role)).length,
+        adjoints: 0, // Adjoints exclus des stats (comptes de service)
         superviseurs: actifs.filter(m => m.role === 'superviseur').length,
       },
       anniversairesAujourdhui: actifs.filter(m => Utils.isBirthday(m.date_naissance))

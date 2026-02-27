@@ -27,8 +27,10 @@ const Statistiques = {
       return true;
     });
 
-    // Filtrer les membres
-    let membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+    // Filtrer les membres (adjoints superviseur exclus : comptes de service)
+    let membres = AppState.membres.filter(m =>
+      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur'
+    );
     
     if (mentorId) {
       membres = membres.filter(m => m.mentor_id === mentorId);
@@ -279,7 +281,7 @@ const Statistiques = {
         id: mentor.id,
         nom: mentor.nom,
         prenom: mentor.prenom,
-        nomComplet: `${mentor.prenom} ${mentor.nom}`,
+        nomComplet: `${mentor.prenom} ${mentor.nom}${mentor.role === 'admin' ? ' (Admin)' : ''}`,
         nbDisciples: disciples.length,
         tauxPresence: tauxPresence
       });
@@ -307,7 +309,7 @@ const Statistiques = {
         id: mentor.id,
         nom: mentor.nom,
         prenom: mentor.prenom,
-        nomComplet: `${mentor.prenom} ${mentor.nom}`,
+        nomComplet: `${mentor.prenom} ${mentor.nom}${mentor.role === 'admin' ? ' (Admin)' : ''}`,
         nbDisciples: disciples.length,
         tauxPresence
       };
@@ -317,17 +319,19 @@ const Statistiques = {
 
   // Répartition des membres par mentor (tous rôles) en proportion du total famille
   getRepartitionMentorsData() {
-    const actifs = AppState.membres.filter(m => m.statut_compte === 'actif');
+    const actifs = AppState.membres.filter(m =>
+      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur'
+    );
     const totalFamille = actifs.length;
     const mentorsPourRepartition = actifs.filter(m =>
-      ['mentor', 'adjoint_superviseur', 'superviseur'].includes(m.role)
+      ['mentor', 'superviseur', 'admin'].includes(m.role)
     );
     const parMentor = mentorsPourRepartition.map(m => {
       const nbDansGroupe = Membres.getDisciples(m.id).length;
       const proportion = totalFamille > 0 ? Math.round((nbDansGroupe / totalFamille) * 1000) / 10 : 0;
       return {
         mentorId: m.id,
-        mentorName: `${m.prenom} ${m.nom}`,
+        mentorName: `${m.prenom} ${m.nom}${m.role === 'admin' ? ' (Admin)' : ''}`,
         nbDansGroupe,
         proportion
       };
@@ -338,7 +342,7 @@ const Statistiques = {
 
   // Statistiques d'évolution des membres (optionnellement limitées aux disciples d'un mentor)
   calculateMembresEvolution(mentorId = null) {
-    let membres = AppState.membres.filter(m => m.statut_compte === 'actif');
+    let membres = AppState.membres.filter(m => m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur');
     if (mentorId) {
       membres = membres.filter(m => m.mentor_id === mentorId);
     }
@@ -1026,7 +1030,7 @@ const PagesStatistiques = {
         id: mentor.id,
         nom: mentor.nom,
         prenom: mentor.prenom,
-        nomComplet: `${mentor.prenom} ${mentor.nom}`,
+        nomComplet: `${mentor.prenom} ${mentor.nom}${mentor.role === 'admin' ? ' (Admin)' : ''}`,
         nbDisciples: disciples.length,
         tauxPresence: 0 // Sera calculé si des présences sont en cache
       };

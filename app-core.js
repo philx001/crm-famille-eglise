@@ -177,7 +177,7 @@ const Utils = {
       'mentor': 'Mentor',
       'adjoint_superviseur': 'Adjoint superviseur',
       'superviseur': 'Superviseur',
-      'admin': 'Administrateur'
+      'admin': 'Administrateur-Mentor'
     };
     return labels[role] || role;
   },

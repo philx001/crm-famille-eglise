@@ -241,6 +241,11 @@ const Pages = {
             <i class="fas fa-lock"></i>
           </button>
           ` : ''}
+          ${Permissions.canDeleteMemberPermanently(membre) ? `
+          <button class="btn btn-icon btn-outline btn-outline-danger" onclick="App.deleteMembrePermanently('${membre.id}')" title="Supprimer définitivement (doublon / compte obsolète)">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+          ` : ''}
         </div>
       </div>
     `;
@@ -403,6 +408,11 @@ const Pages = {
             ${!isOwnProfil && Permissions.canBlockMember(membre) && membre.statut_compte === 'actif' ? `
             <button type="button" class="btn btn-outline btn-warning" onclick="App.blockMembre('${membre.id}')" title="Bloquer le compte et archiver">
               <i class="fas fa-lock"></i> Bloquer et archiver
+            </button>
+            ` : ''}
+            ${!isOwnProfil && Permissions.canDeleteMemberPermanently(membre) ? `
+            <button type="button" class="btn btn-outline btn-danger" onclick="App.deleteMembrePermanently('${membre.id}')" title="Supprimer définitivement (doublon / compte obsolète)">
+              <i class="fas fa-trash-alt"></i> Supprimer définitivement
             </button>
             ` : ''}
             ${membre.id === AppState.user.id ? `

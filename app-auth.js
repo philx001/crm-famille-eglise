@@ -667,6 +667,13 @@ const Permissions = {
     return this.hasRole('superviseur') || this.isAdmin();
   },
 
+  /** Peut supprimer définitivement un membre (document Firestore) : admin uniquement. Le superviseur garde l'archivage. */
+  canDeleteMemberPermanently(member) {
+    if (!AppState.user || !member) return false;
+    if (member.id === AppState.user.id) return false;
+    return this.isAdmin();
+  },
+
   /** Peut voir la page Archivage des membres */
   canViewArchivesMembres() {
     return this.hasRole('superviseur') || this.isAdmin();
@@ -841,6 +848,40 @@ const Membres = {
   /** Ancienne méthode : équivalent à block(id, commentaire). Conservée pour compatibilité. */
   async delete(id, commentaireArchivage) {
     return this.block(id, commentaireArchivage);
+  },
+
+  /**
+   * Supprimer définitivement un membre (document Firestore + présences associées).
+   * À utiliser pour retirer un doublon ou un compte obsolète. Le compte Firebase Auth reste à supprimer manuellement si besoin.
+   */
+  async deletePermanently(id) {
+    try {
+      if (!Permissions.canDeleteMemberPermanently(Membres.getById(id))) {
+        throw new Error('Permission refusée');
+      }
+      if (id === AppState.user?.id) {
+        throw new Error('Vous ne pouvez pas supprimer votre propre compte.');
+      }
+      const batch = db.batch();
+      const presencesSnap = await db.collection('presences').where('disciple_id', '==', id).get();
+      presencesSnap.docs.forEach(doc => batch.delete(doc.ref));
+      const presencesMentorSnap = await db.collection('presences').where('mentor_id', '==', id).get();
+      presencesMentorSnap.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      const m = Membres.getById(id);
+      await db.collection('utilisateurs').doc(id).delete();
+      const idx = AppState.membres.findIndex(mem => mem.id === id);
+      if (idx !== -1) AppState.membres.splice(idx, 1);
+      if (typeof AuditLog !== 'undefined' && m) {
+        AuditLog.recordModification(AppState.user.id, AppState.user.email, AppState.user.prenom, AppState.user.nom, AppState.user.role, 'suppression_definitive_membre', 'utilisateurs', id, `${m.prenom || ''} ${m.nom || ''}`.trim() || id);
+      }
+      Toast.success('Membre supprimé définitivement de la base.');
+      return true;
+    } catch (error) {
+      console.error('Erreur suppression définitive:', error);
+      Toast.error(error.message || 'Erreur lors de la suppression');
+      return false;
+    }
   },
 
   /** Membres actifs visibles (adjoints superviseur masqués sauf pour admin). */

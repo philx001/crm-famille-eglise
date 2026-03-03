@@ -49,10 +49,7 @@ service cloud.firestore {
         isAdmin()
       );
 
-      allow delete: if isAuthenticated() && (
-        (hasRole('superviseur') && resource.data.famille_id == getUserData().famille_id) ||
-        isAdmin()
-      );
+      allow delete: if isAuthenticated() && isAdmin();
     }
 
     // PROGRAMMES

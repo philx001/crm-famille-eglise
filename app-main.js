@@ -1193,6 +1193,28 @@ const App = {
     } catch (e) {}
   },
 
+  async deleteMembrePermanently(id) {
+    const m = Membres.getById(id);
+    if (!m || !Permissions.canDeleteMemberPermanently(m)) {
+      Toast.error('Vous ne pouvez pas supprimer ce membre.');
+      return;
+    }
+    const nom = `${(m.prenom || '')} ${(m.nom || '')}`.trim() || m.email || 'Ce membre';
+    if (!confirm(`Supprimer définitivement "${nom}" ?\n\nLe profil et les pointages de présence associés seront retirés de la base. Cette action est irréversible. Utilisez ceci pour retirer un doublon ou un compte obsolète.`)) return;
+    try {
+      App.showLoading();
+      const ok = await Membres.deletePermanently(id);
+      if (ok) {
+        await Membres.loadAll();
+        this.navigate(AppState.currentPage || 'membres');
+      }
+    } catch (e) {
+      Toast.error(e.message || 'Erreur lors de la suppression.');
+    } finally {
+      App.hideLoading();
+    }
+  },
+
   async reassignMentor(membreId, newMentorId) {
     if (!newMentorId) return;
     const membre = Membres.getById(membreId);

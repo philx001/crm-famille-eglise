@@ -676,6 +676,18 @@ a.btn-outline {
   cursor: pointer !important;
 }
 
+.btn-outline.btn-danger,
+.btn-outline-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn-outline.btn-danger:hover:not(:disabled),
+.btn-outline-danger:hover:not(:disabled) {
+  background: rgba(211, 47, 47, 0.1);
+  color: #D32F2F;
+}
+
 .btn-sm {
   padding: var(--spacing-xs) var(--spacing-md);
   font-size: 0.8rem;

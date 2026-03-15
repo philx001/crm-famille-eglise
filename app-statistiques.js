@@ -372,6 +372,103 @@ const Statistiques = {
     });
 
     return sorted;
+  },
+
+  // Statistiques de profil famille (sexe, âge, ancienneté) - basées sur les données saisies par les membres
+  getProfilFamilleStats() {
+    const actifs = AppState.membres.filter(m =>
+      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur'
+    );
+    const total = actifs.length;
+
+    // Sexe
+    const hommes = actifs.filter(m => m.sexe === 'M').length;
+    const femmes = actifs.filter(m => m.sexe === 'F').length;
+    const sexeNonRenseigne = actifs.filter(m => !m.sexe || (m.sexe !== 'M' && m.sexe !== 'F')).length;
+    const totalAvecSexe = hommes + femmes;
+
+    // Tranches d'âge : 18-25, 26-35, 36-45, 46-60, +60 (et "Moins de 18 ans" pour exhaustivité)
+    const tranchesAge = [
+      { key: 'moins18', label: 'Moins de 18 ans', min: 0, max: 17 },
+      { key: '18-25', label: '18-25 ans', min: 18, max: 25 },
+      { key: '26-35', label: '26-35 ans', min: 26, max: 35 },
+      { key: '36-45', label: '36-45 ans', min: 36, max: 45 },
+      { key: '46-60', label: '46-60 ans', min: 46, max: 60 },
+      { key: 'plus60', label: '+ de 60 ans', min: 61, max: 150 }
+    ];
+    const today = new Date();
+    const ageByTranche = tranchesAge.map(t => ({ ...t, count: 0 }));
+    let ageNonRenseigne = 0;
+    actifs.forEach(m => {
+      const d = m.date_naissance ? (m.date_naissance.toDate ? m.date_naissance.toDate() : new Date(m.date_naissance)) : null;
+      if (!d || isNaN(d.getTime())) {
+        ageNonRenseigne++;
+        return;
+      }
+      const age = Math.floor((today - d) / (365.25 * 24 * 60 * 60 * 1000));
+      const tranche = tranchesAge.find(t => age >= t.min && age <= t.max);
+      if (tranche) {
+        const entry = ageByTranche.find(x => x.key === tranche.key);
+        if (entry) entry.count++;
+      }
+    });
+    const totalAvecAge = actifs.length - ageNonRenseigne;
+
+    // Ancienneté : moins de 1 an ; 1-3 ans ; 3-5 ans ; 5-10 ans ; +10 ans
+    const tranchesAnciennete = [
+      { key: 'moins1', label: 'Moins de 1 an', min: 0, max: 0.999 },
+      { key: '1-3', label: '1-3 ans', min: 1, max: 2.999 },
+      { key: '3-5', label: '3-5 ans', min: 3, max: 4.999 },
+      { key: '5-10', label: '5-10 ans', min: 5, max: 9.999 },
+      { key: 'plus10', label: '+ 10 ans', min: 10, max: 999 }
+    ];
+    const ancienneteByTranche = tranchesAnciennete.map(t => ({ ...t, count: 0 }));
+    let ancienneteNonRenseigne = 0;
+    actifs.forEach(m => {
+      const d = m.date_arrivee_icc ? (m.date_arrivee_icc.toDate ? m.date_arrivee_icc.toDate() : new Date(m.date_arrivee_icc)) : null;
+      if (!d || isNaN(d.getTime())) {
+        ancienneteNonRenseigne++;
+        return;
+      }
+      const annees = (today - d) / (365.25 * 24 * 60 * 60 * 1000);
+      const tranche = tranchesAnciennete.find(t => annees >= t.min && annees <= t.max);
+      if (tranche) {
+        const entry = ancienneteByTranche.find(x => x.key === tranche.key);
+        if (entry) entry.count++;
+      }
+    });
+    const totalAvecAnciennete = actifs.length - ancienneteNonRenseigne;
+
+    return {
+      total,
+      sexe: {
+        hommes,
+        femmes,
+        nonRenseigne: sexeNonRenseigne,
+        totalAvecSexe,
+        pctHommes: totalAvecSexe > 0 ? Math.round((hommes / totalAvecSexe) * 1000) / 10 : 0,
+        pctFemmes: totalAvecSexe > 0 ? Math.round((femmes / totalAvecSexe) * 1000) / 10 : 0,
+        pctNonRenseigne: total > 0 ? Math.round((sexeNonRenseigne / total) * 1000) / 10 : 0
+      },
+      age: {
+        tranches: ageByTranche.map(t => ({
+          ...t,
+          proportion: totalAvecAge > 0 ? Math.round((t.count / totalAvecAge) * 1000) / 10 : 0
+        })),
+        nonRenseigne: ageNonRenseigne,
+        totalAvecAge,
+        pctNonRenseigne: total > 0 ? Math.round((ageNonRenseigne / total) * 1000) / 10 : 0
+      },
+      anciennete: {
+        tranches: ancienneteByTranche.map(t => ({
+          ...t,
+          proportion: totalAvecAnciennete > 0 ? Math.round((t.count / totalAvecAnciennete) * 1000) / 10 : 0
+        })),
+        nonRenseigne: ancienneteNonRenseigne,
+        totalAvecAnciennete,
+        pctNonRenseigne: total > 0 ? Math.round((ancienneteNonRenseigne / total) * 1000) / 10 : 0
+      }
+    };
   }
 };
 
@@ -578,25 +675,30 @@ const PagesStatistiques = {
       </div>
       ` : ''}
 
-      <!-- Tableau détaillé par membre -->
-      <div class="card mt-3">
-        <div class="card-header">
+      <!-- Tableau détaillé par membre (accordéon) -->
+      <div class="card mt-3 stats-accordion-card">
+        <div class="card-header stats-accordion-header" onclick="PagesStatistiques.toggleDetailMembres()" role="button" tabindex="0" onkeydown="if(event.key==='Enter')PagesStatistiques.toggleDetailMembres()">
           <h3 class="card-title"><i class="fas fa-users"></i> Détail par membre <span class="badge badge-secondary" style="font-weight: 600;">${(this.stats.parMembre || []).length}</span></h3>
-          <div class="search-box" style="width: 250px;">
-            <i class="fas fa-search"></i>
-            <input type="text" class="form-control" placeholder="Rechercher..." 
-                   onkeyup="PagesStatistiques.filterTable(this.value)">
+          <div class="stats-accordion-actions">
+            <div class="search-box" style="width: 250px;" onclick="event.stopPropagation()">
+              <i class="fas fa-search"></i>
+              <input type="text" class="form-control" placeholder="Rechercher..." 
+                     onkeyup="PagesStatistiques.filterTable(this.value)">
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesStatistiques.exportDetailMembreCSV();" title="Exporter en CSV">
+              <i class="fas fa-file-csv"></i> Exporter CSV
+            </button>
+            ${Permissions.canExportPDF() ? `
+            <button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesStatistiques.exportPDF();" title="Exporter le rapport en PDF">
+              <i class="fas fa-file-pdf"></i> Exporter PDF
+            </button>
+            ` : ''}
+            <button type="button" class="btn btn-sm btn-outline stats-accordion-toggle" id="stats-detail-toggle" title="Afficher / masquer le détail">
+              <i class="fas fa-chevron-down"></i>
+            </button>
           </div>
-          <button type="button" class="btn btn-sm btn-outline" onclick="PagesStatistiques.exportDetailMembreCSV()" title="Exporter en CSV">
-            <i class="fas fa-file-csv"></i> Exporter CSV
-          </button>
-          ${Permissions.canExportPDF() ? `
-          <button type="button" class="btn btn-sm btn-outline" onclick="PagesStatistiques.exportPDF()" title="Exporter le rapport en PDF">
-            <i class="fas fa-file-pdf"></i> Exporter PDF
-          </button>
-          ` : ''}
         </div>
-        <div class="card-body" style="padding: 0;">
+        <div class="card-body stats-accordion-body" id="stats-detail-body" style="padding: 0; display: none;">
           <div class="table-container">
             <table class="table" id="stats-table">
               <thead>
@@ -675,6 +777,17 @@ const PagesStatistiques = {
       </div>
       ` : ''}
 
+      <!-- Profil de la famille (sexe, âge, ancienneté - données des profils membres) -->
+      <div class="card mt-3">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-id-card"></i> Profil de la famille</h3>
+          <span class="badge badge-secondary">Données saisies dans les profils</span>
+        </div>
+        <div class="card-body">
+          ${this.renderProfilFamilleSection()}
+        </div>
+      </div>
+
       <style>
         .stats-header {
           display: flex;
@@ -725,12 +838,58 @@ const PagesStatistiques = {
         .table th:hover {
           background: var(--bg-tertiary);
         }
+        .stats-accordion-header {
+          cursor: pointer;
+          flex-wrap: wrap;
+          gap: var(--spacing-sm);
+        }
+        .stats-accordion-actions {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-sm);
+          flex-wrap: wrap;
+        }
+        .stats-accordion-toggle i {
+          transition: transform 0.2s ease;
+        }
+        .stats-accordion-card.expanded .stats-accordion-toggle i {
+          transform: rotate(180deg);
+        }
+        .btn-scroll-top {
+          position: fixed;
+          bottom: 24px;
+          right: 24px;
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          background: var(--primary);
+          color: white;
+          border: none;
+          cursor: pointer;
+          box-shadow: var(--shadow-md);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 999;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        .btn-scroll-top:hover {
+          transform: translateY(-2px);
+          box-shadow: var(--shadow-lg);
+        }
         @media (max-width: 768px) {
           .stats-grid {
             grid-template-columns: 1fr;
           }
         }
       </style>
+
+      <!-- Bouton remonter en haut -->
+      <button type="button" class="btn-scroll-top" id="stats-scroll-top" onclick="PagesStatistiques.scrollToTop()" title="Remonter en haut" aria-label="Remonter en haut">
+        <i class="fas fa-arrow-up"></i>
+      </button>
     `;
   },
 
@@ -1098,6 +1257,150 @@ const PagesStatistiques = {
     `;
   },
 
+  // Section Profil de la famille (sexe, âge, ancienneté) - camemberts + légende avec % distincts
+  renderProfilFamilleSection() {
+    const data = Statistiques.getProfilFamilleStats();
+    if (data.total === 0) {
+      return '<div class="text-muted text-center py-3"><i class="fas fa-info-circle"></i> Aucun membre actif dans la famille.</div>';
+    }
+
+    const s = data.sexe;
+    const a = data.age;
+    const anc = data.anciennete;
+
+    // Tranches d'âge à afficher : 18-25, 26-35, 36-45, 46-60, +60 (et "Moins de 18 ans" si pertinent)
+    const tranchesAgeAffichees = a.tranches.filter(t => t.key !== 'moins18' || t.count > 0);
+
+    return `
+      <div class="profil-famille-grid">
+        <!-- Sexe -->
+        <div class="profil-famille-block">
+          <h4 class="profil-famille-title"><i class="fas fa-venus-mars"></i> Répartition hommes / femmes</h4>
+          <div class="profil-famille-chart-wrap">
+            <canvas id="chart-profil-sexe" height="180"></canvas>
+          </div>
+          <div class="profil-famille-legend">
+            <div class="profil-legend-item"><span class="profil-legend-dot" style="background: var(--primary);"></span> Hommes : <strong>${s.pctHommes}%</strong> (${s.hommes})</div>
+            <div class="profil-legend-item"><span class="profil-legend-dot" style="background: #E91E63;"></span> Femmes : <strong>${s.pctFemmes}%</strong> (${s.femmes})</div>
+          </div>
+          ${s.nonRenseigne > 0 ? `
+          <div class="profil-non-renseigne">
+            <i class="fas fa-exclamation-circle"></i> Non renseigné : ${s.nonRenseigne} personne${s.nonRenseigne > 1 ? 's' : ''} (${s.pctNonRenseigne}% du total)
+          </div>
+          ` : ''}
+        </div>
+
+        <!-- Tranches d'âge -->
+        <div class="profil-famille-block">
+          <h4 class="profil-famille-title"><i class="fas fa-birthday-cake"></i> Tranches d'âge</h4>
+          <div class="profil-famille-chart-wrap">
+            <canvas id="chart-profil-age" height="180"></canvas>
+          </div>
+          <div class="profil-famille-legend">
+            ${tranchesAgeAffichees.map((t, i) => {
+              const colors = ['#2D5A7B', '#4CAF50', '#FF9800', '#9C27B0', '#2196F3', '#E91E63'];
+              return `<div class="profil-legend-item"><span class="profil-legend-dot" style="background: ${colors[i % colors.length]};"></span> ${Utils.escapeHtml(t.label)} : <strong>${t.proportion}%</strong> (${t.count})</div>`;
+            }).join('')}
+          </div>
+          ${a.nonRenseigne > 0 ? `
+          <div class="profil-non-renseigne">
+            <i class="fas fa-exclamation-circle"></i> Non renseigné : ${a.nonRenseigne} personne${a.nonRenseigne > 1 ? 's' : ''} (${a.pctNonRenseigne}% du total)
+          </div>
+          ` : ''}
+        </div>
+
+        <!-- Ancienneté -->
+        <div class="profil-famille-block">
+          <h4 class="profil-famille-title"><i class="fas fa-calendar-alt"></i> Ancienneté (arrivée ICC)</h4>
+          <div class="profil-famille-chart-wrap">
+            <canvas id="chart-profil-anciennete" height="180"></canvas>
+          </div>
+          <div class="profil-famille-legend">
+            ${anc.tranches.map((t, i) => {
+              const colors = ['#2D5A7B', '#4CAF50', '#FF9800', '#9C27B0', '#2196F3'];
+              return `<div class="profil-legend-item"><span class="profil-legend-dot" style="background: ${colors[i % colors.length]};"></span> ${Utils.escapeHtml(t.label)} : <strong>${t.proportion}%</strong> (${t.count})</div>`;
+            }).join('')}
+          </div>
+          ${anc.nonRenseigne > 0 ? `
+          <div class="profil-non-renseigne">
+            <i class="fas fa-exclamation-circle"></i> Non renseigné : ${anc.nonRenseigne} personne${anc.nonRenseigne > 1 ? 's' : ''} (${anc.pctNonRenseigne}% du total)
+          </div>
+          ` : ''}
+        </div>
+      </div>
+      <style>
+        .profil-famille-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: var(--spacing-lg);
+        }
+        .profil-famille-block {
+          padding: var(--spacing-md);
+          background: var(--bg-primary);
+          border-radius: var(--radius-md);
+        }
+        .profil-famille-title {
+          font-size: 0.95rem;
+          font-weight: 600;
+          margin-bottom: var(--spacing-md);
+          color: var(--text-primary);
+        }
+        .profil-famille-chart-wrap {
+          position: relative;
+          height: 180px;
+          margin-bottom: var(--spacing-md);
+        }
+        .profil-famille-legend {
+          display: flex;
+          flex-direction: column;
+          gap: var(--spacing-xs);
+          font-size: 0.9rem;
+          color: var(--text-primary);
+        }
+        .profil-legend-item {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-sm);
+        }
+        .profil-legend-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+        .profil-non-renseigne {
+          margin-top: var(--spacing-sm);
+          font-size: 0.8rem;
+          color: var(--text-muted);
+        }
+      </style>
+    `;
+  },
+
+  // Initialiser les camemberts du Profil famille (appelé après render)
+  initProfilFamilleCharts() {
+    if (typeof ChartsHelper === 'undefined') return;
+    const data = Statistiques.getProfilFamilleStats();
+    if (data.total === 0) return;
+
+    const s = data.sexe;
+    const a = data.age;
+    const anc = data.anciennete;
+    const tranchesAgeAffichees = a.tranches.filter(t => t.key !== 'moins18' || t.count > 0);
+
+    const sexeLabels = ['Hommes', 'Femmes'].filter((_, i) => [s.hommes, s.femmes][i] > 0);
+    const sexeData = [s.hommes, s.femmes].filter(v => v > 0);
+    const ageLabels = tranchesAgeAffichees.filter(t => t.count > 0).map(t => t.label);
+    const ageData = tranchesAgeAffichees.filter(t => t.count > 0).map(t => t.count);
+    const ancLabels = anc.tranches.filter(t => t.count > 0).map(t => t.label);
+    const ancData = anc.tranches.filter(t => t.count > 0).map(t => t.count);
+
+    const palette = ['#2D5A7B', '#E91E63', '#4CAF50', '#FF9800', '#9C27B0', '#2196F3'];
+    if (sexeData.length > 0) ChartsHelper.createPie('chart-profil-sexe', sexeLabels, sexeData, ['#2D5A7B', '#E91E63']);
+    if (ageData.length > 0) ChartsHelper.createPie('chart-profil-age', ageLabels, ageData, palette);
+    if (ancData.length > 0) ChartsHelper.createPie('chart-profil-anciennete', ancLabels, ancData, palette);
+  },
+
   // Couleur selon le taux
   getTauxColor(taux) {
     if (taux >= 80) return 'var(--success)';
@@ -1143,6 +1446,8 @@ const PagesStatistiques = {
       ChartsHelper.createLine('chart-stats-evolution', labels,
         [{ label: 'Taux présence (%)', data: evolution.map(d => d.tauxPresence) }]);
     }
+    this.initProfilFamilleCharts();
+    this.setupScrollTop();
   },
 
   // Mettre à jour les stats
@@ -1158,6 +1463,40 @@ const PagesStatistiques = {
 
     document.querySelector('.page-content').innerHTML = await this.renderStatistiques();
     setTimeout(() => this.initCharts(), 50);
+  },
+
+  // Accordéon Détail par membre
+  toggleDetailMembres() {
+    const body = document.getElementById('stats-detail-body');
+    const card = document.querySelector('.stats-accordion-card');
+    if (!body || !card) return;
+    const isHidden = body.style.display === 'none';
+    body.style.display = isHidden ? 'block' : 'none';
+    card.classList.toggle('expanded', isHidden);
+  },
+
+  // Bouton remonter en haut
+  _scrollTopHandler: null,
+  setupScrollTop() {
+    const btn = document.getElementById('stats-scroll-top');
+    if (!btn) return;
+
+    if (this._scrollTopHandler) {
+      window.removeEventListener('scroll', this._scrollTopHandler, { passive: true });
+    }
+    this._scrollTopHandler = () => {
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      if (btn.parentNode) {
+        btn.style.opacity = scrollTop > 300 ? '1' : '0';
+        btn.style.pointerEvents = scrollTop > 300 ? 'auto' : 'none';
+      }
+    };
+    window.addEventListener('scroll', this._scrollTopHandler, { passive: true });
+    this._scrollTopHandler();
+  },
+
+  scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   },
 
   // Filtrer le tableau

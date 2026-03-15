@@ -16,6 +16,29 @@ const ChartsHelper = {
     }
   },
 
+  // Créer un graphique camembert plein (sans trou, pour Profil famille)
+  createPie(canvasId, labels, data, colors) {
+    this.destroy(canvasId);
+    const ctx = document.getElementById(canvasId)?.getContext('2d');
+    if (!ctx) return null;
+    const palette = colors || ['#2D5A7B', '#4CAF50', '#FF9800', '#9C27B0', '#2196F3', '#E91E63'];
+    this.instances[canvasId] = new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels: labels,
+        datasets: [{ data: data, backgroundColor: palette.slice(0, data.length), borderWidth: 2, borderColor: '#fff' }]
+      },
+      options: {
+        ...this.defaultOptions,
+        plugins: {
+          ...this.defaultOptions.plugins,
+          legend: { position: 'bottom', display: false }
+        }
+      }
+    });
+    return this.instances[canvasId];
+  },
+
   // Créer un graphique donut/camembert (onClickSegment(index) optionnel)
   createDoughnut(canvasId, labels, data, colors, onClickSegment) {
     this.destroy(canvasId);

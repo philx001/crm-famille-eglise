@@ -55,6 +55,18 @@ const TYPES_SUIVI = [
   { value: 'autre', label: 'Autre', icon: 'fa-ellipsis-h' }
 ];
 
+// Formations NA/NC : PCNC, BDR, Baptême (multi-choix, statut par formation)
+const FORMATIONS_NA_NC = [
+  { value: 'pcnc', label: 'PCNC', icon: 'fa-book', color: '#2196F3' },
+  { value: 'bdr', label: 'BDR', icon: 'fa-graduation-cap', color: '#4CAF50' },
+  { value: 'bapteme', label: 'Baptême', icon: 'fa-water', color: '#9C27B0' }
+];
+const STATUTS_FORMATION = [
+  { value: 'inscrit', label: 'Inscrit', color: '#FF9800' },
+  { value: 'en_cours', label: 'En cours', color: '#2196F3' },
+  { value: 'termine', label: 'Terminé', color: '#4CAF50' }
+];
+
 // ============================================
 // NORMALISATION ET CLÉ D'UNICITÉ (1 fiche = 1 personne)
 // ============================================
@@ -102,6 +114,15 @@ function addNormalizedFields(na, familleId) {
 // ============================================
 
 const NouvellesAmes = {
+  /** Cache filtré selon le rôle : mentor ne voit que ses créations (contacte_par_id), les autres voient tout. */
+  _getCacheForView() {
+    const cache = NouvellesAmesData.cache || [];
+    if (typeof AppState === 'undefined' || !AppState.user || AppState.user.role !== 'mentor') {
+      return cache;
+    }
+    return cache.filter(na => na.contacte_par_id === AppState.user.id);
+  },
+
   // Charger toutes les nouvelles âmes de la famille
   async loadAll() {
     try {
@@ -226,6 +247,8 @@ const NouvellesAmes = {
         defis: data.defis || [],
         commentaires: data.commentaires || null,
         
+        formations: data.formations || [],
+        
         date_integration: null,
         membre_id: null,
         
@@ -254,9 +277,23 @@ const NouvellesAmes = {
     }
   },
 
+  /** Mentor : peut éditer uniquement les NA/NC qu'il a créés. Adjoint/superviseur/admin : tous. */
+  canEditNouvelleAme(na) {
+    if (!na || na.statut === 'integre') return false;
+    if (typeof Permissions === 'undefined' || !AppState?.user) return false;
+    if (Permissions.hasRole('adjoint_superviseur')) return true;
+    if (Permissions.hasRole('mentor') && na.contacte_par_id === AppState.user.id) return true;
+    return false;
+  },
+
   // Modifier une nouvelle âme (met à jour les champs normalisés si email/telephone/prenom/nom changent)
   async update(id, data, silent = false) {
     try {
+      const na = this.getById(id);
+      if (na && !this.canEditNouvelleAme(na)) {
+        Toast.error('Vous ne pouvez modifier que les nouvelles âmes que vous avez créées.');
+        return false;
+      }
       const updateData = {
         ...data,
         updated_at: firebase.firestore.FieldValue.serverTimestamp()
@@ -308,7 +345,7 @@ const NouvellesAmes = {
 
   // Filtrer les nouvelles âmes
   filterBy(filters = {}) {
-    let result = [...NouvellesAmesData.cache];
+    let result = [...this._getCacheForView()];
 
     if (filters.categorie) {
       result = result.filter(na => na.categorie === filters.categorie);
@@ -354,7 +391,7 @@ const NouvellesAmes = {
   
   // Obtenir uniquement les âmes actives (non intégrées), optionnellement par catégorie
   getActifs(categorie = null) {
-    let list = NouvellesAmesData.cache.filter(na => na.statut !== 'integre' && na.statut !== 'perdu');
+    let list = this._getCacheForView().filter(na => na.statut !== 'integre' && na.statut !== 'perdu');
     if (categorie) list = list.filter(na => na.categorie === categorie);
     return list;
   },
@@ -364,7 +401,7 @@ const NouvellesAmes = {
     const limitDate = new Date();
     limitDate.setDate(limitDate.getDate() - days);
     
-    let list = NouvellesAmesData.cache.filter(na => {
+    let list = this._getCacheForView().filter(na => {
       if (na.statut === 'integre' || na.statut === 'perdu') return false;
       
       const lastContact = na.date_dernier_contact?.toDate 
@@ -379,7 +416,7 @@ const NouvellesAmes = {
 
   // Obtenir les nouvelles âmes par catégorie (na ou nc) — exclut les intégrés pour ne pas fausser les stats
   getByCategorie(cat) {
-    return NouvellesAmesData.cache.filter(na =>
+    return this._getCacheForView().filter(na =>
       (na.categorie || 'na') === cat && na.statut !== 'integre'
     );
   },
@@ -387,7 +424,7 @@ const NouvellesAmes = {
   // Obtenir les statistiques (optionnellement filtrées par catégorie : 'na', 'nc' ou null = toutes)
   // Les comptes excluent les intégrés (ils ne figurent que dans "Membres").
   getStats(categorie = null) {
-    let all = NouvellesAmesData.cache;
+    let all = this._getCacheForView();
     if (categorie) all = all.filter(na => (na.categorie || 'na') === categorie);
     const allSansIntegres = all.filter(na => na.statut !== 'integre');
     const actifs = categorie ? this.getActifs(categorie) : this.getActifs();
@@ -417,7 +454,7 @@ const NouvellesAmes = {
 
   // Évolution mensuelle (6 derniers mois), optionnellement par catégorie
   getEvolutionMensuelle(mois = 6, categorie = null) {
-    let all = NouvellesAmesData.cache;
+    let all = this._getCacheForView();
     if (categorie) all = all.filter(na => na.categorie === categorie);
     const now = new Date();
     const result = [];
@@ -444,7 +481,7 @@ const NouvellesAmes = {
 
   // Nombre de nouvelles âmes intégrées (statut = integre) par période courante (semaine, mois, trimestre)
   getIntegresParPeriode() {
-    const cache = NouvellesAmesData.cache || [];
+    const cache = this._getCacheForView();
     const now = new Date();
     const toDate = (v) => (v && v.toDate) ? v.toDate() : (v ? new Date(v) : null);
 
@@ -697,6 +734,22 @@ const NouvellesAmes = {
   getCategorieLabel(value) {
     const cat = CATEGORIES_NA_NC.find(c => c.value === (value || 'na'));
     return cat ? cat.label : (value || 'Nouveaux Arrivants');
+  },
+
+  /** Retourne la formation par code pour une fiche NA/NC. formations = [{ code, date, statut }, ...] */
+  getFormation(na, code) {
+    const formations = na.formations || [];
+    return formations.find(f => f.code === code) || null;
+  },
+
+  getFormationLabel(code) {
+    const f = FORMATIONS_NA_NC.find(x => x.value === code);
+    return f ? f.label : code;
+  },
+
+  getStatutFormationLabel(value) {
+    const s = STATUTS_FORMATION.find(x => x.value === value);
+    return s ? s.label : value;
   }
 };
 
@@ -1086,6 +1139,9 @@ const PagesNouvellesAmes = {
           <span class="stat-mini text-warning"><strong>${stats.aRelancer}</strong> à relancer</span>
         </div>
         <div class="header-actions">
+          <button class="btn btn-outline" onclick="App.navigate('statistiques-na')" title="Statistiques NA/NC (formations, présences)">
+            <i class="fas fa-chart-bar"></i> Statistiques NA/NC
+          </button>
           <button class="btn btn-outline" onclick="PagesNouvellesAmes.exportCSV()" title="Export CSV (vue actuelle)">
             <i class="fas fa-file-csv"></i> CSV
           </button>
@@ -1319,7 +1375,7 @@ const PagesNouvellesAmes = {
     const isAlerte = NouvellesAmes.getARelancer().some(a => a.id === na.id);
     const canal = CANAUX.find(c => c.value === na.canal) || {};
     const avatarBg = na.sexe === 'F' ? '#E91E63' : 'var(--primary)';
-    const canEdit = (Permissions.hasRole('mentor') || Permissions.hasRole('adjoint_superviseur')) && na.statut !== 'integre';
+    const canEdit = NouvellesAmes.canEditNouvelleAme(na);
 
     return `
       <div class="na-card ${isAlerte ? 'alerte' : ''}" onclick="App.navigate('nouvelle-ame-detail', {id: '${na.id}'})">
@@ -1742,7 +1798,12 @@ const PagesNouvellesAmes = {
     if (!na) {
       return '<div class="alert alert-danger">Nouvelle âme non trouvée</div>';
     }
-    
+    if (AppState.user?.role === 'mentor' && na.contacte_par_id !== AppState.user.id) {
+      return `<div class="alert alert-warning">
+        <i class="fas fa-lock"></i> Vous ne pouvez accéder qu'aux nouvelles âmes que vous avez créées.
+        <div class="mt-3"><button class="btn btn-outline" onclick="App.navigate('nouvelles-ames')"><i class="fas fa-arrow-left"></i> Retour</button></div>
+      </div>`;
+    }
     const suivis = await SuivisAmes.loadByNouvelleAme(id);
     const canal = CANAUX.find(c => c.value === na.canal) || {};
     const avatarBg = na.sexe === 'F' ? '#E91E63' : 'var(--primary)';
@@ -1772,7 +1833,7 @@ const PagesNouvellesAmes = {
           </div>
         </div>
         <div class="na-detail-actions">
-          ${(Permissions.hasRole('mentor') || Permissions.hasRole('adjoint_superviseur')) && na.statut !== 'integre' ? `
+          ${NouvellesAmes.canEditNouvelleAme(na) ? `
           <button class="btn btn-outline-primary" onclick="PagesNouvellesAmes.showEditModal('${id}')" title="Modifier toutes les informations">
             <i class="fas fa-edit"></i> Modifier
           </button>
@@ -1796,7 +1857,7 @@ const PagesNouvellesAmes = {
           <div class="card">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
               <h3 class="card-title"><i class="fas fa-user"></i> Informations personnelles</h3>
-              ${(Permissions.hasRole('mentor') || Permissions.hasRole('adjoint_superviseur')) && na.statut !== 'integre' ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
+              ${NouvellesAmes.canEditNouvelleAme(na) ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
             </div>
             <div class="card-body">
               <div class="info-grid">
@@ -1841,7 +1902,7 @@ const PagesNouvellesAmes = {
           <div class="card">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
               <h3 class="card-title"><i class="fas fa-tag"></i> Catégorie, statut et canal</h3>
-              ${(Permissions.hasRole('mentor') || Permissions.hasRole('adjoint_superviseur')) && na.statut !== 'integre' ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
+              ${NouvellesAmes.canEditNouvelleAme(na) ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
             </div>
             <div class="card-body">
               <div class="info-grid">
@@ -1867,7 +1928,7 @@ const PagesNouvellesAmes = {
           <div class="card">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
               <h3 class="card-title"><i class="fas fa-tasks"></i> Défis et commentaires</h3>
-              ${(Permissions.hasRole('mentor') || Permissions.hasRole('adjoint_superviseur')) && na.statut !== 'integre' ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
+              ${NouvellesAmes.canEditNouvelleAme(na) ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
             </div>
             <div class="card-body">
               ${na.defis && na.defis.length > 0 ? `
@@ -1884,6 +1945,28 @@ const PagesNouvellesAmes = {
                 <p>${Utils.escapeHtml(na.commentaires)}</p>
               </div>
               ` : '<p class="text-muted mb-0 mt-2">Aucun commentaire.</p>'}
+            </div>
+          </div>
+
+          <div class="card mt-3">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 class="card-title"><i class="fas fa-clipboard-check"></i> Présences aux programmes</h3>
+              <button class="btn btn-sm btn-outline" onclick="App.navigate('historique-na', { id: '${id}' })" title="Historique des présences">
+                <i class="fas fa-history"></i> Historique
+              </button>
+            </div>
+            <div class="card-body">
+              <p class="text-muted mb-0">Les pointages de présence sont effectués par les mentors et rôles supérieurs sur la page de pointage de chaque programme.</p>
+            </div>
+          </div>
+
+          <div class="card mt-3">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 class="card-title"><i class="fas fa-graduation-cap"></i> Formations (PCNC, BDR, Baptême)</h3>
+              ${NouvellesAmes.canEditNouvelleAme(na) ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
+            </div>
+            <div class="card-body">
+              ${this.renderFormationsDetail(na)}
             </div>
           </div>
         </div>
@@ -2048,6 +2131,41 @@ const PagesNouvellesAmes = {
     `;
   },
 
+  // Rendu des formations dans le détail
+  renderFormationsDetail(na) {
+    const formations = na.formations || [];
+    if (formations.length === 0) {
+      return '<p class="text-muted mb-0">Aucune formation renseignée.</p>';
+    }
+    const formatDate = (d) => {
+      if (!d) return '-';
+      const date = d.toDate ? d.toDate() : new Date(d);
+      return isNaN(date.getTime()) ? '-' : date.toLocaleDateString('fr-FR');
+    };
+    return `
+      <div class="formations-list">
+        ${FORMATIONS_NA_NC.map(f => {
+          const entry = formations.find(x => x.code === f.value);
+          if (!entry) return '';
+          return `
+            <div class="formation-item" style="border-left: 4px solid ${f.color}; padding: 8px 12px; margin-bottom: 8px; background: var(--bg-primary); border-radius: 4px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <i class="fas ${f.icon}" style="color: ${f.color}"></i>
+                <strong>${f.label}</strong>
+                <span class="badge" style="background: ${(STATUTS_FORMATION.find(s => s.value === entry.statut) || {}).color || '#607D8B'}20; color: ${(STATUTS_FORMATION.find(s => s.value === entry.statut) || {}).color || '#607D8B'}">
+                  ${NouvellesAmes.getStatutFormationLabel(entry.statut)}
+                </span>
+              </div>
+              <div class="text-muted" style="font-size: 0.85rem; margin-top: 4px;">
+                ${entry.date ? `Date inscription/baptême : ${formatDate(entry.date)}` : ''}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  },
+
   // Rendu d'un item de suivi dans la timeline
   renderSuiviItem(suivi) {
     const date = suivi.date_suivi?.toDate 
@@ -2081,7 +2199,12 @@ const PagesNouvellesAmes = {
     if (!na) {
       return '<div class="alert alert-danger">Nouvelle âme non trouvée</div>';
     }
-    
+    if (AppState.user?.role === 'mentor' && na.contacte_par_id !== AppState.user.id) {
+      return `<div class="alert alert-warning">
+        <i class="fas fa-lock"></i> Vous ne pouvez ajouter un suivi que pour les nouvelles âmes que vous avez créées.
+        <div class="mt-3"><button class="btn btn-outline" onclick="App.navigate('nouvelles-ames')"><i class="fas fa-arrow-left"></i> Retour</button></div>
+      </div>`;
+    }
     const today = new Date().toISOString().split('T')[0];
     
     return `
@@ -2276,6 +2399,32 @@ const PagesNouvellesAmes = {
                 </select>
               </div>
 
+              <h4 class="section-title">Formations (PCNC, BDR, Baptême)</h4>
+              <div class="form-group">
+                <label class="form-label">Formations suivies</label>
+                <div class="formations-edit-list">
+                  ${FORMATIONS_NA_NC.map(f => {
+                    const entry = (na.formations || []).find(x => x.code === f.value);
+                    const dateStr = entry?.date ? (entry.date.toDate ? entry.date.toDate() : new Date(entry.date)).toISOString().split('T')[0] : '';
+                    return `
+                      <div class="formation-edit-item" style="padding: 12px; margin-bottom: 8px; background: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border-color);">
+                        <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                          <input type="checkbox" name="formation_${f.value}" value="1" ${entry ? 'checked' : ''} onchange="PagesNouvellesAmes.toggleFormationDate('${f.value}', this.checked)">
+                          <span><i class="fas ${f.icon}" style="color: ${f.color}"></i> ${f.label}</span>
+                        </label>
+                        <div class="formation-date-group" id="formation-date-${f.value}" style="display: ${entry ? 'flex' : 'none'}; gap: 8px; align-items: center; margin-left: 24px;">
+                          <label class="form-label" style="margin: 0; font-size: 0.85rem;">Date inscription/baptême</label>
+                          <input type="date" class="form-control input-date" name="formation_date_${f.value}" value="${dateStr}" style="max-width: 180px;">
+                          <select class="form-control" name="formation_statut_${f.value}" style="max-width: 140px;">
+                            ${STATUTS_FORMATION.map(s => `<option value="${s.value}" ${(entry?.statut || 'inscrit') === s.value ? 'selected' : ''}>${s.label}</option>`).join('')}
+                          </select>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+
               <h4 class="section-title">Suivi</h4>
               <div class="form-group">
                 <label class="form-label">Suivi par</label>
@@ -2319,6 +2468,11 @@ const PagesNouvellesAmes = {
     if (g) g.style.display = canal === 'exhortation' ? 'block' : 'none';
   },
 
+  toggleFormationDate(code, checked) {
+    const el = document.getElementById('formation-date-' + code);
+    if (el) el.style.display = checked ? 'flex' : 'none';
+  },
+
   async submitEdit(event, id) {
     event.preventDefault();
     const form = event.target;
@@ -2344,6 +2498,20 @@ const PagesNouvellesAmes = {
       Toast.error('L\'email est obligatoire.');
       return;
     }
+    const formations = [];
+    FORMATIONS_NA_NC.forEach(f => {
+      const cb = form.querySelector(`input[name="formation_${f.value}"]`);
+      if (cb && cb.checked) {
+        const dateVal = formData.get(`formation_date_${f.value}`);
+        const statutVal = formData.get(`formation_statut_${f.value}`) || 'inscrit';
+        formations.push({
+          code: f.value,
+          date: dateVal ? firebase.firestore.Timestamp.fromDate(new Date(dateVal)) : null,
+          statut: statutVal
+        });
+      }
+    });
+
     const data = {
       prenom: formData.get('prenom'),
       nom: formData.get('nom'),
@@ -2364,7 +2532,8 @@ const PagesNouvellesAmes = {
       suivi_par_id: suiviParId || AppState.user.id,
       suivi_par_nom: suiviParNom,
       defis,
-      commentaires: formData.get('commentaires') || null
+      commentaires: formData.get('commentaires') || null,
+      formations
     };
 
     const ok = await NouvellesAmes.update(id, data);
@@ -2551,7 +2720,7 @@ const PagesNouvellesAmes = {
 
   // Export PDF toutes catégories (fenêtre d'impression, affichage complet)
   exportPDFAll() {
-    const toutes = (NouvellesAmesData.cache || []).filter(na => na.statut !== 'integre');
+    const toutes = NouvellesAmes._getCacheForView().filter(na => na.statut !== 'integre');
     if (toutes.length === 0) {
       Toast.warning('Aucune donnée à exporter');
       return;

@@ -375,34 +375,40 @@ const PDFExport = {
     const dateStr = dateDebut.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     const heureStr = dateDebut.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     
-    const getStatutLabel = (statut) => {
-      const labels = { present: 'Présent', absent: 'Absent', excuse: 'Excusé', non_renseigne: 'Non renseigné' };
-      return labels[statut] || statut;
-    };
+    const getStatutLabel = (statut) => (typeof Presences !== 'undefined' && Presences.getStatutLabel) ? Presences.getStatutLabel(statut) : (statut || '');
     const getStatutBadge = (statut) => {
       const badges = {
         present: 'badge-success',
         absent: 'badge-danger',
         excuse: 'badge-warning',
+        autre_campus: 'badge-info',
+        pas_revenir: 'badge-brown',
+        injoignable: 'badge-secondary',
         non_renseigne: 'badge-secondary'
       };
       return badges[statut] || 'badge-secondary';
     };
 
-    // Calculer les stats
-    const counts = { present: 0, absent: 0, excuse: 0, non_renseigne: 0 };
-    presencesData.forEach(p => { counts[p.statut]++; });
+    // Calculer les stats (inclut les nouveaux statuts NA/NC)
+    const counts = { present: 0, absent: 0, excuse: 0, autre_campus: 0, pas_revenir: 0, injoignable: 0, non_renseigne: 0 };
+    presencesData.forEach(p => { counts[p.statut] = (counts[p.statut] || 0) + 1; });
     const total = presencesData.length;
     const taux = total > 0 ? Math.round((counts.present / total) * 100) : 0;
 
-    const rows = presencesData.map(p => `
+    const rows = presencesData.map(p => {
+      const prenom = p._prenom ?? p.membre?.prenom ?? '';
+      const nom = p._nom ?? p.membre?.nom ?? '';
+      const role = p._role ?? (p.membre ? Utils.getRoleLabel(p.membre.role) : '');
+      const typeLabel = p._type === 'na' ? ' (NA/NC)' : '';
+      return `
       <tr>
-        <td>${escape(p.membre.prenom)} ${escape(p.membre.nom)}</td>
-        <td>${escape(Utils.getRoleLabel(p.membre.role))}</td>
+        <td>${escape(prenom)} ${escape(nom)}${typeLabel}</td>
+        <td>${escape(role)}</td>
         <td class="text-center"><span class="badge ${getStatutBadge(p.statut)}">${getStatutLabel(p.statut)}</span></td>
         <td>${escape(p.commentaire)}</td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
 
     const content = `<!DOCTYPE html>
 <html lang="fr">
@@ -435,6 +441,8 @@ const PDFExport = {
     .badge-success { background: #E8F5E9; color: #2E7D32; }
     .badge-danger { background: #FFEBEE; color: #C62828; }
     .badge-warning { background: #FFF3E0; color: #E65100; }
+    .badge-info { background: #E3F2FD; color: #1565C0; }
+    .badge-brown { background: #EFEBE9; color: #5D4037; }
     .badge-secondary { background: #ECEFF1; color: #546E7A; }
     .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; font-size: 9pt; color: #888; }
     .btn-print { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; background: #2D5A7B; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
@@ -464,6 +472,20 @@ const PDFExport = {
       <div class="stat-value warning">${counts.excuse}</div>
       <div class="stat-label">Excusés</div>
     </div>
+    ${(counts.autre_campus || 0) + (counts.pas_revenir || 0) + (counts.injoignable || 0) > 0 ? `
+    <div class="stat-box">
+      <div class="stat-value" style="color: #2196F3;">${counts.autre_campus || 0}</div>
+      <div class="stat-label">Autre campus</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" style="color: #5D4037;">${counts.pas_revenir || 0}</div>
+      <div class="stat-label">Pas retour prévu</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" style="color: #546E7A;">${counts.injoignable || 0}</div>
+      <div class="stat-label">Injoignable</div>
+    </div>
+    ` : ''}
     <div class="stat-box">
       <div class="stat-value primary">${taux}%</div>
       <div class="stat-label">Taux</div>
@@ -473,8 +495,8 @@ const PDFExport = {
   <table>
     <thead>
       <tr>
-        <th>Membre</th>
-        <th>Rôle</th>
+        <th>Membre / NA-NC</th>
+        <th>Rôle / Suivi par</th>
         <th class="text-center">Statut</th>
         <th>Commentaire</th>
       </tr>
@@ -485,7 +507,7 @@ const PDFExport = {
   </table>
   
   <div class="footer">
-    <p>CRM Famille - ${escape(famille)} - ${total} membre(s)</p>
+    <p>CRM Famille - ${escape(famille)} - ${total} présence(s)</p>
   </div>
 </body>
 </html>`;

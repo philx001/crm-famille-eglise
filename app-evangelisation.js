@@ -68,7 +68,7 @@ const Secteurs = {
   // Créer un secteur
   async create(data) {
     try {
-      if (!Permissions.hasRole('adjoint_superviseur')) {
+      if (!Permissions.canManageEvangelisation()) {
         Toast.error('Permission refusée');
         return null;
       }
@@ -100,7 +100,7 @@ const Secteurs = {
   // Modifier un secteur
   async update(id, data) {
     try {
-      if (!Permissions.hasRole('adjoint_superviseur')) {
+      if (!Permissions.canManageEvangelisation()) {
         Toast.error('Permission refusée');
         return false;
       }
@@ -127,7 +127,7 @@ const Secteurs = {
   // Supprimer un secteur
   async delete(id) {
     try {
-      if (!Permissions.hasRole('adjoint_superviseur')) {
+      if (!Permissions.canManageEvangelisation()) {
         Toast.error('Permission refusée');
         return false;
       }
@@ -220,7 +220,7 @@ const SessionsEvangelisation = {
   // Créer une session
   async create(data) {
     try {
-      if (!Permissions.hasRole('adjoint_superviseur')) {
+      if (!Permissions.canManageEvangelisation()) {
         Toast.error('Permission refusée');
         return null;
       }
@@ -262,7 +262,7 @@ const SessionsEvangelisation = {
   // Modifier une session
   async update(id, data) {
     try {
-      if (!Permissions.hasRole('adjoint_superviseur')) {
+      if (!Permissions.canManageEvangelisation()) {
         Toast.error('Permission refusée');
         return false;
       }
@@ -591,6 +591,24 @@ const SessionsEvangelisation = {
     };
   },
 
+  /** Statistiques par mentor/responsable : pour vue globale des rôles supérieurs. */
+  getStatsByResponsable() {
+    const sessions = EvangelisationData.sessions;
+    const byResponsable = {};
+    sessions.forEach(s => {
+      const rid = s.responsable_id || 'inconnu';
+      const rnom = s.responsable_nom || 'Non assigné';
+      if (!byResponsable[rid]) {
+        byResponsable[rid] = { responsable_id: rid, responsable_nom: rnom, sessions: 0, contacts: 0, upcoming: 0 };
+      }
+      byResponsable[rid].sessions++;
+      byResponsable[rid].contacts += s.nb_contacts || 0;
+      const date = s.date?.toDate ? s.date.toDate() : new Date(s.date);
+      if (date >= new Date() && s.statut !== 'annulee') byResponsable[rid].upcoming++;
+    });
+    return Object.values(byResponsable).sort((a, b) => b.sessions - a.sessions);
+  },
+
   // Getters
   getStatutLabel(value) {
     const statut = SESSION_STATUTS.find(s => s.value === value);
@@ -738,7 +756,7 @@ const PagesEvangelisation = {
           <button class="btn btn-outline" onclick="App.navigate('evangelisation-stats')">
             <i class="fas fa-chart-bar"></i> Statistiques
           </button>
-          ${Permissions.hasRole('adjoint_superviseur') ? `
+          ${Permissions.canManageEvangelisation() ? `
           <button class="btn btn-outline" onclick="App.navigate('evangelisation-planning')">
             <i class="fas fa-calendar-alt"></i> Planning
           </button>
@@ -752,6 +770,45 @@ const PagesEvangelisation = {
         </div>
       </div>
       
+      ${(Permissions.hasRole('adjoint_superviseur') || Permissions.hasRole('superviseur') || Permissions.isAdmin()) ? (() => {
+        const statsByMentor = SessionsEvangelisation.getStatsByResponsable();
+        return `
+      <div class="card mb-3 evangelisation-vue-globale">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-users-cog"></i> Vue globale — Sessions et statistiques par mentor</h3>
+          <span class="badge badge-secondary">Suivi des responsables</span>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3"><i class="fas fa-info-circle"></i> Vue consolidée de toutes les sessions d'évangélisation de la famille, par responsable.</p>
+          ${statsByMentor.length > 0 ? `
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Mentor / Responsable</th>
+                  <th class="text-center">Sessions</th>
+                  <th class="text-center">Contacts</th>
+                  <th class="text-center">À venir</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${statsByMentor.map(m => `
+                <tr>
+                  <td><strong>${Utils.escapeHtml(m.responsable_nom)}</strong></td>
+                  <td class="text-center">${m.sessions}</td>
+                  <td class="text-center"><span class="badge badge-success">${m.contacts}</span></td>
+                  <td class="text-center">${m.upcoming}</td>
+                </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          ` : '<p class="text-muted mb-0">Aucune session enregistrée.</p>'}
+        </div>
+      </div>
+      `;
+      })() : ''}
+      
       ${upcoming.length > 0 ? `
       <div class="card mb-3">
         <div class="card-header">
@@ -764,7 +821,7 @@ const PagesEvangelisation = {
       ` : `
       <div class="alert alert-info mb-3">
         <i class="fas fa-info-circle"></i>
-        <div>Aucune session d'évangélisation planifiée. ${Permissions.hasRole('adjoint_superviseur') ? 'Créez-en une !' : ''}</div>
+        <div>Aucune session d'évangélisation planifiée. ${Permissions.canManageEvangelisation() ? 'Créez-en une !' : ''}</div>
       </div>
       `}
       
@@ -1062,6 +1119,42 @@ const PagesEvangelisation = {
         </div>
       </div>
 
+      ${(Permissions.hasRole('adjoint_superviseur') || Permissions.hasRole('superviseur') || Permissions.isAdmin()) ? (() => {
+        const statsByMentor = SessionsEvangelisation.getStatsByResponsable();
+        return `
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-users-cog"></i> Par mentor / Responsable</h3>
+          <span class="badge badge-secondary">Vue globale</span>
+        </div>
+        <div class="card-body">
+          ${statsByMentor.length > 0 ? `
+          <table class="stats-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: var(--bg-primary);">
+                <th style="padding: var(--spacing-sm); text-align: left; font-size: 0.85rem;">Mentor / Responsable</th>
+                <th style="padding: var(--spacing-sm); text-align: center; font-size: 0.85rem;">Sessions</th>
+                <th style="padding: var(--spacing-sm); text-align: center; font-size: 0.85rem;">Contacts</th>
+                <th style="padding: var(--spacing-sm); text-align: center; font-size: 0.85rem;">À venir</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${statsByMentor.map(m => `
+              <tr style="border-bottom: 1px solid var(--border-color);">
+                <td style="padding: var(--spacing-sm); font-weight: 600;">${Utils.escapeHtml(m.responsable_nom)}</td>
+                <td style="padding: var(--spacing-sm); text-align: center;">${m.sessions}</td>
+                <td style="padding: var(--spacing-sm); text-align: center;"><span class="badge badge-success">${m.contacts}</span></td>
+                <td style="padding: var(--spacing-sm); text-align: center;">${m.upcoming}</td>
+              </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          ` : '<div class="empty-state" style="padding: var(--spacing-lg);"><i class="fas fa-user-tie"></i><p>Aucune donnée par mentor</p></div>'}
+        </div>
+      </div>
+      `;
+      })() : ''}
+
       <div class="card">
         <div class="card-header">
           <h3 class="card-title"><i class="fas fa-trophy"></i> Top participants (mobilisations)</h3>
@@ -1305,7 +1398,7 @@ const PagesEvangelisation = {
               <i class="fas fa-flag-checkered"></i> Terminer la session
             </button>
             ` : ''}
-            ${session.statut === 'terminee' && Permissions.hasRole('adjoint_superviseur') ? `
+            ${session.statut === 'terminee' && Permissions.canManageEvangelisation() ? `
             <button type="button" class="btn btn-outline" onclick="PagesEvangelisation.showEditNotesBilanModal('${id}')" style="margin-top: var(--spacing-md);">
               <i class="fas fa-edit"></i> Modifier notes et bilan
             </button>

@@ -205,7 +205,9 @@ const Auth = {
     try {
       App.showLoading();
 
-      if (!Permissions.canAddDisciple()) {
+      const role = membreData.role || 'disciple';
+      const canAdd = role === 'nouveau' ? Permissions.canAddNouveau() : Permissions.canAddDisciple();
+      if (!canAdd) {
         throw new Error('Permission refusée');
       }
 
@@ -213,8 +215,8 @@ const Auth = {
       const adminFamilleId = AppState.famille.id;
       const adminFamilleNom = AppState.famille.nom;
       const adminUserId = AppState.user.id;
-      const role = membreData.role || 'disciple';
-      const mentorId = (role === 'superviseur') ? null : (membreData.mentor_id || adminUserId);
+      const rolesSansMentor = ['superviseur', 'nouveau'];
+      const mentorId = rolesSansMentor.includes(role) ? null : (membreData.mentor_id || adminUserId);
 
       const tempPassword = Math.random().toString(36).slice(-8) + 'A1!';
 
@@ -242,6 +244,7 @@ const Auth = {
         indicatif_telephone: null,
         telephone: null,
         date_arrivee_icc: null,
+        date_arrivee_famille: null,
         formations: [],
         ministere_service: null,
         baptise_immersion: null,
@@ -347,6 +350,7 @@ const Auth = {
         indicatif_telephone: null,
         telephone: null,
         date_arrivee_icc: null,
+        date_arrivee_famille: null,
         formations: [],
         ministere_service: null,
         baptise_immersion: null,
@@ -571,7 +575,7 @@ const Permissions = {
   },
 
   canAddNouveau() {
-    return this.hasRole('superviseur');
+    return this.hasRole('mentor');
   },
 
   canMarkPresence(discipleId) {
@@ -615,6 +619,16 @@ const Permissions = {
     return this.hasRole('mentor');
   },
 
+  /** Peut pointer les présences des NA/NC : mentor (uniquement ses NA/NC), rôles supérieurs (adjoint_superviseur, superviseur, admin) pour tous. */
+  canPointNANCPresence() {
+    return this.hasRole('mentor');
+  },
+
+  /** Rôles supérieurs au mentor : peuvent pointer tous les membres et NA/NC (adjoint_superviseur, superviseur, admin). */
+  isRoleSuperiorToMentor() {
+    return this.hasRole('adjoint_superviseur');
+  },
+
   /** Disciple ou Nouveau : peut pointer uniquement sa propre présence à un programme. */
   canMarkOwnPresence() {
     if (!AppState.user) return false;
@@ -648,7 +662,7 @@ const Permissions = {
   },
 
   canManageEvangelisation() {
-    return this.hasRole('adjoint_superviseur');
+    return this.hasRole('mentor');
   },
 
   canEditMember(membreId) {

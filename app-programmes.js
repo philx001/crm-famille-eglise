@@ -393,6 +393,7 @@ const Presences = {
       const batch = db.batch();
 
       for (const presence of presencesData) {
+        const isNA = !!presence.nouvelle_ame_id;
         if (presence.id) {
           // Mise à jour
           const ref = db.collection('presences').doc(presence.id);
@@ -402,11 +403,12 @@ const Presences = {
             updated_at: firebase.firestore.FieldValue.serverTimestamp()
           });
         } else {
-          // Création
+          // Création (membre ou NA/NC)
           const ref = db.collection('presences').doc();
           batch.set(ref, {
             programme_id: programmeId,
-            disciple_id: presence.disciple_id,
+            disciple_id: isNA ? null : presence.disciple_id,
+            nouvelle_ame_id: isNA ? presence.nouvelle_ame_id : null,
             mentor_id: AppState.user.id,
             statut: presence.statut,
             commentaire: presence.commentaire || null,
@@ -435,6 +437,42 @@ const Presences = {
   getPresence(programmeId, membreId) {
     const presences = this.cache[programmeId] || [];
     return presences.find(p => p.disciple_id === membreId);
+  },
+
+  // Obtenir la présence d'une NA/NC pour un programme
+  getPresenceNA(programmeId, nouvelleAmeId) {
+    const presences = this.cache[programmeId] || [];
+    return presences.find(p => p.nouvelle_ame_id === nouvelleAmeId);
+  },
+
+  // Charger les présences d'une NA/NC
+  async loadByNouvelleAme(nouvelleAmeId, dateDebut = null, dateFin = null) {
+    try {
+      let query = db.collection('presences')
+        .where('nouvelle_ame_id', '==', nouvelleAmeId);
+
+      const snapshot = await query.get();
+      let presences = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      if (dateDebut || dateFin) {
+        presences = presences.filter(p => {
+          const programme = Programmes.getById(p.programme_id);
+          if (!programme || !programme.date_debut) return false;
+          const d = programme.date_debut.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);
+          if (dateDebut && d < dateDebut) return false;
+          if (dateFin && d > dateFin) return false;
+          return true;
+        });
+      }
+
+      return presences;
+    } catch (error) {
+      console.error('Erreur chargement présences NA/NC:', error);
+      return [];
+    }
   },
 
   /** Enregistrer ou mettre à jour la présence du seul utilisateur connecté (disciple/nouveau). */
@@ -484,13 +522,26 @@ const Presences = {
     ];
   },
 
+  /** Statuts spécifiques NA/NC : base + Autre campus, Pas de retour prévu, Injoignable */
+  getStatutsNA() {
+    return [
+      { value: 'present', label: 'Présent', icon: 'fa-check-circle', color: '#4CAF50' },
+      { value: 'absent', label: 'Absent', icon: 'fa-times-circle', color: '#F44336' },
+      { value: 'excuse', label: 'Excusé', icon: 'fa-info-circle', color: '#FF9800' },
+      { value: 'autre_campus', label: 'Autre campus', icon: 'fa-building', color: '#2196F3', title: 'Est dans une autre campus' },
+      { value: 'pas_revenir', label: 'Pas de retour prévu', icon: 'fa-user-clock', color: '#795548', title: 'Ne souhaite pas revenir à l\'église pour l\'instant' },
+      { value: 'injoignable', label: 'Injoignable', icon: 'fa-phone-slash', color: '#607D8B', title: 'Injoignable' },
+      { value: 'non_renseigne', label: 'Non renseigné', icon: 'fa-question-circle', color: '#9E9E9E' }
+    ];
+  },
+
   getStatutLabel(statut) {
-    const found = this.getStatuts().find(s => s.value === statut);
+    const found = this.getStatuts().find(s => s.value === statut) || this.getStatutsNA().find(s => s.value === statut);
     return found ? found.label : statut;
   },
 
   getStatutColor(statut) {
-    const found = this.getStatuts().find(s => s.value === statut);
+    const found = this.getStatuts().find(s => s.value === statut) || this.getStatutsNA().find(s => s.value === statut);
     return found ? found.color : '#9E9E9E';
   },
 

@@ -80,11 +80,12 @@ const Utils = {
 
   /**
    * Retourne la date d'entrée du membre dans la famille (pour pointage et statistiques).
-   * Utilise created_at ; si absent, retourne "aujourd'hui" pour exclure des programmes passés.
+   * Priorité : date_arrivee_famille > date_arrivee_icc > created_at.
+   * Si aucune date, retourne "aujourd'hui" pour exclure des programmes passés.
    */
   getDateEntreeFamille(membre) {
     if (!membre) return new Date();
-    const src = membre.created_at || membre.date_arrivee_icc;
+    const src = membre.date_arrivee_famille || membre.date_arrivee_icc || membre.created_at;
     if (!src) return new Date(); // Pas de date connue → exclure des programmes passés
     return src.toDate ? src.toDate() : new Date(src);
   },

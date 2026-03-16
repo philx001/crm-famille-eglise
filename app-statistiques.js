@@ -374,6 +374,133 @@ const Statistiques = {
     return sorted;
   },
 
+  // Statistiques NA/NC globales (semaine, mois, année)
+  calculateNAStats(options = {}) {
+    const { dateDebut = null, dateFin = null } = options;
+    const allNA = (typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getAll) ? NouvellesAmes.getAll() : [];
+    
+    const filterByDate = (na) => {
+      const created = na.created_at?.toDate ? na.created_at.toDate() : new Date(na.created_at || 0);
+      if (dateDebut && created < dateDebut) return false;
+      if (dateFin && created > dateFin) return false;
+      return true;
+    };
+
+    const inPeriod = allNA.filter(filterByDate);
+    const byStatut = { nouveau: 0, en_suivi: 0, integre: 0, inactif: 0, perdu: 0 };
+    const byCategorie = { na: 0, nc: 0 };
+    inPeriod.forEach(na => {
+      byStatut[na.statut || 'nouveau']++;
+      byCategorie[na.categorie === 'nc' ? 'nc' : 'na']++;
+    });
+
+    return {
+      total: inPeriod.length,
+      byStatut,
+      byCategorie,
+      nouveau: byStatut.nouveau,
+      enSuivi: byStatut.en_suivi,
+      integre: byStatut.integre,
+      inactif: byStatut.inactif,
+      perdu: byStatut.perdu,
+      na: byCategorie.na,
+      nc: byCategorie.nc
+    };
+  },
+
+  // Statistiques formations (PCNC, BDR, Baptême - inscrits + terminés)
+  calculateFormationStats() {
+    const allNA = (typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getAll) ? NouvellesAmes.getAll() : [];
+    const formations = ['pcnc', 'bdr', 'bapteme'];
+    const result = {};
+    formations.forEach(code => {
+      const withFormation = allNA.filter(na => {
+        const entries = na.formations || [];
+        return entries.some(f => f.code === code);
+      });
+      const inscrits = withFormation.filter(na => {
+        const e = (na.formations || []).find(f => f.code === code);
+        return e && (e.statut === 'inscrit' || e.statut === 'en_cours');
+      }).length;
+      const termines = withFormation.filter(na => {
+        const e = (na.formations || []).find(f => f.code === code);
+        return e && e.statut === 'termine';
+      }).length;
+      result[code] = {
+        total: withFormation.length,
+        inscrits,
+        termines,
+        label: code === 'pcnc' ? 'PCNC' : code === 'bdr' ? 'BDR' : 'Baptême'
+      };
+    });
+    return result;
+  },
+
+  // Statistiques de présence NA/NC (par NA/NC et global)
+  async calculateNAPresenceStats(options = {}) {
+    const { dateDebut = null, dateFin = null } = options;
+    
+    let programmes = AppState.programmes.filter(p => {
+      if (!p.date_debut) return false;
+      if (!Programmes.pointageRequis(p)) return false;
+      const d = p.date_debut.toDate ? p.date_debut.toDate() : new Date(p.date_debut);
+      if (dateDebut && d < dateDebut) return false;
+      if (dateFin && d > dateFin) return false;
+      return true;
+    });
+
+    const allPresences = [];
+    for (const prog of programmes) {
+      const presences = await Presences.loadByProgramme(prog.id);
+      allPresences.push(...presences.filter(p => p.nouvelle_ame_id).map(p => ({ ...p, programme: prog })));
+    }
+
+    const allNA = (typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getAll) ? NouvellesAmes.getAll() : [];
+    const naIds = new Set(allNA.filter(na => na.statut !== 'integre' && na.statut !== 'perdu').map(na => na.id));
+
+    const global = { present: 0, absent: 0, excuse: 0, autre_campus: 0, pas_revenir: 0, injoignable: 0, non_renseigne: 0, total: 0 };
+    allPresences.forEach(p => {
+      if (naIds.has(p.nouvelle_ame_id)) {
+        global[p.statut] = (global[p.statut] || 0) + 1;
+        global.total++;
+      }
+    });
+
+    const parNA = allNA.filter(na => naIds.has(na.id)).map(na => {
+      const presencesNA = allPresences.filter(p => p.nouvelle_ame_id === na.id);
+      const presents = presencesNA.filter(p => p.statut === 'present').length;
+      const absents = presencesNA.filter(p => p.statut === 'absent').length;
+      const excuses = presencesNA.filter(p => p.statut === 'excuse').length;
+      const autreCampus = presencesNA.filter(p => p.statut === 'autre_campus').length;
+      const pasRevenir = presencesNA.filter(p => p.statut === 'pas_revenir').length;
+      const injoignable = presencesNA.filter(p => p.statut === 'injoignable').length;
+      const total = presencesNA.length;
+      return {
+        id: na.id,
+        prenom: na.prenom,
+        nom: na.nom,
+        nomComplet: `${na.prenom} ${na.nom}`,
+        suivi_par_nom: na.suivi_par_nom,
+        nbPresences: presents,
+        nbAbsences: absents,
+        nbExcuses: excuses,
+        nbAutreCampus: autreCampus,
+        nbPasRevenir: pasRevenir,
+        nbInjoignable: injoignable,
+        nbTotal: total,
+        tauxPresence: total > 0 ? Math.round((presents / total) * 100 * 10) / 10 : 0
+      };
+    }).sort((a, b) => b.tauxPresence - a.tauxPresence);
+
+    return {
+      global: {
+        ...global,
+        tauxPresence: global.total > 0 ? Math.round((global.present / global.total) * 100 * 10) / 10 : 0
+      },
+      parNA
+    };
+  },
+
   // Statistiques de profil famille (sexe, âge, ancienneté) - basées sur les données saisies par les membres
   getProfilFamilleStats() {
     const actifs = AppState.membres.filter(m =>
@@ -539,7 +666,7 @@ const PagesStatistiques = {
     this.alertesAbsence = alertesAbsence;
 
     return `
-      ${isMentorView ? '<p class="text-muted" style="margin-bottom: var(--spacing-md);"><i class="fas fa-users"></i> Statistiques limitées à vos disciples et nouveaux.</p>' : ''}
+      ${isMentorView ? `<p class="text-muted" style="margin-bottom: var(--spacing-md);"><i class="fas fa-users"></i> Statistiques limitées à votre groupe (${this.stats.global.totalMembres} membre${this.stats.global.totalMembres !== 1 ? 's' : ''}).</p>` : ''}
       <div class="stats-header">
         <div class="stats-filters">
           <select class="form-control" id="stats-periode" onchange="PagesStatistiques.changePeriode(this.value)">
@@ -594,7 +721,7 @@ const PagesStatistiques = {
           <div class="stat-icon info"><i class="fas fa-percentage"></i></div>
           <div class="stat-content">
             <div class="stat-value">${this.stats.global.tauxPresenceGlobal}%</div>
-            <div class="stat-label">Taux global</div>
+            <div class="stat-label">${isMentorView ? 'Taux du groupe' : 'Taux global'}</div>
           </div>
         </div>
       </div>
@@ -1686,6 +1813,409 @@ const PagesStatistiques = {
     printWindow.document.close();
     printWindow.onload = () => setTimeout(() => printWindow.print(), 300);
     Toast.success('Fenêtre ouverte : dans la boîte d\'impression, choisissez « Enregistrer au format PDF » comme destination pour sauvegarder le fichier.');
+  },
+
+  // Page Statistiques NA/NC
+  currentNAPeriode: 'mois',
+  currentNADateDebut: null,
+  currentNADateFin: null,
+
+  initNADates() {
+    const now = new Date();
+    switch (this.currentNAPeriode) {
+      case 'semaine':
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay() + 1);
+        this.currentNADateDebut = startOfWeek;
+        this.currentNADateFin = now;
+        break;
+      case 'mois':
+        this.currentNADateDebut = new Date(now.getFullYear(), now.getMonth(), 1);
+        this.currentNADateFin = now;
+        break;
+      case 'annee':
+        this.currentNADateDebut = new Date(now.getFullYear(), 0, 1);
+        this.currentNADateFin = now;
+        break;
+      default:
+        this.currentNADateDebut = null;
+        this.currentNADateFin = null;
+    }
+  },
+
+  async renderStatistiquesNA() {
+    this.initNADates();
+    const dateDebut = this.currentNADateDebut;
+    const dateFin = this.currentNADateFin;
+
+    const naStats = Statistiques.calculateNAStats({ dateDebut, dateFin });
+    const formationStats = Statistiques.calculateFormationStats();
+    const presenceStats = await Statistiques.calculateNAPresenceStats({ dateDebut, dateFin });
+
+    this.naStatsData = { naStats, formationStats, presenceStats, dateDebut, dateFin };
+
+    return `
+      <div class="stats-header">
+        <div class="stats-filters">
+          <select class="form-control" id="stats-na-periode" onchange="PagesStatistiques.changeNAPeriode(this.value)">
+            <option value="semaine" ${this.currentNAPeriode === 'semaine' ? 'selected' : ''}>Cette semaine</option>
+            <option value="mois" ${this.currentNAPeriode === 'mois' ? 'selected' : ''}>Ce mois</option>
+            <option value="annee" ${this.currentNAPeriode === 'annee' ? 'selected' : ''}>Cette année</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap; align-items: center;">
+          <button class="btn btn-outline" onclick="PagesStatistiques.exportNAStatsCSV()" title="Exporter en CSV">
+            <i class="fas fa-file-csv"></i> CSV
+          </button>
+          <button class="btn btn-outline" onclick="PagesStatistiques.exportNAStatsPDF()" title="Exporter en PDF">
+            <i class="fas fa-file-pdf"></i> PDF
+          </button>
+          <button class="btn btn-secondary" onclick="App.navigate('nouvelles-ames')">
+            <i class="fas fa-arrow-left"></i> Nouvelles âmes
+          </button>
+        </div>
+      </div>
+
+      <div class="alert alert-info mb-3">
+        <i class="fas fa-seedling"></i> Statistiques des Nouvelles Âmes / Nouveaux Convertis (NA/NC) — distinctes des membres.
+      </div>
+
+      <!-- Cartes NA/NC global -->
+      <div class="dashboard-grid">
+        <div class="stat-card">
+          <div class="stat-icon" style="background: #9C27B0;"><i class="fas fa-seedling"></i></div>
+          <div class="stat-content">
+            <div class="stat-value">${naStats.total}</div>
+            <div class="stat-label">Total NA/NC (période)</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon primary"><i class="fas fa-user-plus"></i></div>
+          <div class="stat-content">
+            <div class="stat-value">${naStats.na}</div>
+            <div class="stat-label">Nouveaux Arrivants</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon success"><i class="fas fa-heart"></i></div>
+          <div class="stat-content">
+            <div class="stat-value">${naStats.nc}</div>
+            <div class="stat-label">Nouveaux Convertis</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon warning"><i class="fas fa-user-check"></i></div>
+          <div class="stat-content">
+            <div class="stat-value">${naStats.enSuivi}</div>
+            <div class="stat-label">En suivi</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Formations -->
+      <div class="card mt-3">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-graduation-cap"></i> Participants aux formations</h3>
+        </div>
+        <div class="card-body">
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Formation</th>
+                  <th class="text-center">Total inscrits</th>
+                  <th class="text-center">Inscrits / En cours</th>
+                  <th class="text-center">Terminés</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${Object.entries(formationStats).map(([code, f]) => `
+                  <tr>
+                    <td><strong>${f.label}</strong></td>
+                    <td class="text-center">${f.total}</td>
+                    <td class="text-center">${f.inscrits}</td>
+                    <td class="text-center"><span class="badge badge-success">${f.termines}</span></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Présences NA/NC global -->
+      <div class="card mt-3">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fas fa-clipboard-check"></i> Présences NA/NC (global)</h3>
+        </div>
+        <div class="card-body">
+          <div class="presence-stats-bar" style="display: flex; gap: var(--spacing-lg); flex-wrap: wrap;">
+            <div class="stat-item" style="--color: var(--success)">
+              <span class="stat-value" style="display: block; font-size: 1.5rem; font-weight: 700;">${presenceStats.global.present}</span>
+              <span class="stat-label">Présents</span>
+            </div>
+            <div class="stat-item" style="--color: var(--danger)">
+              <span class="stat-value" style="display: block; font-size: 1.5rem; font-weight: 700;">${presenceStats.global.absent}</span>
+              <span class="stat-label">Absents</span>
+            </div>
+            <div class="stat-item" style="--color: var(--warning)">
+              <span class="stat-value" style="display: block; font-size: 1.5rem; font-weight: 700;">${presenceStats.global.excuse}</span>
+              <span class="stat-label">Excusés</span>
+            </div>
+            <div class="stat-item" style="--color: #2196F3">
+              <span class="stat-value" style="display: block; font-size: 1.5rem; font-weight: 700;">${presenceStats.global.autre_campus || 0}</span>
+              <span class="stat-label">Autre campus</span>
+            </div>
+            <div class="stat-item" style="--color: #795548">
+              <span class="stat-value" style="display: block; font-size: 1.5rem; font-weight: 700;">${presenceStats.global.pas_revenir || 0}</span>
+              <span class="stat-label">Pas de retour prévu</span>
+            </div>
+            <div class="stat-item" style="--color: #607D8B">
+              <span class="stat-value" style="display: block; font-size: 1.5rem; font-weight: 700;">${presenceStats.global.injoignable || 0}</span>
+              <span class="stat-label">Injoignable</span>
+            </div>
+            <div class="stat-item" style="--color: #9C27B0">
+              <span class="stat-value" style="display: block; font-size: 1.5rem; font-weight: 700;">${presenceStats.global.tauxPresence}%</span>
+              <span class="stat-label">Taux</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Détail par NA/NC -->
+      <div class="card mt-3">
+        <div class="card-header" style="flex-wrap: wrap; gap: var(--spacing-sm);">
+          <h3 class="card-title"><i class="fas fa-users"></i> Présences par NA/NC <span class="badge badge-secondary">${presenceStats.parNA.length}</span></h3>
+          ${presenceStats.parNA.length > 0 ? `
+          <div class="search-box" style="min-width: 220px;" onclick="event.stopPropagation()">
+            <i class="fas fa-search"></i>
+            <input type="text" class="form-control" placeholder="Rechercher NA/NC ou mentor..."
+                   onkeyup="PagesStatistiques.filterNAStatsTable(this.value)">
+          </div>
+          ` : ''}
+        </div>
+        <div class="card-body" style="padding: 0;">
+          ${presenceStats.parNA.length > 0 ? `
+            <div class="table-container">
+              <table class="table" id="stats-na-table">
+                <thead>
+                  <tr>
+                    <th>NA/NC</th>
+                    <th>Suivi par</th>
+                    <th class="text-center">Présents</th>
+                    <th class="text-center">Absents</th>
+                    <th class="text-center">Excusés</th>
+                    <th class="text-center" title="Autre campus">Autre campus</th>
+                    <th class="text-center" title="Pas de retour prévu">Pas retour</th>
+                    <th class="text-center">Injoignable</th>
+                    <th class="text-center">Taux</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${presenceStats.parNA.map(m => `
+                    <tr data-search="${(m.nomComplet + ' ' + (m.suivi_par_nom || '')).toLowerCase()}">
+                      <td><strong>${Utils.escapeHtml(m.nomComplet)}</strong></td>
+                      <td class="text-muted">${Utils.escapeHtml(m.suivi_par_nom || '-')}</td>
+                      <td class="text-center"><span class="badge badge-success">${m.nbPresences}</span></td>
+                      <td class="text-center"><span class="badge badge-danger">${m.nbAbsences}</span></td>
+                      <td class="text-center"><span class="badge badge-warning">${m.nbExcuses}</span></td>
+                      <td class="text-center"><span class="badge" style="background: #2196F3; color: white;">${m.nbAutreCampus || 0}</span></td>
+                      <td class="text-center"><span class="badge" style="background: #795548; color: white;">${m.nbPasRevenir || 0}</span></td>
+                      <td class="text-center"><span class="badge" style="background: #607D8B; color: white;">${m.nbInjoignable || 0}</span></td>
+                      <td class="text-center">
+                        <div class="progress-bar-container" style="min-width: 80px;">
+                          <div class="progress-bar" style="width: ${m.tauxPresence}%; background: ${m.tauxPresence >= 80 ? 'var(--success)' : m.tauxPresence >= 50 ? 'var(--warning)' : 'var(--danger)'}"></div>
+                          <span class="progress-text">${m.tauxPresence}%</span>
+                        </div>
+                      </td>
+                      <td>
+                        <button class="btn btn-sm btn-secondary" onclick="App.navigate('historique-na', { id: '${m.id}' })" title="Historique">
+                          <i class="fas fa-history"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : `
+            <div class="empty-state" style="padding: var(--spacing-lg);">
+              <i class="fas fa-clipboard-list"></i>
+              <h4>Aucune donnée</h4>
+              <p>Aucune présence NA/NC enregistrée pour cette période.</p>
+            </div>
+          `}
+        </div>
+      </div>
+
+      <style>
+        .stats-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-lg); flex-wrap: wrap; gap: var(--spacing-md); }
+        .progress-bar-container { position: relative; background: var(--bg-tertiary); border-radius: var(--radius-full); height: 24px; overflow: hidden; }
+        .progress-bar { height: 100%; border-radius: var(--radius-full); transition: width 0.3s ease; }
+        .progress-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 0.75rem; font-weight: 600; }
+      </style>
+    `;
+  },
+
+  async changeNAPeriode(periode) {
+    this.currentNAPeriode = periode;
+    this.initNADates();
+    document.querySelector('.page-content').innerHTML = await this.renderStatistiquesNA();
+  },
+
+  filterNAStatsTable(search) {
+    const rows = document.querySelectorAll('#stats-na-table tbody tr');
+    const s = (search || '').toLowerCase().trim();
+    rows.forEach(row => {
+      const text = row.dataset.search || '';
+      row.style.display = !s || text.includes(s) ? '' : 'none';
+    });
+  },
+
+  exportNAStatsCSV() {
+    const d = this.naStatsData;
+    if (!d) {
+      Toast.warning('Aucune donnée à exporter.');
+      return;
+    }
+    const escapeCsv = (v) => {
+      if (v == null || v === '') return '';
+      const s = String(v).replace(/"/g, '""');
+      return /[;\r\n"]/.test(s) ? `"${s}"` : s;
+    };
+    let csv = '\uFEFF';
+    if (d.formationStats) {
+      csv += 'Formations NA/NC\r\n';
+      csv += ['Formation', 'Total inscrits', 'Inscrits/En cours', 'Terminés'].map(escapeCsv).join(';') + '\r\n';
+      Object.entries(d.formationStats).forEach(([code, f]) => {
+        csv += [f.label, f.total, f.inscrits, f.termines].map(escapeCsv).join(';') + '\r\n';
+      });
+      csv += '\r\n';
+    }
+    if (d.presenceStats && d.presenceStats.parNA.length > 0) {
+      csv += 'Présences par NA/NC\r\n';
+      csv += ['NA/NC', 'Suivi par', 'Présents', 'Absents', 'Excusés', 'Autre campus', 'Pas retour', 'Injoignable', 'Taux %'].map(escapeCsv).join(';') + '\r\n';
+      d.presenceStats.parNA.forEach(m => {
+        csv += [m.nomComplet, m.suivi_par_nom || '-', m.nbPresences, m.nbAbsences, m.nbExcuses, m.nbAutreCampus || 0, m.nbPasRevenir || 0, m.nbInjoignable || 0, m.tauxPresence].map(escapeCsv).join(';') + '\r\n';
+      });
+    }
+    if (csv === '\uFEFF') {
+      Toast.warning('Aucune donnée à exporter.');
+      return;
+    }
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `statistiques-na-presences-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    Toast.success('Export CSV téléchargé');
+  },
+
+  exportNAStatsPDF() {
+    const d = this.naStatsData;
+    if (!d) {
+      Toast.warning('Aucune donnée à exporter.');
+      return;
+    }
+    const g = d.presenceStats?.global || {};
+    const famille = AppState.famille?.nom || '';
+    const periode = d.dateDebut && d.dateFin
+      ? `${d.dateDebut.toLocaleDateString('fr-FR')} - ${d.dateFin.toLocaleDateString('fr-FR')}`
+      : '';
+
+    const formationRows = d.formationStats ? Object.entries(d.formationStats).map(([code, f]) => `
+      <tr><td>${Utils.escapeHtml(f.label)}</td><td class="text-center">${f.total}</td><td class="text-center">${f.inscrits}</td><td class="text-center">${f.termines}</td></tr>
+    `).join('') : '';
+    const rows = (d.presenceStats?.parNA || []).map(m => `
+      <tr>
+        <td>${Utils.escapeHtml(m.nomComplet)}</td>
+        <td>${Utils.escapeHtml(m.suivi_par_nom || '-')}</td>
+        <td class="text-center">${m.nbPresences}</td>
+        <td class="text-center">${m.nbAbsences}</td>
+        <td class="text-center">${m.nbExcuses}</td>
+        <td class="text-center">${m.nbAutreCampus || 0}</td>
+        <td class="text-center">${m.nbPasRevenir || 0}</td>
+        <td class="text-center">${m.nbInjoignable || 0}</td>
+        <td class="text-center">${m.tauxPresence}%</td>
+      </tr>
+    `).join('');
+
+    const content = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Statistiques NA/NC - ${Utils.escapeHtml(famille)}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; padding: 15mm; color: #333; }
+    .header { text-align: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #9C27B0; }
+    .header h1 { color: #9C27B0; font-size: 18pt; }
+    .header .subtitle { font-size: 10pt; color: #666; margin-top: 4px; }
+    .stats-bar { display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+    .stat-box { text-align: center; padding: 10px 15px; background: #f5f7fa; border-radius: 8px; }
+    .stat-value { font-size: 18pt; font-weight: bold; }
+    .stat-label { font-size: 9pt; color: #666; }
+    table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #f5f7fa; font-weight: 600; }
+    .text-center { text-align: center; }
+    .btn-print { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; background: #9C27B0; color: white; border: none; border-radius: 8px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <button class="btn-print" onclick="window.print()">Imprimer / PDF</button>
+  <div class="header">
+    <h1>Statistiques NA/NC — Présences</h1>
+    <div class="subtitle">Famille ${Utils.escapeHtml(famille)}</div>
+    <div class="subtitle">Période : ${Utils.escapeHtml(periode)}</div>
+    <div class="subtitle">Généré le ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+  </div>
+  ${formationRows ? `
+  <h3 style="margin-bottom: 10px; color: #9C27B0;">Participants aux formations</h3>
+  <table style="margin-bottom: 25px;"><thead><tr><th>Formation</th><th class="text-center">Total</th><th class="text-center">Inscrits/En cours</th><th class="text-center">Terminés</th></tr></thead><tbody>${formationRows}</tbody></table>
+  ` : ''}
+  <h3 style="margin-bottom: 10px; color: #9C27B0;">Présences NA/NC</h3>
+  <div class="stats-bar">
+    <div class="stat-box"><div class="stat-value" style="color: #4CAF50;">${g.present || 0}</div><div class="stat-label">Présents</div></div>
+    <div class="stat-box"><div class="stat-value" style="color: #F44336;">${g.absent || 0}</div><div class="stat-label">Absents</div></div>
+    <div class="stat-box"><div class="stat-value" style="color: #FF9800;">${g.excuse || 0}</div><div class="stat-label">Excusés</div></div>
+    <div class="stat-box"><div class="stat-value" style="color: #2196F3;">${g.autre_campus || 0}</div><div class="stat-label">Autre campus</div></div>
+    <div class="stat-box"><div class="stat-value" style="color: #795548;">${g.pas_revenir || 0}</div><div class="stat-label">Pas retour</div></div>
+    <div class="stat-box"><div class="stat-value" style="color: #607D8B;">${g.injoignable || 0}</div><div class="stat-label">Injoignable</div></div>
+    <div class="stat-box"><div class="stat-value" style="color: #9C27B0;">${g.tauxPresence || 0}%</div><div class="stat-label">Taux</div></div>
+  </div>
+  ${rows ? `
+  <h3 style="margin: 20px 0 10px; color: #9C27B0;">Détail par NA/NC</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>NA/NC</th>
+        <th>Suivi par</th>
+        <th class="text-center">Présents</th>
+        <th class="text-center">Absents</th>
+        <th class="text-center">Excusés</th>
+        <th class="text-center">Autre campus</th>
+        <th class="text-center">Pas retour</th>
+        <th class="text-center">Injoignable</th>
+        <th class="text-center">Taux</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  ` : ''}
+</body>
+</html>`;
+    const w = window.open('about:blank', '_blank');
+    if (w) {
+      w.document.write(content);
+      w.document.close();
+      w.onload = () => setTimeout(() => w.print(), 300);
+      Toast.success('Fenêtre ouverte : utilisez Imprimer puis « Enregistrer au format PDF ».');
+    } else {
+      Toast.error('Autorisez les popups pour l\'export PDF.');
+    }
   },
 
   // Export PDF : ouverture en fenêtre d'impression (fiable, sans page blanche ni coupure)

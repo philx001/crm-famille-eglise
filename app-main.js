@@ -183,6 +183,7 @@ const App = {
       'programme-detail': 'Détails du programme', presences: 'Pointage des présences', 'historique-membre': 'Historique de présence',
       statistiques: 'Statistiques', notifications: 'Notifications', 'sujets-priere': 'Sujets de prière', temoignages: 'Témoignages', documents: 'Documents',
       'nouvelles-ames': 'Nouvelles âmes', 'nouvelles-ames-add': 'Ajouter une nouvelle âme', 'nouvelle-ame-detail': 'Détail nouvelle âme', 'nouvelle-ame-suivi': 'Ajouter un suivi',
+      'historique-na': 'Historique présence NA/NC', 'statistiques-na': 'Statistiques NA/NC',
       evangelisation: 'Évangélisation', 'evangelisation-stats': 'Statistiques évangélisation', 'evangelisation-planning': 'Planning', 'evangelisation-add': 'Nouvelle session',
       'evangelisation-detail': 'Détail session', secteurs: 'Secteurs', 'admin-familles': 'Gestion des familles', logs: 'Journal d\'activité'
     };
@@ -261,7 +262,7 @@ const App = {
     const { page, params } = this.parseHash();
     const validPages = ['dashboard', 'membres', 'membres-add', 'archives-membres', 'profil', 'profil-edit', 'mon-compte', 'annuaire',
       'mes-disciples', 'calendrier', 'programmes', 'programmes-add', 'programmes-edit', 'programme-detail',
-      'presences', 'historique-membre', 'statistiques', 'notifications', 'sujets-priere', 'temoignages',
+      'presences', 'historique-membre', 'historique-na', 'statistiques', 'statistiques-na', 'notifications', 'sujets-priere', 'temoignages',
       'documents', 'notes-personnelles', 'nouvelles-ames', 'nouvelles-ames-add', 'nouvelle-ame-detail', 'nouvelle-ame-suivi',
       'evangelisation', 'evangelisation-stats', 'evangelisation-planning', 'evangelisation-add',
       'evangelisation-detail', 'secteurs', 'admin-familles', 'logs'];
@@ -318,10 +319,20 @@ const App = {
       case 'programme-detail': pageTitle = 'Détails du programme'; pageContent = await PagesCalendrier.renderProgrammeDetail(this.currentParams.programmeId); break;
       case 'presences': pageTitle = 'Pointage des présences'; pageContent = await PagesPresences.renderPresences(this.currentParams.programmeId); break;
       case 'historique-membre': pageTitle = 'Historique de présence'; pageContent = await PagesPresences.renderHistoriqueMembre(this.currentParams.membreId); break;
+      case 'historique-na': pageTitle = 'Historique présence NA/NC'; pageContent = await PagesPresences.renderHistoriqueNA(this.currentParams.id); break;
+      case 'statistiques-na': {
+        pageTitle = 'Statistiques NA/NC';
+        pageContent = await PagesStatistiques.renderStatistiquesNA();
+        break;
+      }
       case 'statistiques': {
-        const stats = typeof Membres !== 'undefined' && Membres.getStats ? Membres.getStats() : null;
-        const nbStatsMembres = stats ? stats.total : (AppState.membres || []).filter(m => m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur').length;
-        pageTitle = `Statistiques (${nbStatsMembres} membre${nbStatsMembres !== 1 ? 's' : ''})`;
+        const isMentorStats = AppState.user && AppState.user.role === 'mentor' && !(typeof Permissions !== 'undefined' && Permissions.hasRole('adjoint_superviseur'));
+        const nbStatsMembres = isMentorStats
+          ? (typeof Membres !== 'undefined' && Membres.getDisciples ? Membres.getDisciples(AppState.user.id).length : 0)
+          : ((typeof Membres !== 'undefined' && Membres.getStats) ? Membres.getStats().total : (AppState.membres || []).filter(m => m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur').length);
+        pageTitle = isMentorStats
+          ? `Statistiques — Votre groupe (${nbStatsMembres} membre${nbStatsMembres !== 1 ? 's' : ''})`
+          : `Statistiques (${nbStatsMembres} membre${nbStatsMembres !== 1 ? 's' : ''})`;
         pageContent = await PagesStatistiques.renderStatistiques();
         break;
       }
@@ -1536,6 +1547,10 @@ const App = {
       const rolesWithoutMentor = ['nouveau', 'mentor', 'adjoint_superviseur', 'superviseur'];
       data.role = editRoleEl.value;
       data.mentor_id = (rolesWithoutMentor.includes(editRoleEl.value) || !editMentorEl?.value) ? null : editMentorEl.value;
+    }
+    const editDateFamilleEl = document.getElementById('edit-date-famille');
+    if (editDateFamilleEl) {
+      data.date_arrivee_famille = editDateFamilleEl.value ? new Date(editDateFamilleEl.value) : null;
     }
     if (await Membres.update(membreId, data)) this.navigate('profil');
   },

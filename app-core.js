@@ -176,7 +176,7 @@ const Utils = {
       'disciple': 'Disciple',
       'nouveau': 'Nouveau',
       'mentor': 'Mentor',
-      'adjoint_superviseur': 'Adjoint superviseur',
+      'adjoint_superviseur': 'Adjoint superviseur (compte de service)',
       'superviseur': 'Superviseur',
       'admin': 'Administrateur-Mentor'
     };

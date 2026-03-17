@@ -215,7 +215,7 @@ const Auth = {
       const adminFamilleId = AppState.famille.id;
       const adminFamilleNom = AppState.famille.nom;
       const adminUserId = AppState.user.id;
-      const rolesSansMentor = ['superviseur', 'nouveau'];
+      const rolesSansMentor = ['superviseur', 'nouveau', 'adjoint_superviseur'];
       const mentorId = rolesSansMentor.includes(role) ? null : (membreData.mentor_id || adminUserId);
 
       const tempPassword = Math.random().toString(36).slice(-8) + 'A1!';
@@ -317,6 +317,106 @@ const Auth = {
       created_at: firebase.firestore.FieldValue.serverTimestamp()
     });
     return { id: docRef.id, nom: nomLower, nom_affichage: nomTrim, statut: 'actif' };
+  },
+
+  /** Supprimer une famille et toutes ses données Firestore (admin uniquement). Les comptes Auth restent ; pour suppression complète, exécuter scripts/delete-family.js */
+  async deleteFamille(familleId) {
+    if (!AppState.user || AppState.user.role !== 'admin') {
+      throw new Error('Réservé à l\'administrateur');
+    }
+    const familleDoc = await db.collection('familles').doc(familleId).get();
+    if (!familleDoc.exists) throw new Error('Famille non trouvée');
+    const nomAffichage = familleDoc.data().nom_affichage || familleDoc.data().nom || familleId;
+
+    const BATCH_SIZE = 500;
+    const deleteQueryBatch = async (query) => {
+      let total = 0;
+      let snapshot = await query.limit(BATCH_SIZE).get();
+      while (!snapshot.empty) {
+        const batch = db.batch();
+        snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+        total += snapshot.size;
+        snapshot = await query.limit(BATCH_SIZE).get();
+      }
+      return total;
+    };
+
+    // 1. Présences (by programme_id)
+    const progSnap = await db.collection('programmes').where('famille_id', '==', familleId).get();
+    const programmeIds = progSnap.docs.map((d) => d.id);
+    for (let i = 0; i < programmeIds.length; i += 10) {
+      const chunk = programmeIds.slice(i, i + 10);
+      await deleteQueryBatch(db.collection('presences').where('programme_id', 'in', chunk));
+    }
+
+    // 2. programmes, notifications, sujets_priere, temoignages, documents, planning_conducteurs_priere
+    const colsPhase2 = ['programmes', 'notifications', 'sujets_priere', 'temoignages', 'documents', 'planning_conducteurs_priere'];
+    for (const col of colsPhase2) {
+      await deleteQueryBatch(db.collection(col).where('famille_id', '==', familleId));
+    }
+
+    // 3. suivis_ames (AVANT nouvelles_ames)
+    const naSnap = await db.collection('nouvelles_ames').where('famille_id', '==', familleId).get();
+    const naIds = naSnap.docs.map((d) => d.id);
+    for (let i = 0; i < naIds.length; i += 10) {
+      const chunk = naIds.slice(i, i + 10);
+      await deleteQueryBatch(db.collection('suivis_ames').where('nouvelle_ame_id', 'in', chunk));
+    }
+
+    // 4. nouvelles_ames, sessions_evangelisation, secteurs_evangelisation, notes_suivi
+    const colsPhase4 = ['nouvelles_ames', 'sessions_evangelisation', 'secteurs_evangelisation', 'notes_suivi'];
+    for (const col of colsPhase4) {
+      await deleteQueryBatch(db.collection(col).where('famille_id', '==', familleId));
+    }
+
+    // 5. notes_personnelles (by auteur_id in family users)
+    const usersSnap = await db.collection('utilisateurs').where('famille_id', '==', familleId).get();
+    const userIds = usersSnap.docs.map((d) => d.id);
+    for (let i = 0; i < userIds.length; i += 10) {
+      const chunk = userIds.slice(i, i + 10);
+      for (const logCol of ['logs_connexion', 'logs_modification']) {
+        try {
+          await deleteQueryBatch(db.collection(logCol).where('user_id', 'in', chunk));
+        } catch (e) {
+          if (!e.message || !e.message.includes('index')) throw e;
+        }
+      }
+      for (const uid of chunk) {
+        await deleteQueryBatch(db.collection('notes_personnelles').where('auteur_id', '==', uid));
+      }
+    }
+
+    // 6. utilisateurs Firestore (Auth non supprimé depuis le client)
+    // Ne pas supprimer le doc de l'admin connecté (évite de se supprimer soi-même)
+    const currentUid = AppState.user?.id;
+    for (const doc of usersSnap.docs) {
+      if (doc.id === currentUid && doc.data().role === 'admin') continue;
+      await db.collection('utilisateurs').doc(doc.id).delete();
+    }
+
+    // 7. Storage (documents, temoignages) - si storage disponible
+    if (typeof storage !== 'undefined') {
+      const deleteFolder = async (path) => {
+        try {
+          const ref = storage.ref(path);
+          const list = await ref.listAll();
+          for (const item of list.items) await item.delete();
+          for (const prefix of list.prefixes) {
+            const sub = await prefix.listAll();
+            for (const f of sub.items) await f.delete();
+          }
+        } catch (e) {
+          if (e.code !== 'storage/object-not-found') console.warn('Storage', path, e);
+        }
+      };
+      await deleteFolder(`documents/${familleId}`);
+      await deleteFolder(`temoignages/${familleId}`);
+    }
+
+    // 8. Document famille
+    await db.collection('familles').doc(familleId).delete();
+    return { success: true, nomAffichage };
   },
 
   async createMembreForFamily(familleId, membreData) {
@@ -707,10 +807,11 @@ const Permissions = {
     return this.hasRole('adjoint_superviseur') || this.hasRole('superviseur') || this.isAdmin();
   },
 
-  /** Peut réaffecter ce membre (disciple, nouveau, mentor, adjoint, admin) à un autre mentor */
+  /** Peut réaffecter ce membre (disciple, nouveau, mentor, admin) à un autre mentor. Adjoint superviseur exclu : compte de service, non affectable. */
   canReassignMentor(membre) {
     if (!AppState.user || !membre) return false;
-    const rolesAvecMentor = ['disciple', 'nouveau', 'mentor', 'adjoint_superviseur', 'admin'];
+    if (membre.role === 'adjoint_superviseur') return false;
+    const rolesAvecMentor = ['disciple', 'nouveau', 'mentor', 'admin'];
     if (!rolesAvecMentor.includes(membre.role)) return false;
     if (this.hasRole('adjoint_superviseur') || this.hasRole('superviseur') || this.isAdmin()) return true;
     if (this.hasRole('mentor') && membre.mentor_id === AppState.user.id) return true;
@@ -771,10 +872,10 @@ const Membres = {
       if (!canEditFull && !canEditDateOnly) {
         throw new Error('Permission refusée');
       }
-      // Superviseur : son propre mentor, jamais de mentor_id
+      // Superviseur et adjoint_superviseur : jamais de mentor_id (comptes de service)
       const payload = { ...data };
       const finalRole = payload.role ?? this.getById(id)?.role;
-      if (finalRole === 'superviseur') payload.mentor_id = null;
+      if (finalRole === 'superviseur' || finalRole === 'adjoint_superviseur') payload.mentor_id = null;
 
       await db.collection('utilisateurs').doc(id).update({
         ...payload,
@@ -912,10 +1013,11 @@ const Membres = {
   },
 
   /** Membres actifs visibles (adjoints superviseur masqués sauf pour admin). */
+  /** Membres actifs visibles (annuaire, exports). Adjoints superviseur exclus partout : comptes de service. */
   getVisibleActifs() {
-    const actifs = AppState.membres.filter(m => m.statut_compte === 'actif');
-    if (Permissions.isAdmin()) return actifs;
-    return actifs.filter(m => m.role !== 'adjoint_superviseur');
+    return AppState.membres.filter(m =>
+      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur'
+    );
   },
 
   getMentors() {

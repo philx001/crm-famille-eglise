@@ -544,6 +544,35 @@ const App = {
     this.showAddSuperviseurModal(familleId, familleNom);
   },
 
+  deleteFamilleWithDoubleConfirm(btn) {
+    const familleId = btn.dataset.familleId;
+    const familleNom = btn.dataset.familleNom || familleId;
+    if (!familleId || !Permissions.isAdmin()) return;
+    Modal.confirm(
+      'Supprimer la famille',
+      `Voulez-vous vraiment supprimer la famille « ${familleNom} » ? Cette action supprimera tous les membres, programmes, présences et données associées. Cette action est irréversible.`,
+      () => {
+        Modal.confirm(
+          'Confirmation finale',
+          `Dernière confirmation : supprimer définitivement la famille « ${familleNom} » et toutes ses données ?`,
+          async () => {
+            try {
+              App.showLoading();
+              await Auth.deleteFamille(familleId);
+              Toast.success(`Famille « ${familleNom} » supprimée`);
+              App.navigate('admin-familles');
+            } catch (e) {
+              console.error('Erreur suppression famille:', e);
+              Toast.error(e.message || 'Erreur lors de la suppression');
+            } finally {
+              App.hideLoading();
+            }
+          }
+        );
+      }
+    );
+  },
+
   showAddSuperviseurModal(familleId, familleNom) {
     const modalId = 'modal-add-superviseur-famille';
     const html = `

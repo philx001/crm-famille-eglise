@@ -1031,9 +1031,14 @@ const Pages = {
                     <td><strong>${Utils.escapeHtml(f.nom_affichage || f.nom || f.id)}</strong></td>
                     <td><span class="badge badge-${f.statut === 'actif' ? 'success' : 'secondary'}">${f.statut || 'actif'}</span></td>
                     <td>
-                      <button type="button" class="btn btn-sm btn-outline" data-famille-id="${f.id}" data-famille-nom="${Utils.escapeHtml(f.nom_affichage || f.nom || '')}" onclick="App.showAddSuperviseurModalFromButton(this)">
-                        <i class="fas fa-user-plus"></i> Ajouter un superviseur
-                      </button>
+                      <div class="d-flex gap-2" style="flex-wrap: wrap;">
+                        <button type="button" class="btn btn-sm btn-outline" data-famille-id="${f.id}" data-famille-nom="${Utils.escapeHtml(f.nom_affichage || f.nom || '')}" onclick="App.showAddSuperviseurModalFromButton(this)">
+                          <i class="fas fa-user-plus"></i> Ajouter un superviseur
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline btn-danger" data-famille-id="${f.id}" data-famille-nom="${Utils.escapeHtml(f.nom_affichage || f.nom || '')}" onclick="App.deleteFamilleWithDoubleConfirm(this)" title="Supprimer la famille">
+                          <i class="fas fa-trash-alt"></i> Supprimer
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 `).join('')}

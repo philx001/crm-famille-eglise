@@ -1246,6 +1246,21 @@ const App = {
     }
   },
 
+  async updateDateArriveeFamille(membreId, dateValue) {
+    const membre = Membres.getById(membreId);
+    if (!membre || !Permissions.canEditDateArriveeFamille(membre)) {
+      Toast.error('Vous ne pouvez pas modifier ce membre.');
+      return;
+    }
+    const data = { date_arrivee_famille: dateValue ? new Date(dateValue) : null };
+    try {
+      const ok = await Membres.update(membreId, data);
+      if (ok) this.navigate(AppState.currentPage);
+    } catch (e) {
+      Toast.error(e.message || 'Erreur lors de l\'enregistrement.');
+    }
+  },
+
   editMembre(id) { document.querySelector('.page-content').innerHTML = Pages.renderProfilEdit(id); },
   viewProgramme(id) { this.navigate('programme-detail', { programmeId: id }); },
   editProgramme(id) { this.navigate('programmes-edit', { programmeId: id }); },
@@ -1538,6 +1553,7 @@ const App = {
       date_bapteme: document.getElementById('edit-date-bapteme')?.value ? new Date(document.getElementById('edit-date-bapteme').value) : null,
       pole_interne,
       profession: document.getElementById('edit-profession').value.trim() || null,
+      vehicule: document.getElementById('edit-vehicule')?.checked || false,
       statut_professionnel: document.getElementById('edit-statut-pro').value || null,
       passions_centres_interet: document.getElementById('edit-passions').value.trim() || null
     };

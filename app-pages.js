@@ -210,6 +210,19 @@ const Pages = {
       </div>
     ` : '';
 
+    const datePastBounds = Utils.getDatePastBounds();
+    const canEditDateArrivee = Permissions.canEditDateArriveeFamille(membre);
+    const dateArriveeInput = canEditDateArrivee ? `
+      <div class="member-date-arrivee" style="margin-top: 6px;">
+        <label class="text-muted" style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Date d'arrivée dans la famille</label>
+        <input type="date" class="form-control form-control-sm" style="max-width: 160px; font-size: 0.8rem;" 
+               min="${datePastBounds.min}" max="${datePastBounds.max}" 
+               value="${Utils.toDateInputValue(membre.date_arrivee_famille)}" 
+               onchange="App.updateDateArriveeFamille('${membre.id}', this.value)" 
+               title="Modifier la date (enregistrement immédiat, sans formulaire complet)">
+      </div>
+    ` : '';
+
     return `
       <div class="member-card" data-id="${membre.id}" data-role="${membre.role}" 
            data-name="${(membre.prenom + ' ' + membre.nom).toLowerCase()}" data-mentor-id="${membre.mentor_id || ''}">
@@ -222,6 +235,7 @@ const Pages = {
           </div>
           <div class="member-email">${Permissions.isAdjointSuperviseurOnly() && membre.id !== AppState.user.id ? '—' : Utils.escapeHtml(membre.email)}</div>
           ${reassignSelect}
+          ${dateArriveeInput}
         </div>
         <div class="member-meta">
           <span class="badge badge-${membre.role}">${Utils.getRoleLabel(membre.role)}</span>
@@ -431,13 +445,14 @@ const Pages = {
               <p><strong>Sexe:</strong> ${membre.sexe === 'M' ? 'Homme' : membre.sexe === 'F' ? 'Femme' : '-'}</p>
               <p><strong>Date de naissance:</strong> ${Utils.formatDate(membre.date_naissance) || '-'}</p>
               <p><strong>Ville:</strong> ${membre.adresse_ville || '-'} ${membre.adresse_code_postal || ''}</p>
+              <p><strong>Véhiculé:</strong> ${membre.vehicule === true ? 'Oui' : membre.vehicule === false ? 'Non' : '-'}</p>
             </div>
             
             <div>
               <h4 class="mb-2">Parcours spirituel</h4>
               <p><strong>Mentor:</strong> ${mentor ? `${mentor.prenom} ${mentor.nom}` : '-'}</p>
               <p><strong>Arrivée ICC:</strong> ${Utils.formatDate(membre.date_arrivee_icc) || '-'}</p>
-              <p><strong>Arrivée dans la famille:</strong> ${Utils.formatDate(membre.date_arrivee_famille) || '-'}</p>
+              ${!isOwnProfil && (Permissions.hasRole('adjoint_superviseur') || Permissions.hasRole('superviseur') || Permissions.isAdmin()) ? `<p><strong>Arrivée dans la famille:</strong> ${Utils.formatDate(membre.date_arrivee_famille) || '-'}</p>` : ''}
               <p><strong>Formations:</strong> ${membre.formations?.length > 0 ? membre.formations.map(f => ({ 'RTT_301': 'RTT (301)' }[f] || f)).join(', ') : '-'}</p>
               <p><strong>Ministère:</strong> ${membre.ministere_service || '-'}</p>
               <p><strong>Baptisé (immersion):</strong> ${membre.baptise_immersion === true ? 'Oui' : membre.baptise_immersion === false ? 'Non' : '-'}</p>
@@ -566,8 +581,8 @@ const Pages = {
             ${(Permissions.hasRole('adjoint_superviseur') || Permissions.hasRole('superviseur') || Permissions.isAdmin()) ? `
             <div class="form-group">
               <label class="form-label">Date d'arrivée dans la famille</label>
-              <input type="date" class="form-control input-date" id="edit-date-famille" min="${datePastBounds.min}" max="${datePastBounds.max}" value="${Utils.toDateInputValue(membre.date_arrivee_famille)}" title="Renseignée par adjoint/superviseur/admin — utilisée pour les statistiques de présence">
-              <span class="form-hint">Utilisée pour les statistiques (pointage, taux de présence). Le membre ne peut pas modifier ce champ.</span>
+              <input type="date" class="form-control input-date" id="edit-date-famille" min="${datePastBounds.min}" max="${datePastBounds.max}" value="${Utils.toDateInputValue(membre.date_arrivee_famille)}" title="Utilisée pour les statistiques de présence">
+              <span class="form-hint">Utilisée pour les statistiques (pointage, taux de présence). Le mentor la renseigne depuis la page Mes disciples.</span>
             </div>
             ` : ''}
             <div class="form-group">
@@ -632,6 +647,13 @@ const Pages = {
             <div class="form-group">
               <label class="form-label">Profession</label>
               <input type="text" class="form-control" id="edit-profession" value="${membre.profession || ''}">
+            </div>
+            
+            <div class="form-group">
+              <label class="form-check" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="edit-vehicule" class="form-control" style="width: auto;" ${membre.vehicule === true ? 'checked' : ''}>
+                <span>Véhiculé</span>
+              </label>
             </div>
             
             <div class="form-group">

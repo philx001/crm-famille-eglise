@@ -662,17 +662,30 @@ const NouvellesAmes = {
       // Forcer le rechargement des données
       NouvellesAmesData.loaded = false;
       
-      // Créer le membre via Auth.createMembre
+      // Mapper les formations NA/NC vers le format membre (BDR existe dans les deux)
+      const formationsMembre = [];
+      const naFormations = nouvelleAme.formations || [];
+      const bdrTermine = naFormations.find(f => f.code === 'bdr' && f.statut === 'termine');
+      if (bdrTermine) formationsMembre.push('BDR');
+
+      // Baptême terminé → baptise_immersion
+      const baptemeTermine = naFormations.find(f => f.code === 'bapteme' && f.statut === 'termine');
+
+      // Créer le membre via Auth.createMembre (transfert des infos saisies en NA/NC)
       // Note: Cette fonction va déconnecter l'utilisateur et afficher la page de login
       try {
         const result = await Auth.createMembre({
           prenom: nouvelleAme.prenom,
           nom: nouvelleAme.nom,
           email: email,
-          telephone: nouvelleAme.telephone,
-          sexe: nouvelleAme.sexe,
-          date_naissance: nouvelleAme.date_naissance,
-          adresse_ville: nouvelleAme.adresse_ville,
+          telephone: nouvelleAme.telephone || null,
+          sexe: nouvelleAme.sexe || null,
+          date_naissance: nouvelleAme.date_naissance || null,
+          adresse_ville: nouvelleAme.adresse_ville || null,
+          adresse_code_postal: null,
+          date_arrivee_icc: nouvelleAme.date_premier_contact || null,
+          formations: formationsMembre,
+          baptise_immersion: baptemeTermine ? true : null,
           role: 'nouveau',
           mentor_id: nouvelleAme.suivi_par_id
         });

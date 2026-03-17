@@ -13,7 +13,14 @@ service cloud.firestore {
     function hasRole(role) {
       let userData = getUserData();
       let roles = ['disciple', 'nouveau', 'mentor', 'adjoint_superviseur', 'superviseur', 'admin'];
-      return roles.indexOf(userData.role) >= roles.indexOf(role);
+      return userData != null && userData.role != null && roles.indexOf(userData.role) >= roles.indexOf(role);
+    }
+
+    function mentorCanUpdateDisciple() {
+      let userData = getUserData();
+      return userData != null && userData.famille_id != null && hasRole('mentor') &&
+        resource.data.famille_id == userData.famille_id &&
+        (resource.data.role == 'disciple' || resource.data.role == 'nouveau');
     }
 
     function belongsToFamily(familleId) {
@@ -45,7 +52,10 @@ service cloud.firestore {
 
       allow update: if isAuthenticated() && (
         request.auth.uid == userId ||
+        (resource.data.mentor_id == request.auth.uid && (resource.data.role == 'disciple' || resource.data.role == 'nouveau')) ||
         (hasRole('superviseur') && resource.data.famille_id == getUserData().famille_id && resource.data.role != 'admin') ||
+        (hasRole('mentor') && resource.data.mentor_id == request.auth.uid) ||
+        mentorCanUpdateDisciple() ||
         isAdmin()
       );
 

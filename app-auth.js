@@ -228,7 +228,7 @@ const Auth = {
 
       const uid = userCredential.user.uid;
 
-      // Préparer les données du nouveau membre
+      // Préparer les données du nouveau membre (réutilise membreData quand fourni, ex. conversion NA/NC)
       const newMembre = {
         email: membreData.email.toLowerCase().trim(),
         nom: membreData.nom.trim(),
@@ -237,20 +237,21 @@ const Auth = {
         mentor_id: mentorId,
         role: role,
         statut_compte: 'actif',
-        sexe: null,
-        date_naissance: null,
-        adresse_ville: null,
-        adresse_code_postal: null,
-        indicatif_telephone: null,
-        telephone: null,
-        date_arrivee_icc: null,
-        date_arrivee_famille: null,
-        formations: [],
-        ministere_service: null,
-        baptise_immersion: null,
-        profession: null,
-        statut_professionnel: null,
-        passions_centres_interet: null,
+        sexe: membreData.sexe ?? null,
+        date_naissance: membreData.date_naissance ?? null,
+        adresse_ville: membreData.adresse_ville ?? null,
+        adresse_code_postal: membreData.adresse_code_postal ?? null,
+        indicatif_telephone: membreData.indicatif_telephone ?? null,
+        telephone: membreData.telephone ?? null,
+        date_arrivee_icc: membreData.date_arrivee_icc ?? null,
+        date_arrivee_famille: membreData.date_arrivee_famille ?? null,
+        formations: Array.isArray(membreData.formations) ? membreData.formations : [],
+        ministere_service: membreData.ministere_service ?? null,
+        baptise_immersion: membreData.baptise_immersion ?? null,
+        profession: membreData.profession ?? null,
+        statut_professionnel: membreData.statut_professionnel ?? null,
+        passions_centres_interet: membreData.passions_centres_interet ?? null,
+        vehicule: membreData.vehicule ?? false,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
         updated_at: firebase.firestore.FieldValue.serverTimestamp()
       };
@@ -357,6 +358,7 @@ const Auth = {
         profession: null,
         statut_professionnel: null,
         passions_centres_interet: null,
+        vehicule: false,
         created_at: firebase.firestore.FieldValue.serverTimestamp(),
         updated_at: firebase.firestore.FieldValue.serverTimestamp()
       };
@@ -674,6 +676,13 @@ const Permissions = {
     return false;
   },
 
+  /** Peut modifier uniquement la date d'arrivée dans la famille (mentor sur ses disciples, ou adjoint/superviseur/admin) */
+  canEditDateArriveeFamille(membre) {
+    if (!AppState.user || !membre) return false;
+    if (this.hasRole('adjoint_superviseur') || this.hasRole('superviseur') || this.isAdmin()) return true;
+    return this.hasRole('mentor') && membre.mentor_id === AppState.user.id;
+  },
+
   /** Peut bloquer/débloquer (archiver) un membre : superviseur ou admin, pas soi-même */
   canBlockMember(member) {
     if (!AppState.user || !member) return false;
@@ -755,7 +764,11 @@ const Membres = {
 
   async update(id, data) {
     try {
-      if (!Permissions.canEditMember(id)) {
+      const membre = this.getById(id);
+      const canEditFull = Permissions.canEditMember(id);
+      const canEditDateOnly = membre && Permissions.canEditDateArriveeFamille(membre) &&
+        Object.keys(data).length === 1 && data.hasOwnProperty('date_arrivee_famille');
+      if (!canEditFull && !canEditDateOnly) {
         throw new Error('Permission refusée');
       }
       // Superviseur : son propre mentor, jamais de mentor_id

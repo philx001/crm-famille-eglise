@@ -39,6 +39,19 @@ const SujetsPriere = {
     ];
   },
 
+  /** Sujets liés à un créneau (slot_id) : lecture seule pour tous, gestion par canManagePlanningConducteurs */
+  getBySlotId(slotId) {
+    return this.items.filter(s => s.slot_id === slotId);
+  },
+
+  getExaucesCountBySlotId(slotId) {
+    return this.getBySlotId(slotId).filter(s => s.est_exauce).length;
+  },
+
+  isSujetProgramme(sujet) {
+    return !!(sujet && sujet.slot_id);
+  },
+
   async create(data) {
     try {
       const sujet = {
@@ -49,6 +62,7 @@ const SujetsPriere = {
         auteur_prenom: data.anonyme ? null : AppState.user.prenom,
         est_exauce: false,
         date_exaucement: null,
+        slot_id: data.slot_id || null,
         created_at: firebase.firestore.FieldValue.serverTimestamp()
       };
 
@@ -69,7 +83,8 @@ const SujetsPriere = {
     try {
       const sujet = this.items.find(s => s.id === id);
       if (!sujet) throw new Error('Sujet non trouvé');
-      if (sujet.auteur_id !== AppState.user.id && !Permissions.isAdmin()) {
+      const canManageSlot = sujet.slot_id && Permissions.canManagePlanningConducteurs();
+      if (!canManageSlot && sujet.auteur_id !== AppState.user.id && !Permissions.isAdmin()) {
         throw new Error('Permission refusée');
       }
       const updates = {
@@ -114,8 +129,8 @@ const SujetsPriere = {
     try {
       const sujet = this.items.find(s => s.id === id);
       if (!sujet) throw new Error('Sujet non trouvé');
-
-      if (sujet.auteur_id !== AppState.user.id && !Permissions.isAdmin()) {
+      const canManageSlot = sujet.slot_id && Permissions.canManagePlanningConducteurs();
+      if (!canManageSlot && sujet.auteur_id !== AppState.user.id && !Permissions.isAdmin()) {
         throw new Error('Permission refusée');
       }
 
@@ -530,6 +545,7 @@ const PagesPriere = {
           </div>
           <div class="modal-body">
             <form id="form-add-priere" onsubmit="PagesPriere.submitSujet(event)">
+              <input type="hidden" id="priere-slot-id" name="slot_id" value="">
               <div class="form-group">
                 <label class="form-label">Catégorie</label>
                 <select class="form-control" id="priere-categorie">
@@ -598,6 +614,7 @@ const PagesPriere = {
           </div>
           <div class="modal-body" id="modal-detail-priere-body"></div>
           <div class="modal-footer">
+            <button type="button" class="btn btn-outline" id="btn-detail-priere-export" onclick="PagesPriere.exportSujetPDFFromDetail()" title="Exporter en PDF"><i class="fas fa-file-pdf"></i> PDF</button>
             <button type="button" class="btn btn-outline" id="btn-detail-priere-exauce" style="display: none;">Marquer exaucé</button>
             <button type="button" class="btn btn-outline" id="btn-detail-priere-edit" style="display: none;" onclick="PagesPriere.editFromDetailModalPriere()">Modifier</button>
             <button type="button" class="btn btn-outline" id="btn-detail-priere-delete" style="display: none;" onclick="PagesPriere.deleteFromDetailModalPriere()">Supprimer</button>
@@ -684,6 +701,20 @@ const PagesPriere = {
               <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Enregistrer</button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- Modal sujets d'un créneau (lecture seule + ajout + export PDF) -->
+      <div class="modal-overlay" id="modal-slot-sujets">
+        <div class="modal" style="max-width: 600px;">
+          <div class="modal-header">
+            <h3 class="modal-title" id="modal-slot-sujets-title"><i class="fas fa-praying-hands"></i> Sujets de prière du créneau</h3>
+            <button class="modal-close" onclick="Modal.hide('modal-slot-sujets')">&times;</button>
+          </div>
+          <div class="modal-body" id="modal-slot-sujets-body"></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="Modal.hide('modal-slot-sujets')">Fermer</button>
+          </div>
         </div>
       </div>
 
@@ -899,11 +930,19 @@ const PagesPriere = {
     const date = sujet.created_at?.toDate ? sujet.created_at.toDate() : new Date(sujet.created_at);
     const catValue = sujet.sujet_categorie || 'autre';
     const catLabel = SujetsPriere.getCategoriesSujet().find(c => c.value === catValue)?.label || 'Autre';
+    const isProgramme = SujetsPriere.isSujetProgramme(sujet);
+    const canManageSlot = isProgramme && Permissions.canManagePlanningConducteurs();
+    const canDelete = canManageSlot || (!isProgramme && (sujet.auteur_id === AppState.user?.id || Permissions.isAdmin()));
+    const slotBadge = isProgramme ? (() => {
+      const slot = PlanningConducteurs.items.find(s => s.id === sujet.slot_id);
+      const slotStr = slot ? `Programme — ${Utils.formatDate(new Date(slot.date + 'T12:00:00'), 'short')}` : 'Programme';
+      return ` <span class="badge badge-info" style="font-size: 0.7rem;">${Utils.escapeHtml(slotStr)}</span>`;
+    })() : '';
     const titre = (sujet.titre && sujet.titre.trim()) ? sujet.titre.trim() : (Utils.getTitleFromContent(sujet.contenu || '') || catLabel);
     const preview = Utils.getPreviewLines(sujet.contenu || '', 2);
     return `
       <div class="priere-card priere-card-condensed ${sujet.est_exauce ? 'exauce' : ''}" onclick="PagesPriere.showDetailModalPriere('${sujet.id}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();PagesPriere.showDetailModalPriere('${sujet.id}');}">
-        <div class="priere-categorie-badge"><span class="badge badge-secondary">${Utils.escapeHtml(catLabel)}</span></div>
+        <div class="priere-categorie-badge"><span class="badge badge-secondary">${Utils.escapeHtml(catLabel)}</span>${slotBadge}</div>
         <div class="priere-titre-condensed">${Utils.escapeHtml(titre)}</div>
         ${preview ? `<div class="priere-preview">${Utils.escapeHtml(preview).replace(/\n/g, ' ')}</div>` : ''}
         <div class="priere-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -912,7 +951,7 @@ const PagesPriere = {
             <span><i class="fas fa-clock"></i> ${Utils.formatRelativeDate(date)}</span>
             ${sujet.est_exauce ? '<span class="exauce-badge"><i class="fas fa-check"></i> Exaucé</span>' : '<span class="attente-badge">En attente</span>'}
           </div>
-          ${(sujet.auteur_id === AppState.user?.id || Permissions.isAdmin()) ? `
+          ${canDelete ? `
           <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); event.preventDefault(); PagesPriere.deleteSujetFromCard('${sujet.id}')" title="Supprimer">
             <i class="fas fa-trash"></i>
           </button>
@@ -932,17 +971,24 @@ const PagesPriere = {
     const sujet = SujetsPriere.items.find(s => s.id === sujetId);
     if (!sujet) return;
     const date = sujet.created_at?.toDate ? sujet.created_at.toDate() : new Date(sujet.created_at);
-    const catLabel = SujetsPriere.getCategoriesSujet().find(c => c.value === (sujet.sujet_categorie || 'autre'))?.label || 'Autre';
-    const canEdit = sujet.auteur_id === AppState.user.id || Permissions.isAdmin();
+    const isProgramme = SujetsPriere.isSujetProgramme(sujet);
+    const canManageSlot = isProgramme && Permissions.canManagePlanningConducteurs();
+    const canEdit = canManageSlot || (!isProgramme && (sujet.auteur_id === AppState.user.id || Permissions.isAdmin()));
     const canDelete = canEdit;
-    const canMarkExauce = canEdit;
+    const canMarkExauce = sujet.auteur_id === AppState.user.id || Permissions.isAdmin();
+    const catLabel = SujetsPriere.getCategoriesSujet().find(c => c.value === (sujet.sujet_categorie || 'autre'))?.label || 'Autre';
+    const slotBadge = isProgramme ? (() => {
+      const slot = PlanningConducteurs.items.find(s => s.id === sujet.slot_id);
+      const slotStr = slot ? `Programme — ${Utils.formatDate(new Date(slot.date + 'T12:00:00'), 'short')} ${slot.heure_debut || ''}` : 'Programme';
+      return ` <span class="badge badge-info">${Utils.escapeHtml(slotStr)}</span>`;
+    })() : '';
     const modalBody = document.getElementById('modal-detail-priere-body');
     const modalEditBtn = document.getElementById('btn-detail-priere-edit');
     const modalDeleteBtn = document.getElementById('btn-detail-priere-delete');
     const modalExauceBtn = document.getElementById('btn-detail-priere-exauce');
     if (modalBody) {
       modalBody.innerHTML = `
-        <div class="priere-categorie-badge mb-2"><span class="badge badge-secondary">${Utils.escapeHtml(catLabel)}</span></div>
+        <div class="priere-categorie-badge mb-2"><span class="badge badge-secondary">${Utils.escapeHtml(catLabel)}</span>${slotBadge}</div>
         <div class="priere-contenu">${Utils.escapeHtml(sujet.contenu || '').replace(/\n/g, '<br>')}</div>
         <div class="priere-footer mt-3">
           <div class="priere-meta">
@@ -992,15 +1038,22 @@ const PagesPriere = {
 
   renderSujetCard(sujet) {
     const date = sujet.created_at?.toDate ? sujet.created_at.toDate() : new Date(sujet.created_at);
-    const canDelete = sujet.auteur_id === AppState.user.id || Permissions.isAdmin();
-    const canEdit = sujet.auteur_id === AppState.user.id || Permissions.isAdmin();
+    const isProgramme = SujetsPriere.isSujetProgramme(sujet);
+    const canManageSlot = isProgramme && Permissions.canManagePlanningConducteurs();
+    const canDelete = canManageSlot || (!isProgramme && (sujet.auteur_id === AppState.user.id || Permissions.isAdmin()));
+    const canEdit = canManageSlot || (!isProgramme && (sujet.auteur_id === AppState.user.id || Permissions.isAdmin()));
     const canMarkExauce = sujet.auteur_id === AppState.user.id || Permissions.isAdmin();
     const catValue = sujet.sujet_categorie || 'autre';
     const catLabel = SujetsPriere.getCategoriesSujet().find(c => c.value === catValue)?.label || 'Autre';
+    const slotBadge = isProgramme ? (() => {
+      const slot = PlanningConducteurs.items.find(s => s.id === sujet.slot_id);
+      const slotStr = slot ? `Programme — ${Utils.formatDate(new Date(slot.date + 'T12:00:00'), 'short')} ${slot.heure_debut || ''}` : 'Programme';
+      return `<span class="badge badge-info" style="margin-left: 4px;">${Utils.escapeHtml(slotStr)}</span>`;
+    })() : '';
 
     return `
       <div class="priere-card ${sujet.est_exauce ? 'exauce' : ''}">
-        <div class="priere-categorie-badge"><span class="badge badge-secondary">${Utils.escapeHtml(catLabel)}</span></div>
+        <div class="priere-categorie-badge"><span class="badge badge-secondary">${Utils.escapeHtml(catLabel)}</span>${slotBadge}</div>
         <div class="priere-contenu">${Utils.escapeHtml(sujet.contenu).replace(/\n/g, '<br>')}</div>
         <div class="priere-footer">
           <div class="priere-meta">
@@ -1013,6 +1066,9 @@ const PagesPriere = {
             `}
           </div>
           <div class="priere-actions">
+            <button class="btn btn-sm btn-outline" onclick="PagesPriere.exportSujetPDF('${sujet.id}')" title="Exporter en PDF">
+              <i class="fas fa-file-pdf"></i>
+            </button>
             ${!sujet.est_exauce && canMarkExauce ? `
               <button class="btn btn-sm btn-exauce" onclick="PagesPriere.markExauce('${sujet.id}')" title="Marquer comme exaucé">
                 <i class="fas fa-check"></i> Exaucé !
@@ -1142,6 +1198,35 @@ const PagesPriere = {
         if (dayCount > daysInMonth) break;
       }
 
+      const monthSlots = PlanningConducteurs.getByMonth(year, month);
+      const slotsListHtml = monthSlots.length === 0
+        ? '<p class="text-muted" style="padding: var(--spacing-md);">Aucun créneau ce mois-ci.</p>'
+        : monthSlots.map(slot => {
+            const c1 = PlanningConducteurs.getConducteurLabel(slot, 1);
+            const c2 = PlanningConducteurs.getConducteurLabel(slot, 2);
+            const sujetCount = SujetsPriere.getBySlotId(slot.id).length;
+            const exaucesCount = SujetsPriere.getExaucesCountBySlotId(slot.id);
+            const sujetsLabel = sujetCount > 0 ? (exaucesCount > 0 ? ` (${sujetCount}) — ${exaucesCount} exaucé${exaucesCount > 1 ? 's' : ''}` : ` (${sujetCount})`) : '';
+            return `
+              <div class="planning-slot-row" style="display: flex; align-items: center; justify-content: space-between; padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--border-color); gap: var(--spacing-md); flex-wrap: wrap;">
+                <div>
+                  <strong>${Utils.formatDate(new Date(slot.date + 'T12:00:00'), 'full')}</strong> — ${slot.heure_debut || '—'}
+                  ${slot.titre ? `<span class="badge badge-secondary" style="margin-left: 6px;">${Utils.escapeHtml(slot.titre)}</span>` : ''}
+                  <span class="text-muted" style="font-size: 0.85rem;">${Utils.escapeHtml(c1)} / ${Utils.escapeHtml(c2)}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: var(--spacing-sm);">
+                  <button class="btn btn-sm btn-outline" onclick="PagesPriere.showSlotSujetsModal('${slot.id}')" title="Voir et gérer les sujets de prière">
+                    <i class="fas fa-praying-hands"></i> Sujets${sujetsLabel}
+                  </button>
+                  ${canManage ? `
+                    <button class="btn btn-sm btn-secondary" onclick="PagesPriere.editSlot('${slot.id}')"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-sm btn-danger" onclick="PagesPriere.deleteSlot('${slot.id}')"><i class="fas fa-trash"></i></button>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
+
       return `
         <div class="card">
           <div class="card-header" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--spacing-md);">
@@ -1160,6 +1245,14 @@ const PagesPriere = {
             </table>
           </div>
         </div>
+        <div class="card" style="margin-top: var(--spacing-lg);">
+          <div class="card-header">
+            <h3 class="card-title mb-0"><i class="fas fa-list"></i> Créneaux du mois</h3>
+          </div>
+          <div class="card-body" style="padding: 0;">
+            ${slotsListHtml}
+          </div>
+        </div>
       `;
     }
 
@@ -1175,14 +1268,20 @@ const PagesPriere = {
       : weekSlots.map(slot => {
           const c1 = PlanningConducteurs.getConducteurLabel(slot, 1);
           const c2 = PlanningConducteurs.getConducteurLabel(slot, 2);
+          const sujetCount = SujetsPriere.getBySlotId(slot.id).length;
+          const exaucesCount = SujetsPriere.getExaucesCountBySlotId(slot.id);
+          const sujetsLabel = sujetCount > 0 ? (exaucesCount > 0 ? ` (${sujetCount}) — ${exaucesCount} exaucé${exaucesCount > 1 ? 's' : ''}` : ` (${sujetCount})`) : '';
           return `
-            <div class="planning-list-item" style="display: flex; align-items: center; justify-content: space-between; padding: var(--spacing-md); background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: var(--spacing-sm);">
+            <div class="planning-list-item" style="display: flex; align-items: center; justify-content: space-between; padding: var(--spacing-md); background: var(--bg-secondary); border-radius: var(--radius-md); margin-bottom: var(--spacing-sm); flex-wrap: wrap; gap: var(--spacing-sm);">
               <div>
                 <strong>${Utils.formatDate(new Date(slot.date + 'T12:00:00'), 'full')}</strong> — ${slot.heure_debut || '—'}
                 ${slot.titre ? `<span class="badge badge-secondary">${Utils.escapeHtml(slot.titre)}</span>` : ''}
               </div>
-              <div style="display: flex; align-items: center; gap: var(--spacing-md);">
+              <div style="display: flex; align-items: center; gap: var(--spacing-md); flex-wrap: wrap;">
                 <span>${Utils.escapeHtml(c1)} / ${Utils.escapeHtml(c2)}</span>
+                <button class="btn btn-sm btn-outline" onclick="PagesPriere.showSlotSujetsModal('${slot.id}')" title="Voir et gérer les sujets de prière">
+                  <i class="fas fa-praying-hands"></i> Sujets${sujetsLabel}
+                </button>
                 ${canManage ? `
                   <button class="btn btn-sm btn-secondary" onclick="PagesPriere.editSlot('${slot.id}')"><i class="fas fa-edit"></i></button>
                   <button class="btn btn-sm btn-danger" onclick="PagesPriere.deleteSlot('${slot.id}')"><i class="fas fa-trash"></i></button>
@@ -1363,6 +1462,126 @@ const PagesPriere = {
     } catch (e) {}
   },
 
+  showSlotSujetsModal(slotId) {
+    const slot = PlanningConducteurs.items.find(s => s.id === slotId);
+    if (!slot) return;
+    const sujets = SujetsPriere.getBySlotId(slotId);
+    const canManage = Permissions.canManagePlanningConducteurs();
+    const slotLabel = `${Utils.formatDate(new Date(slot.date + 'T12:00:00'), 'full')} — ${slot.heure_debut || '—'}${slot.titre ? ' — ' + slot.titre : ''}`;
+
+    const titleEl = document.getElementById('modal-slot-sujets-title');
+    if (titleEl) titleEl.innerHTML = `<i class="fas fa-praying-hands"></i> Sujets — ${Utils.escapeHtml(slotLabel)}`;
+
+    const bodyEl = document.getElementById('modal-slot-sujets-body');
+    if (!bodyEl) return;
+
+    const sujetsHtml = sujets.length === 0
+      ? '<p class="text-muted">Aucun sujet de prière pour ce créneau.</p>'
+      : sujets.map(s => {
+          const date = s.created_at?.toDate ? s.created_at.toDate() : new Date(s.created_at);
+          const catLabel = SujetsPriere.getCategoriesSujet().find(c => c.value === (s.sujet_categorie || 'autre'))?.label || 'Autre';
+          const canMarkExauce = s.auteur_id === AppState.user?.id || Permissions.isAdmin();
+          const exauceBadge = s.est_exauce
+            ? '<span class="exauce-badge" style="margin-left: 6px;"><i class="fas fa-check"></i> Exaucé</span>'
+            : '<span class="attente-badge" style="margin-left: 6px;"><i class="fas fa-hourglass-half"></i> En attente</span>';
+          const markBtn = canMarkExauce ? (s.est_exauce
+            ? `<button type="button" class="btn btn-sm btn-secondary" onclick="PagesPriere.markExauceFromSlotModal('${s.id}', '${slotId}', false)" title="Annuler exaucement"><i class="fas fa-undo"></i></button>`
+            : `<button type="button" class="btn btn-sm btn-exauce" onclick="PagesPriere.markExauceFromSlotModal('${s.id}', '${slotId}', true)" title="Marquer comme exaucé"><i class="fas fa-check"></i> Exaucé !</button>`
+          ) : '';
+          return `
+            <div class="priere-card ${s.est_exauce ? 'exauce' : ''}" style="margin-bottom: var(--spacing-md); padding: var(--spacing-md); background: var(--bg-secondary); border-radius: var(--radius-md); border-left: 3px solid ${s.est_exauce ? 'var(--success)' : 'var(--border-color)'};">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: var(--spacing-sm); flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 0;">
+                  <span class="badge badge-secondary">${Utils.escapeHtml(catLabel)}</span>${exauceBadge}
+                  <div style="margin-top: 6px; white-space: pre-wrap;">${Utils.escapeHtml(s.contenu || '').replace(/\n/g, '<br>')}</div>
+                  <div class="text-muted" style="font-size: 0.85rem; margin-top: 6px;">
+                    ${s.auteur_prenom ? Utils.escapeHtml(s.auteur_prenom) : 'Anonyme'} — ${Utils.formatDate(date, 'full')}
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  ${markBtn}
+                  <button type="button" class="btn btn-sm btn-outline" onclick="PagesPriere.exportSujetPDF('${s.id}')" title="Exporter en PDF">
+                    <i class="fas fa-file-pdf"></i> PDF
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+    bodyEl.innerHTML = `
+      ${sujetsHtml}
+      ${canManage ? `
+        <div style="margin-top: var(--spacing-md);">
+          <button type="button" class="btn btn-primary" onclick="PagesPriere.showAddSujetForSlot('${slotId}')">
+            <i class="fas fa-plus"></i> Ajouter des sujets
+          </button>
+        </div>
+      ` : ''}
+    `;
+    bodyEl.dataset.slotId = slotId;
+    Modal.show('modal-slot-sujets');
+  },
+
+  async markExauceFromSlotModal(sujetId, slotId, exauce) {
+    const success = await SujetsPriere.markAsExauce(sujetId, exauce);
+    if (success) {
+      this.showSlotSujetsModal(slotId);
+      const section = document.getElementById('priere-planning-section');
+      if (section) section.innerHTML = this.renderPlanningSection();
+      const tabCount1 = document.querySelector('.tab-btn:first-child .tab-count');
+      const tabCount2 = document.querySelector('.tab-btn:last-child .tab-count');
+      if (tabCount1) tabCount1.textContent = SujetsPriere.getEnAttente().length;
+      if (tabCount2) tabCount2.textContent = SujetsPriere.getExauces().length;
+    }
+  },
+
+  exportSujetPDFFromDetail() {
+    const modal = document.getElementById('modal-detail-priere');
+    const id = modal && modal.dataset.sujetId;
+    if (id) this.exportSujetPDF(id);
+  },
+
+  exportSujetPDF(sujetId) {
+    const sujet = SujetsPriere.items.find(s => s.id === sujetId);
+    if (!sujet) return;
+    const date = sujet.created_at?.toDate ? sujet.created_at.toDate() : new Date(sujet.created_at);
+    const catLabel = SujetsPriere.getCategoriesSujet().find(c => c.value === (sujet.sujet_categorie || 'autre'))?.label || 'Autre';
+    const slotLabel = sujet.slot_id ? (() => {
+      const slot = PlanningConducteurs.items.find(s => s.id === sujet.slot_id);
+      return slot ? ` — ${Utils.formatDate(new Date(slot.date + 'T12:00:00'), 'full')} ${slot.heure_debut || ''}` : '';
+    })() : '';
+    const html = `
+      <!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+        body { font-family: Arial, sans-serif; margin: 24px; font-size: 14px; }
+        h1 { color: #2D5A7B; font-size: 18px; }
+        .meta { color: #666; font-size: 12px; margin-bottom: 16px; }
+        .contenu { white-space: pre-wrap; line-height: 1.5; }
+      </style></head><body>
+        <h1>Sujet de prière</h1>
+        <div class="meta">${Utils.escapeHtml(catLabel)}${slotLabel ? ' — Programme du ' + slotLabel : ''}</div>
+        <div class="meta">${sujet.auteur_prenom ? Utils.escapeHtml(sujet.auteur_prenom) : 'Anonyme'} — ${Utils.formatDate(date, 'full')}</div>
+        <div class="contenu">${Utils.escapeHtml(sujet.contenu || '').replace(/\n/g, '<br>')}</div>
+      </body></html>
+    `;
+    const filename = `sujet-priere-${sujetId.slice(0, 8)}.pdf`;
+    if (typeof PDFExport !== 'undefined' && PDFExport.downloadHtmlAsPdf) {
+      PDFExport.downloadHtmlAsPdf(html, filename)
+        .then(() => Toast.success('PDF téléchargé'))
+        .catch(() => {
+          if (PDFExport.openForPrint) {
+            PDFExport.openForPrint(html, 'Sujet de prière');
+            Toast.success('Fenêtre ouverte : utilisez Ctrl+P puis « Enregistrer au format PDF ».');
+          }
+        });
+    } else if (typeof PDFExport !== 'undefined' && PDFExport.openForPrint) {
+      PDFExport.openForPrint(html, 'Sujet de prière');
+      Toast.success('Fenêtre ouverte : utilisez Ctrl+P puis « Enregistrer au format PDF ».');
+    } else {
+      Toast.error('Export PDF indisponible.');
+    }
+  },
+
   filterConducteurOptions(searchInput, selectName) {
     const q = (searchInput.value || '').toLowerCase().trim();
     const select = document.getElementById(`slot-${selectName}`);
@@ -1378,6 +1597,18 @@ const PagesPriere = {
     document.getElementById('priere-contenu').value = '';
     document.getElementById('priere-categorie').value = 'autre';
     document.getElementById('priere-anonyme').checked = false;
+    const slotEl = document.getElementById('priere-slot-id');
+    if (slotEl) slotEl.value = '';
+    Modal.show('modal-add-priere');
+  },
+
+  showAddSujetForSlot(slotId) {
+    document.getElementById('priere-contenu').value = '';
+    document.getElementById('priere-categorie').value = 'autre';
+    document.getElementById('priere-anonyme').checked = false;
+    const slotEl = document.getElementById('priere-slot-id');
+    if (slotEl) slotEl.value = slotId || '';
+    Modal.hide('modal-slot-sujets');
     Modal.show('modal-add-priere');
   },
 
@@ -1412,6 +1643,7 @@ const PagesPriere = {
     const contenu = document.getElementById('priere-contenu').value.trim();
     const sujet_categorie = document.getElementById('priere-categorie')?.value || 'autre';
     const anonyme = document.getElementById('priere-anonyme').checked;
+    const slot_id = (document.getElementById('priere-slot-id')?.value || '').trim() || null;
 
     if (!contenu) {
       Toast.error('Veuillez entrer un sujet de prière');
@@ -1419,12 +1651,18 @@ const PagesPriere = {
     }
 
     try {
-      await SujetsPriere.create({ contenu, sujet_categorie, anonyme });
+      await SujetsPriere.create({ contenu, sujet_categorie, anonyme, slot_id });
       Modal.hide('modal-add-priere');
-      this.currentTab = 'attente';
-      document.getElementById('priere-list').innerHTML = this.renderList();
-      
+      if (slot_id) {
+        this.showSlotSujetsModal(slot_id);
+        const section = document.getElementById('priere-planning-section');
+        if (section) section.innerHTML = this.renderPlanningSection();
+      } else {
+        this.currentTab = 'attente';
+        document.getElementById('priere-list').innerHTML = this.renderList();
+      }
       document.querySelector('.tab-btn:first-child .tab-count').textContent = SujetsPriere.getEnAttente().length;
+      document.querySelector('.tab-btn:last-child .tab-count').textContent = SujetsPriere.getExauces().length;
     } catch (error) {}
   },
 

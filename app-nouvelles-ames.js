@@ -192,10 +192,6 @@ const NouvellesAmes = {
     NouvellesAmesData._createLock = true;
     try {
       const email = (data.email && String(data.email).trim()) || null;
-      if (!email) {
-        Toast.error('L\'email est obligatoire.');
-        return null;
-      }
       const user = AppState.user;
       const famille = AppState.famille;
       if (!famille?.id) {
@@ -1564,8 +1560,8 @@ const PagesNouvellesAmes = {
                 <input type="tel" class="form-control" name="telephone" required>
               </div>
               <div class="form-group">
-                <label class="form-label required">Email</label>
-                <input type="email" class="form-control" name="email" required>
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" name="email">
               </div>
             </div>
             <div class="form-row">

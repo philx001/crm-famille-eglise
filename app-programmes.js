@@ -953,14 +953,28 @@ const PagesCalendrier = {
     document.querySelector('.page-content').innerHTML = await this.renderCalendrier();
   },
 
+  /** Tri par défaut : à venir (plus proche en premier), puis passés (plus récent en premier). */
+  sortProgrammesForDisplay(programmes) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return programmes.slice().sort((a, b) => {
+      const da = a.date_debut?.toDate ? a.date_debut.toDate() : new Date(a.date_debut || 0);
+      const db = b.date_debut?.toDate ? b.date_debut.toDate() : new Date(b.date_debut || 0);
+      const dA = new Date(da.getFullYear(), da.getMonth(), da.getDate());
+      const dB = new Date(db.getFullYear(), db.getMonth(), db.getDate());
+      const aFuture = dA >= today;
+      const bFuture = dB >= today;
+      if (aFuture && !bFuture) return -1;
+      if (!aFuture && bFuture) return 1;
+      if (aFuture && bFuture) return da - db;
+      return db - da;
+    });
+  },
+
   // Liste des programmes (10 par défaut + Voir tout / Réduire)
   renderProgrammes() {
     const dateBounds = Utils.getDateFilterBounds();
-    const programmes = (AppState.programmes || []).slice().sort((a, b) => {
-      const da = a.date_debut?.toDate ? a.date_debut.toDate() : new Date(a.date_debut || 0);
-      const db = b.date_debut?.toDate ? b.date_debut.toDate() : new Date(b.date_debut || 0);
-      return db - da;
-    });
+    const programmes = this.sortProgrammesForDisplay(AppState.programmes || []);
     const displayed = this.showAllProgrammes ? programmes : programmes.slice(0, DEFAULT_PAGE_SIZE_PROGRAMMES);
     const hasMore = programmes.length > DEFAULT_PAGE_SIZE_PROGRAMMES;
     const listHtml = programmes.length > 0
@@ -1096,11 +1110,7 @@ const PagesCalendrier = {
 
 
   refreshProgrammesList() {
-    const programmes = (AppState.programmes || []).slice().sort((a, b) => {
-      const da = a.date_debut?.toDate ? a.date_debut.toDate() : new Date(a.date_debut || 0);
-      const db = b.date_debut?.toDate ? b.date_debut.toDate() : new Date(b.date_debut || 0);
-      return db - da;
-    });
+    const programmes = this.sortProgrammesForDisplay(AppState.programmes || []);
     const displayed = this.showAllProgrammes ? programmes : programmes.slice(0, DEFAULT_PAGE_SIZE_PROGRAMMES);
     const hasMore = programmes.length > DEFAULT_PAGE_SIZE_PROGRAMMES;
     const listEl = document.getElementById('programmes-list');

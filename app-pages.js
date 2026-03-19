@@ -472,8 +472,8 @@ const Pages = {
           ${membre.derniere_connexion ? ` • Dernière connexion: ${Utils.formatRelativeDate(membre.derniere_connexion)}` : ''}
         </div>
         <div class="rgpd-notice" style="margin-top: var(--spacing-lg); padding: var(--spacing-md); background: var(--bg-tertiary, #f5f5f5); border-radius: var(--radius-md); font-size: 0.8rem; color: var(--text-muted);">
-          <strong>Données personnelles (RGPD)</strong><br>
-          Les informations de ce profil sont strictement réservées à un usage interne et demeurent confidentielles. Chaque membre dispose d'un droit d'accès, de modification et de suppression de ses propres données personnelles.
+          <strong>Protection des données personnelles (RGPD)</strong><br>
+          L'application traite vos données personnelles pour la gestion des membres et des activités. Données collectées : prénom, nom, email, téléphone, photo de profil, affiliations et participation aux événements. Finalités : gestion des comptes, attribution des rôles, coordination, organisation des événements et communications internes. Base légale : exécution du contrat et consentement pour les données facultatives. Destinataires : les responsables et administrateurs peuvent accéder aux données nécessaires. Hébergement : serveurs Google basés dans l'Union européenne (Belgique). Durée : conservation tant que le compte est actif. Vos droits : accès, rectification, suppression, portabilité ; opposition et réclamation auprès de la CNIL (www.cnil.fr).
         </div>
       </div>
     `;
@@ -674,14 +674,20 @@ const Pages = {
             </div>
             
             <hr style="margin: var(--spacing-lg) 0;">
-            <div class="rgpd-notice" style="padding: var(--spacing-md); background: var(--bg-tertiary, #f5f5f5); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-muted); margin-bottom: var(--spacing-md);">
-              <strong>Données personnelles (RGPD)</strong><br>
-              Les informations de ce profil sont strictement réservées à un usage interne et demeurent confidentielles. Chaque membre dispose d'un droit d'accès, de modification et de suppression de ses propres données personnelles.
+            <div class="rgpd-notice" style="padding: var(--spacing-md); background: var(--bg-tertiary, #f5f5f5); border-radius: var(--radius-md); font-size: 0.85rem; color: var(--text-muted); margin-bottom: var(--spacing-md); max-height: 280px; overflow-y: auto;">
+              <strong>Protection des données personnelles (RGPD)</strong><br><br>
+              <strong>Responsable du traitement :</strong> L'application traite vos données personnelles pour la gestion des membres et des activités.<br><br>
+              <strong>Données collectées :</strong> prénom, nom, adresse email, numéro de téléphone, photo de profil, ainsi que vos affiliations et votre participation aux événements.<br><br>
+              <strong>Finalités :</strong> gestion des comptes utilisateurs, attribution des rôles (membre, responsable), coordination, organisation des événements et communications internes.<br><br>
+              <strong>Base légale :</strong> exécution du contrat (utilisation du service) et consentement explicite pour les données facultatives.<br><br>
+              <strong>Destinataires :</strong> les responsables et administrateurs peuvent accéder aux données nécessaires à leur mission. Les données sont hébergées par <strong>serveurs Google basés dans l'Union européenne (Belgique)</strong>.<br><br>
+              <strong>Durée de conservation :</strong> vos données sont conservées tant que votre compte est actif. En cas de suppression de compte, les données sont effacées dans les délais légaux.<br><br>
+              <strong>Vos droits :</strong> vous disposez d'un droit d'accès, de rectification, de suppression et de portabilité de vos données. Vous pouvez vous opposer au traitement ou introduire une réclamation auprès de la CNIL (www.cnil.fr).
             </div>
             <div class="form-group">
               <label class="form-check" style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
                 <input type="checkbox" id="edit-rgpd-accept" required class="form-control" style="width: auto; margin-top: 3px;">
-                <span>J'ai pris connaissance des informations RGPD ci-dessus et j'accepte que mes données soient traitées dans ce cadre.</span>
+                <span><strong>J'ai lu les informations ci-dessus et j'accepte le traitement de mes données personnelles conformément au RGPD.</strong> La case doit être cochée pour enregistrer votre profil. Votre consentement sera enregistré avec la date.</span>
               </label>
             </div>
             

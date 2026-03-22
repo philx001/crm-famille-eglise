@@ -608,9 +608,9 @@ const Presences = {
       // Obtenir les membres à pointer selon le rôle (uniquement ceux qui étaient dans la famille à la date du programme)
       let membresAttendus = [];
       if (Permissions.hasRole('adjoint_superviseur')) {
-        membresAttendus = AppState.membres.filter(m => m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur' && Utils.membreEtaitDansFamilleALaDate(m, dateProg));
+        membresAttendus = AppState.membres.filter(m => m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur' && !m.compte_test && Utils.membreEtaitDansFamilleALaDate(m, dateProg));
       } else if (Permissions.hasRole('mentor')) {
-        membresAttendus = Membres.getDisciples(AppState.user.id).filter(m => Utils.membreEtaitDansFamilleALaDate(m, dateProg));
+        membresAttendus = Membres.getDisciples(AppState.user.id).filter(m => !m.compte_test && Utils.membreEtaitDansFamilleALaDate(m, dateProg));
       } else {
         // Les disciples/nouveaux ne peuvent pas pointer
         return true;

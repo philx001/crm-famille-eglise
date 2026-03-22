@@ -1667,8 +1667,8 @@ const PagesEvangelisation = {
                 <input type="tel" class="form-control" name="telephone" required>
               </div>
               <div class="form-group">
-                <label class="form-label required">Email</label>
-                <input type="email" class="form-control" name="email" required placeholder="Obligatoire pour l'ajout aux nouvelles âmes">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" name="email" placeholder="Requis pour l'ajout aux nouvelles âmes">
               </div>
               <div class="form-group">
                 <label class="form-label">Lieu de contact</label>
@@ -1836,8 +1836,8 @@ const PagesEvangelisation = {
                 <input type="tel" class="form-control" name="telephone" value="${Utils.escapeHtml(contact.telephone || '')}" required>
               </div>
               <div class="form-group">
-                <label class="form-label required">Email</label>
-                <input type="email" class="form-control" name="email" value="${Utils.escapeHtml(contact.email || '')}" required placeholder="Obligatoire pour l'ajout aux nouvelles âmes">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" name="email" value="${Utils.escapeHtml(contact.email || '')}" placeholder="Requis pour l'ajout aux nouvelles âmes">
               </div>
               <div class="form-group">
                 <label class="form-label">Lieu de contact</label>

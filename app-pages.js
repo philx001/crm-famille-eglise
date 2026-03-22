@@ -239,6 +239,7 @@ const Pages = {
         </div>
         <div class="member-meta">
           <span class="badge badge-${membre.role}">${Utils.getRoleLabel(membre.role)}</span>
+          ${membre.compte_test ? '<span class="badge" style="background: #9E9E9E; color: white; margin-left: 4px;" title="Exclu des stats et du pointage">Compte de Test</span>' : ''}
           ${mentorLabel !== null ? `<span class="member-mentor-badge" style="font-size: 0.75rem; color: var(--text-muted); margin-left: 8px; white-space: nowrap;" title="Mentor">${Utils.escapeHtml(mentorLabel)}</span>` : ''}
         </div>
         <div class="member-actions">
@@ -411,6 +412,7 @@ const Pages = {
             <div>
               <h3 class="card-title mb-0">${Utils.escapeHtml(membre.prenom)} ${Utils.escapeHtml(membre.nom)}</h3>
               <span class="badge badge-${membre.role}">${Utils.getRoleLabel(membre.role)}</span>
+              ${membre.compte_test ? '<span class="badge" style="background: #9E9E9E; color: white; margin-left: 4px;">Compte de Test</span>' : ''}
             </div>
           </div>
           <div class="d-flex gap-2">
@@ -521,6 +523,15 @@ const Pages = {
                 `).join('')}
               </select>
             </div>
+            ${Permissions.isAdmin() ? `
+            <div class="form-group">
+              <div class="form-check">
+                <input type="checkbox" class="form-check-input" id="edit-compte-test" ${membre.compte_test ? 'checked' : ''}>
+                <label class="form-check-label" for="edit-compte-test">Compte de Test</label>
+              </div>
+              <span class="form-hint">Exclu des statistiques, du pointage et du nombre total des membres. Reste visible dans l'annuaire.</span>
+            </div>
+            ` : ''}
             <hr style="margin: var(--spacing-lg) 0;">
             ` : ''}
             <h4 class="mb-2">Informations personnelles</h4>
@@ -814,9 +825,9 @@ const Pages = {
   },
 
   renderAnnuaire() {
-    const membres = (typeof Membres !== 'undefined' && Membres.getVisibleActifs
-      ? Membres.getVisibleActifs()
-      : AppState.membres.filter(m => m.statut_compte === 'actif')
+    const membres = (typeof Membres !== 'undefined' && Membres.getMembresPourStatsEtPointage
+      ? Membres.getMembresPourStatsEtPointage()
+      : AppState.membres.filter(m => m.statut_compte === 'actif' && !m.compte_test)
     ).sort((a, b) => a.nom.localeCompare(b.nom));
     const moisLabels = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 

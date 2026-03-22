@@ -64,13 +64,21 @@ const PagesPresences = {
 
     // Obtenir les membres à pointer (uniquement ceux qui étaient dans la famille à la date du programme)
     // Mentor : uniquement ses disciples (mentor_id). Rôles supérieurs (adjoint_superviseur+) : tous les membres.
-    // Adjoints superviseur exclus des listes : comptes de service, jamais dans pointage ni statistiques
+    // Admin/mentor : peut choisir le mode (pointer en tant qu'admin = tous, ou en tant que mentor = mes disciples)
+    const isRoleSuperior = Permissions.isRoleSuperiorToMentor && Permissions.isRoleSuperiorToMentor();
+    const mesDisciples = Membres.getDisciples(AppState.user.id).filter(m => !m.compte_test);
+    const hasDisciples = mesDisciples.length > 0;
+    const pointageMode = (typeof sessionStorage !== 'undefined') ? (sessionStorage.getItem('pointage-mode') || 'admin') : 'admin';
+    const pointageEnTantQueMentor = isRoleSuperior && hasDisciples && pointageMode === 'mentor';
+
     let membres = [];
-    if (Permissions.isRoleSuperiorToMentor && Permissions.isRoleSuperiorToMentor()) {
-      membres = (Membres.getVisibleActifs ? Membres.getVisibleActifs() : AppState.membres.filter(m => m.statut_compte === 'actif'))
+    if (pointageEnTantQueMentor) {
+      membres = mesDisciples.filter(m => Utils.membreEtaitDansFamilleALaDate(m, dateDebutProg));
+    } else if (isRoleSuperior) {
+      membres = (Membres.getMembresPourStatsEtPointage ? Membres.getMembresPourStatsEtPointage() : AppState.membres.filter(m => m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur' && !m.compte_test))
         .filter(m => Utils.membreEtaitDansFamilleALaDate(m, dateDebutProg));
     } else {
-      membres = Membres.getDisciples(AppState.user.id).filter(m => Utils.membreEtaitDansFamilleALaDate(m, dateDebutProg));
+      membres = mesDisciples.filter(m => Utils.membreEtaitDansFamilleALaDate(m, dateDebutProg));
     }
     membres = membres.filter(m => m.role !== 'adjoint_superviseur');
 
@@ -86,14 +94,14 @@ const PagesPresences = {
       };
     });
 
-    // NA/NC : Mentor : uniquement ses NA/NC (suivi_par_id). Rôles supérieurs (adjoint_superviseur+) : tous.
+    // NA/NC : Mentor : uniquement ses NA/NC (suivi_par_id). Rôles supérieurs : tous (sauf si mode mentor).
     let nouvellesAmes = [];
     if (typeof Permissions !== 'undefined' && Permissions.canPointNANCPresence && Permissions.canPointNANCPresence()) {
       if (typeof NouvellesAmes !== 'undefined') {
         const allNA = NouvellesAmes.getAll ? NouvellesAmes.getAll() : [];
         nouvellesAmes = allNA.filter(na =>
           na.statut !== 'integre' && na.statut !== 'perdu' &&
-          ((Permissions.isRoleSuperiorToMentor && Permissions.isRoleSuperiorToMentor()) || na.suivi_par_id === AppState.user.id)
+          (pointageEnTantQueMentor ? na.suivi_par_id === AppState.user.id : (isRoleSuperior || na.suivi_par_id === AppState.user.id))
         );
       }
     }
@@ -108,6 +116,8 @@ const PagesPresences = {
       };
     });
 
+    const showModeSelector = isRoleSuperior && hasDisciples;
+
     return `
       <div class="presences-header">
         <div>
@@ -116,6 +126,21 @@ const PagesPresences = {
             <i class="fas fa-calendar"></i> ${Utils.formatDate(dateDebutProg, 'full')} à 
             ${dateDebutProg.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
           </p>
+          ${showModeSelector ? `
+          <div class="pointage-mode-selector mt-2">
+            <span class="text-muted" style="font-size: 0.9rem; margin-right: 8px;">Pointage en tant que :</span>
+            <div class="btn-group btn-group-sm" role="group">
+              <button type="button" class="btn ${pointageMode === 'mentor' ? 'btn-primary' : 'btn-outline'}"
+                      onclick="sessionStorage.setItem('pointage-mode','mentor'); App.navigate('presences', {programmeId:'${programmeId}'});">
+                <i class="fas fa-user-friends"></i> Mentor (mes disciples)
+              </button>
+              <button type="button" class="btn ${pointageMode === 'admin' ? 'btn-primary' : 'btn-outline'}"
+                      onclick="sessionStorage.setItem('pointage-mode','admin'); App.navigate('presences', {programmeId:'${programmeId}'});">
+                <i class="fas fa-users-cog"></i> Superviseur/Admin (tous les membres)
+              </button>
+            </div>
+          </div>
+          ` : ''}
         </div>
         <div class="presences-actions">
           <button class="btn btn-outline" onclick="PagesPresences.exportPresencesCSV()" title="Exporter en CSV">
@@ -195,6 +220,25 @@ const PagesPresences = {
           display: flex;
           gap: var(--spacing-sm);
           flex-wrap: wrap;
+        }
+        .pointage-mode-selector {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: var(--spacing-sm);
+        }
+        .pointage-mode-selector .btn-group {
+          display: inline-flex;
+          gap: 0;
+        }
+        .pointage-mode-selector .btn-group .btn {
+          border-radius: 0;
+        }
+        .pointage-mode-selector .btn-group .btn:first-child {
+          border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+        }
+        .pointage-mode-selector .btn-group .btn:last-child {
+          border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
         }
         .presence-summary {
           display: flex;

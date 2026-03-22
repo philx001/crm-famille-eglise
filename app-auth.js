@@ -1020,6 +1020,13 @@ const Membres = {
     );
   },
 
+  /** Membres pour stats et pointage : exclut compte_test (et adjoint_superviseur). */
+  getMembresPourStatsEtPointage() {
+    return AppState.membres.filter(m =>
+      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur' && !m.compte_test
+    );
+  },
+
   getMentors() {
     return AppState.membres.filter(m => 
       ['mentor', 'superviseur', 'admin'].includes(m.role) && 
@@ -1036,10 +1043,10 @@ const Membres = {
     );
   },
 
-  /** Stats : adjoints superviseur exclus (comptes de service, pas membres réels). */
+  /** Stats : adjoints superviseur et comptes test exclus. */
   getStats() {
-    const actifs = AppState.membres.filter(m =>
-      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur'
+    const actifs = this.getMembresPourStatsEtPointage ? this.getMembresPourStatsEtPointage() : AppState.membres.filter(m =>
+      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur' && !m.compte_test
     );
     return {
       total: actifs.length,

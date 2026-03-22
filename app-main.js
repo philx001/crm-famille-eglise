@@ -283,7 +283,7 @@ const App = {
     switch (AppState.currentPage) {
       case 'dashboard': pageTitle = 'Tableau de bord'; pageContent = await this.renderDashboardEnhanced(); break;
       case 'membres': {
-        const nbMembres = (typeof Membres !== 'undefined' && Membres.getVisibleActifs) ? Membres.getVisibleActifs().length : (AppState.membres || []).filter(m => m.statut_compte === 'actif').length;
+        const nbMembres = (typeof Membres !== 'undefined' && Membres.getMembresPourStatsEtPointage) ? Membres.getMembresPourStatsEtPointage().length : (AppState.membres || []).filter(m => m.statut_compte === 'actif' && !m.compte_test).length;
         pageTitle = `Membres (${nbMembres})`;
         pageContent = Pages.renderMembres();
         break;
@@ -301,13 +301,13 @@ const App = {
       case 'profil-edit': pageTitle = 'Modifier le profil'; pageContent = Pages.renderProfilEdit(); break;
       case 'mon-compte': pageTitle = 'Mon compte'; pageContent = Pages.renderMonCompte(); break;
       case 'annuaire': {
-        const nbAnnuaire = (typeof Membres !== 'undefined' && Membres.getVisibleActifs) ? Membres.getVisibleActifs().length : (AppState.membres || []).filter(m => m.statut_compte === 'actif').length;
+        const nbAnnuaire = (typeof Membres !== 'undefined' && Membres.getMembresPourStatsEtPointage) ? Membres.getMembresPourStatsEtPointage().length : (AppState.membres || []).filter(m => m.statut_compte === 'actif' && !m.compte_test).length;
         pageTitle = `Annuaire (${nbAnnuaire})`;
         pageContent = Pages.renderAnnuaire();
         break;
       }
       case 'mes-disciples': {
-        const nbDisciples = (typeof Membres !== 'undefined' && AppState.user) ? Membres.getDisciples(AppState.user.id).length : 0;
+        const nbDisciples = (typeof Membres !== 'undefined' && AppState.user) ? Membres.getDisciples(AppState.user.id).filter(m => !m.compte_test).length : 0;
         pageTitle = `Mes disciples (${nbDisciples})`;
         pageContent = Pages.renderMembres();
         break;
@@ -328,8 +328,8 @@ const App = {
       case 'statistiques': {
         const isMentorStats = AppState.user && AppState.user.role === 'mentor' && !(typeof Permissions !== 'undefined' && Permissions.hasRole('adjoint_superviseur'));
         const nbStatsMembres = isMentorStats
-          ? (typeof Membres !== 'undefined' && Membres.getDisciples ? Membres.getDisciples(AppState.user.id).length : 0)
-          : ((typeof Membres !== 'undefined' && Membres.getStats) ? Membres.getStats().total : (AppState.membres || []).filter(m => m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur').length);
+          ? (typeof Membres !== 'undefined' && Membres.getDisciples ? Membres.getDisciples(AppState.user.id).filter(m => !m.compte_test).length : 0)
+          : ((typeof Membres !== 'undefined' && Membres.getStats) ? Membres.getStats().total : (AppState.membres || []).filter(m => m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur' && !m.compte_test).length);
         pageTitle = isMentorStats
           ? `Statistiques — Votre groupe (${nbStatsMembres} membre${nbStatsMembres !== 1 ? 's' : ''})`
           : `Statistiques (${nbStatsMembres} membre${nbStatsMembres !== 1 ? 's' : ''})`;
@@ -1068,7 +1068,7 @@ const App = {
       membres = AppState.membres.filter(m => m.statut_compte === 'actif' && m.mentor_id === AppState.user.id && m.role !== 'superviseur');
     } else {
       // Admin/Superviseur : exporter les membres visibles (adjoints exclus pour non-admin)
-      membres = (typeof Membres !== 'undefined' && Membres.getVisibleActifs) ? Membres.getVisibleActifs() : AppState.membres.filter(m => m.statut_compte === 'actif');
+      membres = (typeof Membres !== 'undefined' && Membres.getMembresPourStatsEtPointage) ? Membres.getMembresPourStatsEtPointage() : AppState.membres.filter(m => m.statut_compte === 'actif' && !m.compte_test);
     }
     if (membres.length === 0) {
       Toast.warning('Aucun membre à exporter.');
@@ -1179,7 +1179,7 @@ const App = {
       membres = AppState.membres.filter(m => m.statut_compte === 'actif' && m.mentor_id === AppState.user.id && m.role !== 'superviseur');
     } else {
       // Admin/Superviseur : exporter les membres visibles (adjoints exclus pour non-admin)
-      membres = (typeof Membres !== 'undefined' && Membres.getVisibleActifs) ? Membres.getVisibleActifs() : AppState.membres.filter(m => m.statut_compte === 'actif');
+      membres = (typeof Membres !== 'undefined' && Membres.getMembresPourStatsEtPointage) ? Membres.getMembresPourStatsEtPointage() : AppState.membres.filter(m => m.statut_compte === 'actif' && !m.compte_test);
     }
     if (membres.length === 0) {
       Toast.warning('Aucun membre à exporter.');
@@ -1596,6 +1596,10 @@ const App = {
     const editDateFamilleEl = document.getElementById('edit-date-famille');
     if (editDateFamilleEl) {
       data.date_arrivee_famille = editDateFamilleEl.value ? new Date(editDateFamilleEl.value) : null;
+    }
+    const compteTestEl = document.getElementById('edit-compte-test');
+    if (compteTestEl && Permissions.isAdmin()) {
+      data.compte_test = compteTestEl.checked;
     }
     if (await Membres.update(membreId, data)) this.navigate('profil');
   },

@@ -27,10 +27,10 @@ const Statistiques = {
       return true;
     });
 
-    // Filtrer les membres (adjoints superviseur exclus : comptes de service)
-    let membres = AppState.membres.filter(m =>
-      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur'
-    );
+    // Filtrer les membres (adjoints superviseur et comptes test exclus)
+    let membres = (Membres.getMembresPourStatsEtPointage ? Membres.getMembresPourStatsEtPointage() : AppState.membres.filter(m =>
+      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur' && !m.compte_test
+    ));
     
     if (mentorId) {
       membres = membres.filter(m => m.mentor_id === mentorId);
@@ -46,17 +46,8 @@ const Statistiques = {
       allPresences.push(...presences.map(p => ({ ...p, programme: prog })));
     }
 
-    // totalPresencesAttendues = somme des programmes où chaque membre était déjà dans la famille
-    let totalPresencesAttendues = 0;
     const totalProgrammes = programmes.length;
     const totalMembres = membres.length;
-
-    membres.forEach(m => {
-      programmes.forEach(prog => {
-        const dProg = prog.date_debut?.toDate ? prog.date_debut.toDate() : new Date(prog.date_debut);
-        if (Utils.membreEtaitDansFamilleALaDate(m, dProg)) totalPresencesAttendues++;
-      });
-    });
 
     const presencesByStatut = {
       present: 0,
@@ -72,27 +63,23 @@ const Statistiques = {
       }
     });
 
+    // totalPresencesAttendues = présences réellement pointées (fiches enregistrées), pour cohérence avec par membre
+    const totalPresencesAttendues = presencesByStatut.present + presencesByStatut.absent + presencesByStatut.excuse + presencesByStatut.non_renseigne;
     const tauxPresenceGlobal = totalPresencesAttendues > 0 
       ? Math.round((presencesByStatut.present / totalPresencesAttendues) * 100 * 10) / 10
       : 0;
 
-    // Stats par type de programme (ne compter que les présences attendues par membre)
+    // Stats par type de programme (présences réellement pointées, cohérent avec par membre)
     const membreIds = new Set(membres.map(m => m.id));
     const statsByType = {};
     Programmes.getTypes().forEach(type => {
       const progsOfType = programmes.filter(p => p.type === type.value);
-      let expectedOfType = 0;
-      membres.forEach(m => {
-        progsOfType.forEach(prog => {
-          const dProg = prog.date_debut?.toDate ? prog.date_debut.toDate() : new Date(prog.date_debut);
-          if (Utils.membreEtaitDansFamilleALaDate(m, dProg)) expectedOfType++;
-        });
-      });
       const presencesOfType = allPresences.filter(p => 
-        p.programme.type === type.value && 
+        p.programme?.type === type.value && 
         membreIds.has(p.disciple_id) && 
         Utils.membreEtaitDansFamilleALaDate(membres.find(x => x.id === p.disciple_id), p.programme?.date_debut)
       );
+      const nbPointesOfType = presencesOfType.length;
       const presentOfType = presencesOfType.filter(p => p.statut === 'present').length;
 
       if (progsOfType.length > 0) {
@@ -102,23 +89,41 @@ const Statistiques = {
           color: type.color,
           nbProgrammes: progsOfType.length,
           nbPresents: presentOfType,
-          nbAttendus: expectedOfType,
-          tauxPresence: expectedOfType > 0 ? Math.round((presentOfType / expectedOfType) * 100 * 10) / 10 : 0
+          nbAttendus: nbPointesOfType,
+          tauxPresence: nbPointesOfType > 0 ? Math.round((presentOfType / nbPointesOfType) * 100 * 10) / 10 : 0
         };
       }
     });
 
-    // Stats par membre (nbTotal = programmes où le membre était attendu)
+    // Stats par membre
+    // nbTotal = programmes réellement pointés (fiches de présence). taux = présents / nbTotal
+    // nbProgrammesAttendus = programmes théoriques (membre dans famille à la date). nbProgrammesNonPointes = oublis possibles
     const statsByMembre = membres.map(membre => {
       const programmesAttendus = programmes.filter(prog => {
         const dProg = prog.date_debut?.toDate ? prog.date_debut.toDate() : new Date(prog.date_debut);
         return Utils.membreEtaitDansFamilleALaDate(membre, dProg);
       });
-      const nbTotal = programmesAttendus.length;
       const presencesMembre = allPresences.filter(p => 
         p.disciple_id === membre.id && 
         Utils.membreEtaitDansFamilleALaDate(membre, p.programme?.date_debut)
       );
+      const nbTotal = presencesMembre.length;
+      const nbProgrammesAttendus = programmesAttendus.length;
+      const programmeIdsPointes = new Set(presencesMembre.map(p => p.programme_id || p.programme?.id).filter(Boolean));
+      const programmesNonPointesList = programmesAttendus
+        .filter(prog => !programmeIdsPointes.has(prog.id))
+        .map(prog => ({
+          id: prog.id,
+          nom: prog.nom,
+          type: prog.type,
+          date_debut: prog.date_debut
+        }))
+        .sort((a, b) => {
+          const da = a.date_debut?.toDate ? a.date_debut.toDate() : new Date(a.date_debut || 0);
+          const db = b.date_debut?.toDate ? b.date_debut.toDate() : new Date(b.date_debut || 0);
+          return da - db;
+        });
+      const nbProgrammesNonPointes = programmesNonPointesList.length;
       const presents = presencesMembre.filter(p => p.statut === 'present').length;
       const absents = presencesMembre.filter(p => p.statut === 'absent').length;
       const excuses = presencesMembre.filter(p => p.statut === 'excuse').length;
@@ -135,6 +140,9 @@ const Statistiques = {
         nbAbsences: absents,
         nbExcuses: excuses,
         nbTotal,
+        nbProgrammesAttendus,
+        nbProgrammesNonPointes,
+        programmesNonPointesList,
         tauxPresence: nbTotal > 0 ? Math.round((presents / nbTotal) * 100 * 10) / 10 : 0
       };
     }).sort((a, b) => b.tauxPresence - a.tauxPresence);
@@ -201,9 +209,10 @@ const Statistiques = {
       .sort((a, b) => a.tauxPresence - b.tauxPresence);
   },
 
-  // Calculer l'évolution mensuelle (nbAttendus = membres attendus par programme, filtrés par date d'entrée)
+  // Calculer l'évolution mensuelle (nbAttendus = présences pointées dans le mois, cohérent avec par membre)
   calculateMonthlyEvolution(programmes, presences, membres) {
     const monthlyData = {};
+    const membreIdsEvolution = new Set(membres.map(m => m.id));
 
     programmes.forEach(prog => {
       const d = prog.date_debut?.toDate ? prog.date_debut.toDate() : new Date(prog.date_debut);
@@ -218,24 +227,20 @@ const Statistiques = {
           nbAttendus: 0
         };
       }
-      
       monthlyData[monthKey].nbProgrammes++;
-      membres.forEach(m => {
-        if (Utils.membreEtaitDansFamilleALaDate(m, d)) monthlyData[monthKey].nbAttendus++;
-      });
     });
 
-    const membreIdsEvolution = new Set(membres.map(m => m.id));
     presences.forEach(p => {
       const prog = p.programme;
       if (!prog) return;
       const membre = membres.find(m => m.id === p.disciple_id);
-      if (!membre || !Utils.membreEtaitDansFamilleALaDate(membre, prog.date_debut)) return;
+      if (!membre || !membreIdsEvolution.has(membre.id) || !Utils.membreEtaitDansFamilleALaDate(membre, prog.date_debut)) return;
       const d = prog.date_debut?.toDate ? prog.date_debut.toDate() : new Date(prog.date_debut);
       const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       
-      if (monthlyData[monthKey] && p.statut === 'present') {
-        monthlyData[monthKey].nbPresences++;
+      if (monthlyData[monthKey]) {
+        monthlyData[monthKey].nbAttendus++;
+        if (p.statut === 'present') monthlyData[monthKey].nbPresences++;
       }
     });
 
@@ -319,8 +324,8 @@ const Statistiques = {
 
   // Répartition des membres par mentor (tous rôles) en proportion du total famille
   getRepartitionMentorsData() {
-    const actifs = AppState.membres.filter(m =>
-      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur'
+    const actifs = Membres.getMembresPourStatsEtPointage ? Membres.getMembresPourStatsEtPointage() : AppState.membres.filter(m =>
+      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur' && !m.compte_test
     );
     const totalFamille = actifs.length;
     const mentorsPourRepartition = actifs.filter(m =>
@@ -342,7 +347,7 @@ const Statistiques = {
 
   // Statistiques d'évolution des membres (optionnellement limitées aux disciples d'un mentor)
   calculateMembresEvolution(mentorId = null) {
-    let membres = AppState.membres.filter(m => m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur');
+    let membres = Membres.getMembresPourStatsEtPointage ? Membres.getMembresPourStatsEtPointage() : AppState.membres.filter(m => m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur' && !m.compte_test);
     if (mentorId) {
       membres = membres.filter(m => m.mentor_id === mentorId);
     }
@@ -503,8 +508,8 @@ const Statistiques = {
 
   // Statistiques de profil famille (sexe, âge, ancienneté) - basées sur les données saisies par les membres
   getProfilFamilleStats() {
-    const actifs = AppState.membres.filter(m =>
-      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur'
+    const actifs = Membres.getMembresPourStatsEtPointage ? Membres.getMembresPourStatsEtPointage() : AppState.membres.filter(m =>
+      m.statut_compte === 'actif' && m.role !== 'adjoint_superviseur' && !m.compte_test
     );
     const total = actifs.length;
 
@@ -835,6 +840,7 @@ const PagesStatistiques = {
                   <th onclick="PagesStatistiques.sortTable('nbPresences')" class="text-center">Présences ↕</th>
                   <th onclick="PagesStatistiques.sortTable('nbAbsences')" class="text-center">Absences ↕</th>
                   <th onclick="PagesStatistiques.sortTable('nbExcuses')" class="text-center">Excusés ↕</th>
+                  <th onclick="PagesStatistiques.sortTable('nbProgrammesNonPointes')" class="text-center" title="Programmes attendus mais non pointés (oublis possibles)">Non pointés ↕</th>
                   <th onclick="PagesStatistiques.sortTable('tauxPresence')" class="text-center">Taux ↕</th>
                   <th></th>
                 </tr>
@@ -847,8 +853,9 @@ const PagesStatistiques = {
                     <td class="text-center"><span class="badge badge-success">${m.nbPresences}</span></td>
                     <td class="text-center"><span class="badge badge-danger">${m.nbAbsences}</span></td>
                     <td class="text-center"><span class="badge badge-warning">${m.nbExcuses}</span></td>
+                    <td class="text-center">${(m.nbProgrammesNonPointes || 0) > 0 ? `<span class="badge stat-non-pointes-clickable" style="background: #9E9E9E; color: white; cursor: pointer;" title="Cliquer pour voir la liste" onclick="PagesStatistiques.showModalProgrammesNonPointes('${m.id}')">${m.nbProgrammesNonPointes}</span>` : '<span class="text-muted">0</span>'}</td>
                     <td class="text-center">
-                      <div class="progress-bar-container">
+                      <div class="progress-bar-container" title="${m.nbTotal}/${m.nbProgrammesAttendus || m.nbTotal} programmes pointés${(m.nbProgrammesNonPointes || 0) > 0 ? ` — ${m.nbProgrammesNonPointes} non pointé(s)` : ''}">
                         <div class="progress-bar" style="width: ${m.tauxPresence}%; background: ${this.getTauxColor(m.tauxPresence)}"></div>
                         <span class="progress-text">${m.tauxPresence}%</span>
                       </div>
@@ -1651,10 +1658,12 @@ const PagesStatistiques = {
     this.stats.parMembre.sort((a, b) => {
       let valA = a[column];
       let valB = b[column];
+      if (valA == null) valA = (typeof valB === 'string' ? '' : 0);
+      if (valB == null) valB = (typeof valA === 'string' ? '' : 0);
       
       if (typeof valA === 'string') {
         valA = valA.toLowerCase();
-        valB = valB.toLowerCase();
+        valB = String(valB || '').toLowerCase();
       }
       
       if (valA < valB) return this.currentSort.asc ? -1 : 1;
@@ -1671,8 +1680,9 @@ const PagesStatistiques = {
         <td class="text-center"><span class="badge badge-success">${m.nbPresences}</span></td>
         <td class="text-center"><span class="badge badge-danger">${m.nbAbsences}</span></td>
         <td class="text-center"><span class="badge badge-warning">${m.nbExcuses}</span></td>
+        <td class="text-center">${(m.nbProgrammesNonPointes || 0) > 0 ? `<span class="badge stat-non-pointes-clickable" style="background: #9E9E9E; color: white; cursor: pointer;" title="Cliquer pour voir la liste" onclick="PagesStatistiques.showModalProgrammesNonPointes('${m.id}')">${m.nbProgrammesNonPointes}</span>` : '<span class="text-muted">0</span>'}</td>
         <td class="text-center">
-          <div class="progress-bar-container">
+          <div class="progress-bar-container" title="${m.nbTotal}/${m.nbProgrammesAttendus || m.nbTotal} programmes pointés${(m.nbProgrammesNonPointes || 0) > 0 ? ` — ${m.nbProgrammesNonPointes} non pointé(s)` : ''}">
             <div class="progress-bar" style="width: ${m.tauxPresence}%; background: ${this.getTauxColor(m.tauxPresence)}"></div>
             <span class="progress-text">${m.tauxPresence}%</span>
           </div>
@@ -1684,6 +1694,44 @@ const PagesStatistiques = {
         </td>
       </tr>
     `).join('');
+  },
+
+  showModalProgrammesNonPointes(membreId) {
+    const m = this.stats?.parMembre?.find(x => x.id === membreId);
+    if (!m || !(m.programmesNonPointesList?.length > 0)) return;
+    const typeLabel = (t) => (Programmes.getTypes?.()?.find(x => x.value === t)?.label || t) || '-';
+    const modalId = 'modal-programmes-non-pointes';
+    let existing = document.getElementById(modalId);
+    if (existing) existing.remove();
+    const rows = m.programmesNonPointesList.map(prog => {
+      const d = prog.date_debut?.toDate ? prog.date_debut.toDate() : new Date(prog.date_debut || 0);
+      return `<tr>
+        <td>${Utils.formatDate(d, 'short')}</td>
+        <td>${Utils.escapeHtml(prog.nom || '-')}</td>
+        <td><span class="badge badge-secondary">${Utils.escapeHtml(typeLabel(prog.type))}</span></td>
+        <td><a href="#" onclick="Modal.hide('${modalId}'); document.getElementById('${modalId}').remove(); App.navigate('presences', {programmeId:'${prog.id}'}); return false;" class="btn btn-sm btn-primary"><i class="fas fa-clipboard-check"></i> Pointer</a></td>
+      </tr>`;
+    }).join('');
+    const modalHtml = `
+      <div class="modal-overlay" id="${modalId}">
+        <div class="modal" style="max-width: 560px;">
+          <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-exclamation-triangle"></i> Programmes non pointés — ${Utils.escapeHtml(m.nomComplet)}</h3>
+            <button class="modal-close" onclick="Modal.hide('${modalId}'); document.getElementById('${modalId}').remove();">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted mb-3">Programmes auxquels ce membre aurait dû être pointé (déjà dans la famille) mais sans fiche de présence. Cliquez sur « Pointer » pour ouvrir le pointage.</p>
+            <div class="table-container" style="max-height: 280px; overflow-y: auto;">
+              <table class="table">
+                <thead><tr><th>Date</th><th>Programme</th><th>Type</th><th></th></tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    Modal.show(modalId);
   },
 
   escapeCsv(val) {
@@ -1698,13 +1746,14 @@ const PagesStatistiques = {
       return;
     }
     const rows = [
-      ['Membre', 'Mentor', 'Présences', 'Absences', 'Excusés', 'Taux %'],
+      ['Membre', 'Mentor', 'Présences', 'Absences', 'Excusés', 'Non pointés', 'Taux %'],
       ...this.stats.parMembre.map(m => [
         m.nomComplet,
         m.mentor,
         m.nbPresences,
         m.nbAbsences,
         m.nbExcuses,
+        m.nbProgrammesNonPointes ?? 0,
         m.tauxPresence
       ])
     ];

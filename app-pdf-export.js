@@ -188,7 +188,7 @@ const PDFExport = {
     <h2 class="section-title">Détail par Membre</h2>
     <table>
       <colgroup>
-        <col class="col-membre"><col class="col-mentor"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-taux">
+        <col class="col-membre"><col class="col-mentor"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-taux">
       </colgroup>
       <thead>
         <tr>
@@ -197,14 +197,16 @@ const PDFExport = {
           <th class="text-center">Prés.</th>
           <th class="text-center">Abs.</th>
           <th class="text-center">Excus.</th>
+          <th class="text-center" title="Programmes non pointés">Non pt.</th>
           <th class="text-center">Taux</th>
         </tr>
       </thead>
       <tbody>
         ${parMembre.length === 0
-          ? '<tr><td colspan="6" class="text-center" style="padding:12px;color:#888;">Aucun membre dans cette période.</td></tr>'
+          ? '<tr><td colspan="7" class="text-center" style="padding:12px;color:#888;">Aucun membre dans cette période.</td></tr>'
           : parMembre.map(m => {
               const taux = capTaux(m.tauxPresence);
+              const nonPointes = m.nbProgrammesNonPointes ?? 0;
               return `
           <tr>
             <td><strong>${Utils.escapeHtml(m.nomComplet || '')}</strong></td>
@@ -212,6 +214,7 @@ const PDFExport = {
             <td class="text-center"><span class="badge badge-success">${m.nbPresences != null ? m.nbPresences : 0}</span></td>
             <td class="text-center"><span class="badge badge-danger">${m.nbAbsences != null ? m.nbAbsences : 0}</span></td>
             <td class="text-center"><span class="badge badge-warning">${m.nbExcuses != null ? m.nbExcuses : 0}</span></td>
+            <td class="text-center">${nonPointes}</td>
             <td class="text-center">
               <div class="progress-bar">
                 <div class="progress-fill ${m.tauxPresence >= 80 ? 'high' : m.tauxPresence >= 60 ? 'medium' : 'low'}" style="width: ${taux}%"></div>

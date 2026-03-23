@@ -1021,12 +1021,9 @@ const PagesStatistiques = {
           box-shadow: var(--shadow-lg);
         }
         @media (max-width: 768px) {
-          .stats-grid { grid-template-columns: 1fr; }
-          .stats-header { flex-direction: column; align-items: stretch; }
-        }
-        @media (max-width: 480px) {
-          .stats-filters { flex-direction: column; align-items: stretch; }
-          .btn-scroll-top { bottom: max(24px, env(safe-area-inset-bottom)); right: max(24px, env(safe-area-inset-right)); }
+          .stats-grid {
+            grid-template-columns: 1fr;
+          }
         }
       </style>
 
@@ -1066,13 +1063,9 @@ const PagesStatistiques = {
         }
         .bar-item {
           display: grid;
-          grid-template-columns: minmax(80px, 150px) 1fr minmax(40px, 60px);
+          grid-template-columns: 150px 1fr 60px;
           align-items: center;
-          gap: var(--spacing-sm);
-        }
-        @media (max-width: 480px) {
-          .bar-item { grid-template-columns: minmax(60px, 1fr) 1fr 50px; gap: var(--spacing-xs); }
-          .bar-label { font-size: 0.8rem; }
+          gap: var(--spacing-md);
         }
         .bar-label {
           font-size: 0.85rem;

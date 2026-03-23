@@ -128,7 +128,6 @@ body {
   color: var(--text-primary);
   line-height: 1.6;
   min-height: 100vh;
-  overflow-x: hidden;
 }
 
 /* Typography */
@@ -1494,7 +1493,6 @@ select.form-control {
   
   .modal {
     width: 95%;
-    max-width: 95vw;
     margin: var(--spacing-md);
   }
 }
@@ -1509,30 +1507,8 @@ select.form-control {
     grid-template-columns: 1fr 1fr;
   }
   
-  /* Zone tactile minimale 44px (recommandation Apple/Google) */
   .btn {
-    min-height: 44px;
-    min-width: 44px;
-  }
-  /* Boutons dans groupes : pas pleine largeur pour garder côte à côte */
-  .btn-group .btn,
-  .presences-actions .btn,
-  .header-right .btn {
-    width: auto;
-  }
-}
-
-/* Safe area pour téléphones avec encoche (iPhone X+) */
-@supports (padding: env(safe-area-inset-top)) {
-  body {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  .main-header {
-    padding-left: max(var(--spacing-md), env(safe-area-inset-left));
-    padding-right: max(var(--spacing-md), env(safe-area-inset-right));
-  }
-  .page-content {
-    padding-bottom: env(safe-area-inset-bottom);
+    width: 100%;
   }
 }
 

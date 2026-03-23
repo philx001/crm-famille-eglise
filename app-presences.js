@@ -248,7 +248,6 @@ const PagesPresences = {
         }
         .presence-summary {
           display: flex;
-          flex-wrap: wrap;
           gap: var(--spacing-md);
         }
         .summary-item {
@@ -268,8 +267,7 @@ const PagesPresences = {
         .presence-legend {
           display: flex;
           justify-content: center;
-          flex-wrap: wrap;
-          gap: var(--spacing-md);
+          gap: var(--spacing-lg);
           padding: var(--spacing-md);
           background: var(--bg-primary);
           border-bottom: 1px solid var(--border-color);
@@ -299,7 +297,6 @@ const PagesPresences = {
         }
         .presence-statuts {
           display: flex;
-          flex-wrap: wrap;
           gap: var(--spacing-sm);
         }
         .statut-btn {
@@ -340,45 +337,20 @@ const PagesPresences = {
           font-size: 0.85rem;
         }
         @media (max-width: 768px) {
-          .presences-header {
-            flex-direction: column;
-            gap: var(--spacing-md);
-          }
-          .presences-header .presences-actions {
-            width: 100%;
-            justify-content: flex-start;
-          }
-          .presence-legend {
-            gap: var(--spacing-sm);
-            font-size: 0.8rem;
-          }
           .presence-row {
             flex-wrap: wrap;
           }
           .presence-membre {
+            flex: 0 0 100%;
             width: 100%;
-            min-width: 0;
           }
           .presence-statuts {
-            min-width: 0;
+            flex: 1 1 auto;
           }
           .presence-comment {
+            flex: 1 1 100%;
             width: 100%;
             max-width: none;
-          }
-        }
-        @media (max-width: 480px) {
-          .statut-btn {
-            width: 44px;
-            height: 44px;
-          }
-          .pointage-mode-selector .btn-group {
-            flex-direction: column;
-            width: 100%;
-          }
-          .pointage-mode-selector .btn-group .btn {
-            border-radius: var(--radius-sm) !important;
-            width: 100%;
           }
         }
       </style>

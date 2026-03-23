@@ -518,6 +518,7 @@ const Presences = {
       { value: 'present', label: 'Présent', icon: 'fa-check-circle', color: '#4CAF50' },
       { value: 'absent', label: 'Absent', icon: 'fa-times-circle', color: '#F44336' },
       { value: 'excuse', label: 'Excusé', icon: 'fa-info-circle', color: '#FF9800' },
+      { value: 'autre_campus', label: 'Autre campus', icon: 'fa-building', color: '#2196F3', title: 'Présence dans un autre campus' },
       { value: 'non_renseigne', label: 'Non renseigné', icon: 'fa-question-circle', color: '#9E9E9E' }
     ];
   },

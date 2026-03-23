@@ -53,18 +53,20 @@ const Statistiques = {
       present: 0,
       absent: 0,
       excuse: 0,
+      autre_campus: 0,
       non_renseigne: 0
     };
 
     allPresences.forEach(p => {
       const membre = membres.find(m => m.id === p.disciple_id);
       if (membre && Utils.membreEtaitDansFamilleALaDate(membre, p.programme?.date_debut)) {
-        presencesByStatut[p.statut]++;
+        if (p.statut in presencesByStatut) presencesByStatut[p.statut]++;
+        else presencesByStatut.non_renseigne++;
       }
     });
 
     // totalPresencesAttendues = présences réellement pointées (fiches enregistrées), pour cohérence avec par membre
-    const totalPresencesAttendues = presencesByStatut.present + presencesByStatut.absent + presencesByStatut.excuse + presencesByStatut.non_renseigne;
+    const totalPresencesAttendues = presencesByStatut.present + presencesByStatut.absent + presencesByStatut.excuse + presencesByStatut.autre_campus + presencesByStatut.non_renseigne;
     const tauxPresenceGlobal = totalPresencesAttendues > 0 
       ? Math.round((presencesByStatut.present / totalPresencesAttendues) * 100 * 10) / 10
       : 0;
@@ -127,6 +129,7 @@ const Statistiques = {
       const presents = presencesMembre.filter(p => p.statut === 'present').length;
       const absents = presencesMembre.filter(p => p.statut === 'absent').length;
       const excuses = presencesMembre.filter(p => p.statut === 'excuse').length;
+      const autreCampus = presencesMembre.filter(p => p.statut === 'autre_campus').length;
       const mentor = Membres.getById(membre.mentor_id);
 
       return {
@@ -139,6 +142,7 @@ const Statistiques = {
         nbPresences: presents,
         nbAbsences: absents,
         nbExcuses: excuses,
+        nbAutreCampus: autreCampus,
         nbTotal,
         nbProgrammesAttendus,
         nbProgrammesNonPointes,
@@ -159,6 +163,7 @@ const Statistiques = {
         totalPresencesEffectives: presencesByStatut.present,
         totalAbsences: presencesByStatut.absent,
         totalExcuses: presencesByStatut.excuse,
+        totalAutreCampus: presencesByStatut.autre_campus,
         tauxPresenceGlobal
       },
       parType: Object.values(statsByType),
@@ -840,6 +845,7 @@ const PagesStatistiques = {
                   <th onclick="PagesStatistiques.sortTable('nbPresences')" class="text-center">Présences ↕</th>
                   <th onclick="PagesStatistiques.sortTable('nbAbsences')" class="text-center">Absences ↕</th>
                   <th onclick="PagesStatistiques.sortTable('nbExcuses')" class="text-center">Excusés ↕</th>
+                  <th onclick="PagesStatistiques.sortTable('nbAutreCampus')" class="text-center" title="Présence dans un autre campus">Autre campus ↕</th>
                   <th onclick="PagesStatistiques.sortTable('nbProgrammesNonPointes')" class="text-center" title="Programmes attendus mais non pointés (oublis possibles)">Non pointés ↕</th>
                   <th onclick="PagesStatistiques.sortTable('tauxPresence')" class="text-center">Taux ↕</th>
                   <th></th>
@@ -853,6 +859,7 @@ const PagesStatistiques = {
                     <td class="text-center"><span class="badge badge-success">${m.nbPresences}</span></td>
                     <td class="text-center"><span class="badge badge-danger">${m.nbAbsences}</span></td>
                     <td class="text-center"><span class="badge badge-warning">${m.nbExcuses}</span></td>
+                    <td class="text-center"><span class="badge" style="background: #2196F3; color: white;">${m.nbAutreCampus || 0}</span></td>
                     <td class="text-center">${(m.nbProgrammesNonPointes || 0) > 0 ? `<span class="badge stat-non-pointes-clickable" style="background: #9E9E9E; color: white; cursor: pointer;" title="Cliquer pour voir la liste" onclick="PagesStatistiques.showModalProgrammesNonPointes('${m.id}')">${m.nbProgrammesNonPointes}</span>` : '<span class="text-muted">0</span>'}</td>
                     <td class="text-center">
                       <div class="progress-bar-container" title="${m.nbTotal}/${m.nbProgrammesAttendus || m.nbTotal} programmes pointés${(m.nbProgrammesNonPointes || 0) > 0 ? ` — ${m.nbProgrammesNonPointes} non pointé(s)` : ''}">
@@ -1562,9 +1569,9 @@ const PagesStatistiques = {
     const evolution = this.stats.evolution || [];
     if (g.totalPresencesEffectives !== undefined && g.totalAbsences !== undefined) {
       ChartsHelper.createDoughnut('chart-stats-repartition',
-        ['Présents', 'Absents', 'Excusés'],
-        [g.totalPresencesEffectives || 0, g.totalAbsences || 0, g.totalExcuses || 0],
-        ['#4CAF50', '#F44336', '#FF9800']);
+        ['Présents', 'Absents', 'Excusés', 'Autre campus'],
+        [g.totalPresencesEffectives || 0, g.totalAbsences || 0, g.totalExcuses || 0, g.totalAutreCampus || 0],
+        ['#4CAF50', '#F44336', '#FF9800', '#2196F3']);
     }
     if (parType.length > 0) {
       ChartsHelper.createBar('chart-stats-type',
@@ -1680,6 +1687,7 @@ const PagesStatistiques = {
         <td class="text-center"><span class="badge badge-success">${m.nbPresences}</span></td>
         <td class="text-center"><span class="badge badge-danger">${m.nbAbsences}</span></td>
         <td class="text-center"><span class="badge badge-warning">${m.nbExcuses}</span></td>
+        <td class="text-center"><span class="badge" style="background: #2196F3; color: white;">${m.nbAutreCampus || 0}</span></td>
         <td class="text-center">${(m.nbProgrammesNonPointes || 0) > 0 ? `<span class="badge stat-non-pointes-clickable" style="background: #9E9E9E; color: white; cursor: pointer;" title="Cliquer pour voir la liste" onclick="PagesStatistiques.showModalProgrammesNonPointes('${m.id}')">${m.nbProgrammesNonPointes}</span>` : '<span class="text-muted">0</span>'}</td>
         <td class="text-center">
           <div class="progress-bar-container" title="${m.nbTotal}/${m.nbProgrammesAttendus || m.nbTotal} programmes pointés${(m.nbProgrammesNonPointes || 0) > 0 ? ` — ${m.nbProgrammesNonPointes} non pointé(s)` : ''}">
@@ -1746,13 +1754,14 @@ const PagesStatistiques = {
       return;
     }
     const rows = [
-      ['Membre', 'Mentor', 'Présences', 'Absences', 'Excusés', 'Non pointés', 'Taux %'],
+      ['Membre', 'Mentor', 'Présences', 'Absences', 'Excusés', 'Autre campus', 'Non pointés', 'Taux %'],
       ...this.stats.parMembre.map(m => [
         m.nomComplet,
         m.mentor,
         m.nbPresences,
         m.nbAbsences,
         m.nbExcuses,
+        m.nbAutreCampus ?? 0,
         m.nbProgrammesNonPointes ?? 0,
         m.tauxPresence
       ])

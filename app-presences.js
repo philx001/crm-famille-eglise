@@ -164,11 +164,14 @@ const PagesPresences = {
         </div>
         <div class="card-body" style="padding: 0;">
           <div class="presence-legend">
-            ${Presences.getStatuts().map(s => `
+            ${Presences.getStatuts().filter(s => s.value !== 'non_renseigne').map(s => `
               <span class="legend-item">
                 <i class="fas ${s.icon}" style="color: ${s.color}"></i> ${s.label}
               </span>
             `).join('')}
+            <span class="legend-item" title="Annuler le pointage pour ce membre">
+              <i class="fas fa-undo" style="color: #9E9E9E"></i> Annuler
+            </span>
           </div>
           
           <div class="presence-list" id="presence-list">
@@ -187,11 +190,14 @@ const PagesPresences = {
               ` : ''}
             </div>
             <div class="presence-legend" style="margin-bottom: var(--spacing-md);">
-              ${(Presences.getStatutsNA ? Presences.getStatutsNA() : Presences.getStatuts()).map(s => `
+              ${(Presences.getStatutsNA ? Presences.getStatutsNA() : Presences.getStatuts()).filter(s => s.value !== 'non_renseigne').map(s => `
                 <span class="legend-item" title="${s.title || s.label}">
                   <i class="fas ${s.icon}" style="color: ${s.color}"></i> ${s.label}
                 </span>
               `).join('')}
+              <span class="legend-item" title="Annuler le pointage pour ce NA/NC">
+                <i class="fas fa-undo" style="color: #9E9E9E"></i> Annuler
+              </span>
             </div>
             <div class="presence-list" id="presence-list-na">
               ${this.presencesNAData.map((p, index) => this.renderPresenceRowNA(p, index)).join('')}
@@ -315,6 +321,14 @@ const PagesPresences = {
         .statut-btn.active i {
           color: white;
         }
+        .statut-btn-reset {
+          color: #9E9E9E !important;
+          border-style: dashed;
+        }
+        .statut-btn-reset:hover {
+          background: #f5f5f5 !important;
+          color: #616161 !important;
+        }
         .presence-comment {
           flex: 1;
           max-width: 200px;
@@ -340,7 +354,8 @@ const PagesPresences = {
 
   renderPresenceRow(presence, index) {
     const membre = presence.membre;
-    const statuts = Presences.getStatuts();
+    const statuts = Presences.getStatuts().filter(s => s.value !== 'non_renseigne');
+    const hasChoice = presence.statut && presence.statut !== 'non_renseigne';
 
     return `
       <div class="presence-row" data-index="${index}" data-type="membre">
@@ -362,6 +377,12 @@ const PagesPresences = {
               <i class="fas ${s.icon}"></i>
             </button>
           `).join('')}
+          ${hasChoice ? `
+            <button type="button" class="statut-btn statut-btn-reset" onclick="PagesPresences.setStatut(${index}, 'non_renseigne', 'membre')"
+                    title="Annuler le choix">
+              <i class="fas fa-undo"></i>
+            </button>
+          ` : ''}
         </div>
         <div class="presence-comment">
           <input type="text" class="form-control" placeholder="Commentaire (ex. justification absence)..."
@@ -374,7 +395,8 @@ const PagesPresences = {
 
   renderPresenceRowNA(presence, index) {
     const na = presence.na;
-    const statuts = Presences.getStatutsNA ? Presences.getStatutsNA() : Presences.getStatuts();
+    const statuts = (Presences.getStatutsNA ? Presences.getStatutsNA() : Presences.getStatuts()).filter(s => s.value !== 'non_renseigne');
+    const hasChoice = presence.statut && presence.statut !== 'non_renseigne';
     const catLabel = typeof NouvellesAmes !== 'undefined' ? NouvellesAmes.getCategorieShortLabel(na.categorie) : (na.categorie || 'NA');
     const searchText = (na.prenom + ' ' + na.nom + ' ' + (na.suivi_par_nom || '')).toLowerCase().replace(/"/g, "'");
 
@@ -398,6 +420,12 @@ const PagesPresences = {
               <i class="fas ${s.icon}"></i>
             </button>
           `).join('')}
+          ${hasChoice ? `
+            <button type="button" class="statut-btn statut-btn-reset" onclick="PagesPresences.setStatutNA(${index}, 'non_renseigne')"
+                    title="Annuler le choix">
+              <i class="fas fa-undo"></i>
+            </button>
+          ` : ''}
         </div>
         <div class="presence-comment">
           <input type="text" class="form-control" placeholder="Commentaire (ex. justification absence)..."
@@ -409,7 +437,7 @@ const PagesPresences = {
   },
 
   renderSummary() {
-    const counts = { present: 0, absent: 0, excuse: 0, non_renseigne: 0 };
+    const counts = { present: 0, absent: 0, excuse: 0, autre_campus: 0, non_renseigne: 0 };
     const countsNA = { present: 0, absent: 0, excuse: 0, non_renseigne: 0, autre_campus: 0, pas_revenir: 0, injoignable: 0 };
 
     this.presencesData.forEach(p => { counts[p.statut] = (counts[p.statut] || 0) + 1; });
@@ -432,6 +460,10 @@ const PagesPresences = {
       <div class="summary-item" style="color: var(--warning);">
         <div class="summary-value">${counts.excuse}</div>
         <div class="summary-label">Excusés</div>
+      </div>
+      <div class="summary-item" style="color: #2196F3;">
+        <div class="summary-value">${counts.autre_campus || 0}</div>
+        <div class="summary-label">Autre campus</div>
       </div>
       <div class="summary-item" style="color: var(--primary);">
         <div class="summary-value">${taux}%</div>
@@ -465,9 +497,15 @@ const PagesPresences = {
     
     const row = document.querySelector(`.presence-row[data-type="${type || 'membre'}"][data-index="${index}"]`);
     if (row) {
-      row.querySelectorAll('.statut-btn').forEach(btn => btn.classList.remove('active'));
-      const activeBtn = row.querySelector(`.statut-btn[title="${Presences.getStatutLabel(statut)}"]`);
-      if (activeBtn) activeBtn.classList.add('active');
+      // Re-render the row to show/hide the Annuler button
+      const presence = type === 'na' ? this.presencesNAData[index] : this.presencesData[index];
+      const newRowHtml = type === 'na' ? this.renderPresenceRowNA(presence, index) : this.renderPresenceRow(presence, index);
+      const temp = document.createElement('div');
+      temp.innerHTML = newRowHtml;
+      const newRow = temp.firstElementChild;
+      if (newRow) {
+        row.replaceWith(newRow);
+      }
     }
 
     const summaryEl = document.getElementById('presence-summary');

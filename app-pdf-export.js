@@ -167,6 +167,10 @@ const PDFExport = {
         <div class="stat-label">Autre campus</div>
       </div>
       <div class="stat-box">
+        <div class="stat-value" style="color: #673AB7;">${global.totalEnLigne != null ? global.totalEnLigne : 0}</div>
+        <div class="stat-label">En ligne</div>
+      </div>
+      <div class="stat-box">
         <div class="stat-value">${global.tauxPresenceGlobal != null ? global.tauxPresenceGlobal : 0}%</div>
         <div class="stat-label">Taux Global</div>
       </div>
@@ -192,7 +196,7 @@ const PDFExport = {
     <h2 class="section-title">Détail par Membre</h2>
     <table>
       <colgroup>
-        <col class="col-membre"><col class="col-mentor"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-taux">
+        <col class="col-membre"><col class="col-mentor"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-taux">
       </colgroup>
       <thead>
         <tr>
@@ -202,13 +206,14 @@ const PDFExport = {
           <th class="text-center">Abs.</th>
           <th class="text-center">Excus.</th>
           <th class="text-center" title="Présence dans un autre campus">Autre camp.</th>
+          <th class="text-center" title="En ligne">En ligne</th>
           <th class="text-center" title="Programmes non pointés">Non pt.</th>
           <th class="text-center">Taux</th>
         </tr>
       </thead>
       <tbody>
         ${parMembre.length === 0
-          ? '<tr><td colspan="8" class="text-center" style="padding:12px;color:#888;">Aucun membre dans cette période.</td></tr>'
+          ? '<tr><td colspan="9" class="text-center" style="padding:12px;color:#888;">Aucun membre dans cette période.</td></tr>'
           : parMembre.map(m => {
               const taux = capTaux(m.tauxPresence);
               const nonPointes = m.nbProgrammesNonPointes ?? 0;
@@ -220,6 +225,7 @@ const PDFExport = {
             <td class="text-center"><span class="badge badge-danger">${m.nbAbsences != null ? m.nbAbsences : 0}</span></td>
             <td class="text-center"><span class="badge badge-warning">${m.nbExcuses != null ? m.nbExcuses : 0}</span></td>
             <td class="text-center"><span class="badge" style="background: #E3F2FD; color: #1976D2;">${m.nbAutreCampus != null ? m.nbAutreCampus : 0}</span></td>
+            <td class="text-center"><span class="badge" style="background: #EDE7F6; color: #5E35B1;">${m.nbEnLigne != null ? m.nbEnLigne : 0}</span></td>
             <td class="text-center">${nonPointes}</td>
             <td class="text-center">
               <div class="progress-bar">
@@ -391,6 +397,7 @@ const PDFExport = {
         absent: 'badge-danger',
         excuse: 'badge-warning',
         autre_campus: 'badge-info',
+        en_ligne: 'badge-purple',
         pas_revenir: 'badge-brown',
         injoignable: 'badge-secondary',
         non_renseigne: 'badge-secondary'
@@ -399,7 +406,7 @@ const PDFExport = {
     };
 
     // Calculer les stats (inclut les nouveaux statuts NA/NC)
-    const counts = { present: 0, absent: 0, excuse: 0, autre_campus: 0, pas_revenir: 0, injoignable: 0, non_renseigne: 0 };
+    const counts = { present: 0, absent: 0, excuse: 0, autre_campus: 0, en_ligne: 0, pas_revenir: 0, injoignable: 0, non_renseigne: 0 };
     presencesData.forEach(p => { counts[p.statut] = (counts[p.statut] || 0) + 1; });
     const total = presencesData.length;
     const taux = total > 0 ? Math.round((counts.present / total) * 100) : 0;
@@ -451,6 +458,7 @@ const PDFExport = {
     .badge-danger { background: #FFEBEE; color: #C62828; }
     .badge-warning { background: #FFF3E0; color: #E65100; }
     .badge-info { background: #E3F2FD; color: #1565C0; }
+    .badge-purple { background: #EDE7F6; color: #5E35B1; }
     .badge-brown { background: #EFEBE9; color: #5D4037; }
     .badge-secondary { background: #ECEFF1; color: #546E7A; }
     .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; font-size: 9pt; color: #888; }
@@ -481,10 +489,14 @@ const PDFExport = {
       <div class="stat-value warning">${counts.excuse}</div>
       <div class="stat-label">Excusés</div>
     </div>
-    ${(counts.autre_campus || 0) + (counts.pas_revenir || 0) + (counts.injoignable || 0) > 0 ? `
+    ${(counts.autre_campus || 0) + (counts.en_ligne || 0) + (counts.pas_revenir || 0) + (counts.injoignable || 0) > 0 ? `
     <div class="stat-box">
       <div class="stat-value" style="color: #2196F3;">${counts.autre_campus || 0}</div>
       <div class="stat-label">Autre campus</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" style="color: #673AB7;">${counts.en_ligne || 0}</div>
+      <div class="stat-label">En ligne</div>
     </div>
     <div class="stat-box">
       <div class="stat-value" style="color: #5D4037;">${counts.pas_revenir || 0}</div>

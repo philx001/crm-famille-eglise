@@ -519,6 +519,7 @@ const Presences = {
       { value: 'absent', label: 'Absent', icon: 'fa-times-circle', color: '#F44336' },
       { value: 'excuse', label: 'Excusé', icon: 'fa-info-circle', color: '#FF9800' },
       { value: 'autre_campus', label: 'Autre campus', icon: 'fa-building', color: '#2196F3', title: 'Présence dans un autre campus' },
+      { value: 'en_ligne', label: 'En ligne', icon: 'fa-video', color: '#673AB7', title: 'Présence en ligne (visio, livestream, etc.)' },
       { value: 'non_renseigne', label: 'Non renseigné', icon: 'fa-question-circle', color: '#9E9E9E' }
     ];
   },
@@ -530,6 +531,7 @@ const Presences = {
       { value: 'absent', label: 'Absent', icon: 'fa-times-circle', color: '#F44336' },
       { value: 'excuse', label: 'Excusé', icon: 'fa-info-circle', color: '#FF9800' },
       { value: 'autre_campus', label: 'Autre campus', icon: 'fa-building', color: '#2196F3', title: 'Est dans une autre campus' },
+      { value: 'en_ligne', label: 'En ligne', icon: 'fa-video', color: '#673AB7', title: 'Présence en ligne' },
       { value: 'pas_revenir', label: 'Pas de retour prévu', icon: 'fa-user-clock', color: '#795548', title: 'Ne souhaite pas revenir à l\'église pour l\'instant' },
       { value: 'injoignable', label: 'Injoignable', icon: 'fa-phone-slash', color: '#607D8B', title: 'Injoignable' },
       { value: 'non_renseigne', label: 'Non renseigné', icon: 'fa-question-circle', color: '#9E9E9E' }
@@ -676,10 +678,10 @@ const PagesCalendrier = {
     const programmes = Programmes.getByMonth(year, month);
 
     let sessionsEvang = [];
-    if (typeof EvangelisationData !== 'undefined') {
+    if (typeof SessionsEvangelisation !== 'undefined' && SessionsEvangelisation.loadAll && SessionsEvangelisation.getVisibleSessions) {
       try {
-        await EvangelisationData.loadSessions();
-        sessionsEvang = (EvangelisationData.sessions || []).filter(s => {
+        await SessionsEvangelisation.loadAll();
+        sessionsEvang = SessionsEvangelisation.getVisibleSessions().filter(s => {
           const d = s.date?.toDate ? s.date.toDate() : new Date(s.date || 0);
           return d.getFullYear() === year && d.getMonth() === month;
         });

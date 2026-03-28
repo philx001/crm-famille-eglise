@@ -54,6 +54,7 @@ const Statistiques = {
       absent: 0,
       excuse: 0,
       autre_campus: 0,
+      en_ligne: 0,
       non_renseigne: 0
     };
 
@@ -66,7 +67,7 @@ const Statistiques = {
     });
 
     // totalPresencesAttendues = présences réellement pointées (fiches enregistrées), pour cohérence avec par membre
-    const totalPresencesAttendues = presencesByStatut.present + presencesByStatut.absent + presencesByStatut.excuse + presencesByStatut.autre_campus + presencesByStatut.non_renseigne;
+    const totalPresencesAttendues = presencesByStatut.present + presencesByStatut.absent + presencesByStatut.excuse + presencesByStatut.autre_campus + presencesByStatut.en_ligne + presencesByStatut.non_renseigne;
     const tauxPresenceGlobal = totalPresencesAttendues > 0 
       ? Math.round((presencesByStatut.present / totalPresencesAttendues) * 100 * 10) / 10
       : 0;
@@ -130,6 +131,7 @@ const Statistiques = {
       const absents = presencesMembre.filter(p => p.statut === 'absent').length;
       const excuses = presencesMembre.filter(p => p.statut === 'excuse').length;
       const autreCampus = presencesMembre.filter(p => p.statut === 'autre_campus').length;
+      const enLigne = presencesMembre.filter(p => p.statut === 'en_ligne').length;
       const mentor = Membres.getById(membre.mentor_id);
 
       return {
@@ -143,6 +145,7 @@ const Statistiques = {
         nbAbsences: absents,
         nbExcuses: excuses,
         nbAutreCampus: autreCampus,
+        nbEnLigne: enLigne,
         nbTotal,
         nbProgrammesAttendus,
         nbProgrammesNonPointes,
@@ -164,6 +167,7 @@ const Statistiques = {
         totalAbsences: presencesByStatut.absent,
         totalExcuses: presencesByStatut.excuse,
         totalAutreCampus: presencesByStatut.autre_campus,
+        totalEnLigne: presencesByStatut.en_ligne,
         tauxPresenceGlobal
       },
       parType: Object.values(statsByType),
@@ -468,7 +472,7 @@ const Statistiques = {
     const allNA = (typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getAll) ? NouvellesAmes.getAll() : [];
     const naIds = new Set(allNA.filter(na => na.statut !== 'integre' && na.statut !== 'perdu').map(na => na.id));
 
-    const global = { present: 0, absent: 0, excuse: 0, autre_campus: 0, pas_revenir: 0, injoignable: 0, non_renseigne: 0, total: 0 };
+    const global = { present: 0, absent: 0, excuse: 0, autre_campus: 0, en_ligne: 0, pas_revenir: 0, injoignable: 0, non_renseigne: 0, total: 0 };
     allPresences.forEach(p => {
       if (naIds.has(p.nouvelle_ame_id)) {
         global[p.statut] = (global[p.statut] || 0) + 1;
@@ -482,6 +486,7 @@ const Statistiques = {
       const absents = presencesNA.filter(p => p.statut === 'absent').length;
       const excuses = presencesNA.filter(p => p.statut === 'excuse').length;
       const autreCampus = presencesNA.filter(p => p.statut === 'autre_campus').length;
+      const enLigne = presencesNA.filter(p => p.statut === 'en_ligne').length;
       const pasRevenir = presencesNA.filter(p => p.statut === 'pas_revenir').length;
       const injoignable = presencesNA.filter(p => p.statut === 'injoignable').length;
       const total = presencesNA.length;
@@ -495,6 +500,7 @@ const Statistiques = {
         nbAbsences: absents,
         nbExcuses: excuses,
         nbAutreCampus: autreCampus,
+        nbEnLigne: enLigne,
         nbPasRevenir: pasRevenir,
         nbInjoignable: injoignable,
         nbTotal: total,
@@ -846,6 +852,7 @@ const PagesStatistiques = {
                   <th onclick="PagesStatistiques.sortTable('nbAbsences')" class="text-center">Absences ↕</th>
                   <th onclick="PagesStatistiques.sortTable('nbExcuses')" class="text-center">Excusés ↕</th>
                   <th onclick="PagesStatistiques.sortTable('nbAutreCampus')" class="text-center" title="Présence dans un autre campus">Autre campus ↕</th>
+                  <th onclick="PagesStatistiques.sortTable('nbEnLigne')" class="text-center" title="Présence en ligne">En ligne ↕</th>
                   <th onclick="PagesStatistiques.sortTable('nbProgrammesNonPointes')" class="text-center" title="Programmes attendus mais non pointés (oublis possibles)">Non pointés ↕</th>
                   <th onclick="PagesStatistiques.sortTable('tauxPresence')" class="text-center">Taux ↕</th>
                   <th></th>
@@ -860,6 +867,7 @@ const PagesStatistiques = {
                     <td class="text-center"><span class="badge badge-danger">${m.nbAbsences}</span></td>
                     <td class="text-center"><span class="badge badge-warning">${m.nbExcuses}</span></td>
                     <td class="text-center"><span class="badge" style="background: #2196F3; color: white;">${m.nbAutreCampus || 0}</span></td>
+                    <td class="text-center"><span class="badge" style="background: #673AB7; color: white;">${m.nbEnLigne || 0}</span></td>
                     <td class="text-center">${(m.nbProgrammesNonPointes || 0) > 0 ? `<span class="badge stat-non-pointes-clickable" style="background: #9E9E9E; color: white; cursor: pointer;" title="Cliquer pour voir la liste" onclick="PagesStatistiques.showModalProgrammesNonPointes('${m.id}')">${m.nbProgrammesNonPointes}</span>` : '<span class="text-muted">0</span>'}</td>
                     <td class="text-center">
                       <div class="progress-bar-container" title="${m.nbTotal}/${m.nbProgrammesAttendus || m.nbTotal} programmes pointés${(m.nbProgrammesNonPointes || 0) > 0 ? ` — ${m.nbProgrammesNonPointes} non pointé(s)` : ''}">
@@ -1569,9 +1577,9 @@ const PagesStatistiques = {
     const evolution = this.stats.evolution || [];
     if (g.totalPresencesEffectives !== undefined && g.totalAbsences !== undefined) {
       ChartsHelper.createDoughnut('chart-stats-repartition',
-        ['Présents', 'Absents', 'Excusés', 'Autre campus'],
-        [g.totalPresencesEffectives || 0, g.totalAbsences || 0, g.totalExcuses || 0, g.totalAutreCampus || 0],
-        ['#4CAF50', '#F44336', '#FF9800', '#2196F3']);
+        ['Présents', 'Absents', 'Excusés', 'Autre campus', 'En ligne'],
+        [g.totalPresencesEffectives || 0, g.totalAbsences || 0, g.totalExcuses || 0, g.totalAutreCampus || 0, g.totalEnLigne || 0],
+        ['#4CAF50', '#F44336', '#FF9800', '#2196F3', '#673AB7']);
     }
     if (parType.length > 0) {
       ChartsHelper.createBar('chart-stats-type',
@@ -1688,6 +1696,7 @@ const PagesStatistiques = {
         <td class="text-center"><span class="badge badge-danger">${m.nbAbsences}</span></td>
         <td class="text-center"><span class="badge badge-warning">${m.nbExcuses}</span></td>
         <td class="text-center"><span class="badge" style="background: #2196F3; color: white;">${m.nbAutreCampus || 0}</span></td>
+        <td class="text-center"><span class="badge" style="background: #673AB7; color: white;">${m.nbEnLigne || 0}</span></td>
         <td class="text-center">${(m.nbProgrammesNonPointes || 0) > 0 ? `<span class="badge stat-non-pointes-clickable" style="background: #9E9E9E; color: white; cursor: pointer;" title="Cliquer pour voir la liste" onclick="PagesStatistiques.showModalProgrammesNonPointes('${m.id}')">${m.nbProgrammesNonPointes}</span>` : '<span class="text-muted">0</span>'}</td>
         <td class="text-center">
           <div class="progress-bar-container" title="${m.nbTotal}/${m.nbProgrammesAttendus || m.nbTotal} programmes pointés${(m.nbProgrammesNonPointes || 0) > 0 ? ` — ${m.nbProgrammesNonPointes} non pointé(s)` : ''}">
@@ -1754,7 +1763,7 @@ const PagesStatistiques = {
       return;
     }
     const rows = [
-      ['Membre', 'Mentor', 'Présences', 'Absences', 'Excusés', 'Autre campus', 'Non pointés', 'Taux %'],
+      ['Membre', 'Mentor', 'Présences', 'Absences', 'Excusés', 'Autre campus', 'En ligne', 'Non pointés', 'Taux %'],
       ...this.stats.parMembre.map(m => [
         m.nomComplet,
         m.mentor,
@@ -1762,6 +1771,7 @@ const PagesStatistiques = {
         m.nbAbsences,
         m.nbExcuses,
         m.nbAutreCampus ?? 0,
+        m.nbEnLigne ?? 0,
         m.nbProgrammesNonPointes ?? 0,
         m.tauxPresence
       ])
@@ -2024,6 +2034,10 @@ const PagesStatistiques = {
               <span class="stat-value" style="display: block; font-size: 1.5rem; font-weight: 700;">${presenceStats.global.autre_campus || 0}</span>
               <span class="stat-label">Autre campus</span>
             </div>
+            <div class="stat-item" style="--color: #673AB7">
+              <span class="stat-value" style="display: block; font-size: 1.5rem; font-weight: 700;">${presenceStats.global.en_ligne || 0}</span>
+              <span class="stat-label">En ligne</span>
+            </div>
             <div class="stat-item" style="--color: #795548">
               <span class="stat-value" style="display: block; font-size: 1.5rem; font-weight: 700;">${presenceStats.global.pas_revenir || 0}</span>
               <span class="stat-label">Pas de retour prévu</span>
@@ -2064,6 +2078,7 @@ const PagesStatistiques = {
                     <th class="text-center">Absents</th>
                     <th class="text-center">Excusés</th>
                     <th class="text-center" title="Autre campus">Autre campus</th>
+                    <th class="text-center" title="En ligne">En ligne</th>
                     <th class="text-center" title="Pas de retour prévu">Pas retour</th>
                     <th class="text-center">Injoignable</th>
                     <th class="text-center">Taux</th>
@@ -2079,6 +2094,7 @@ const PagesStatistiques = {
                       <td class="text-center"><span class="badge badge-danger">${m.nbAbsences}</span></td>
                       <td class="text-center"><span class="badge badge-warning">${m.nbExcuses}</span></td>
                       <td class="text-center"><span class="badge" style="background: #2196F3; color: white;">${m.nbAutreCampus || 0}</span></td>
+                      <td class="text-center"><span class="badge" style="background: #673AB7; color: white;">${m.nbEnLigne || 0}</span></td>
                       <td class="text-center"><span class="badge" style="background: #795548; color: white;">${m.nbPasRevenir || 0}</span></td>
                       <td class="text-center"><span class="badge" style="background: #607D8B; color: white;">${m.nbInjoignable || 0}</span></td>
                       <td class="text-center">
@@ -2153,9 +2169,9 @@ const PagesStatistiques = {
     }
     if (d.presenceStats && d.presenceStats.parNA.length > 0) {
       csv += 'Présences par NA/NC\r\n';
-      csv += ['NA/NC', 'Suivi par', 'Présents', 'Absents', 'Excusés', 'Autre campus', 'Pas retour', 'Injoignable', 'Taux %'].map(escapeCsv).join(';') + '\r\n';
+      csv += ['NA/NC', 'Suivi par', 'Présents', 'Absents', 'Excusés', 'Autre campus', 'En ligne', 'Pas retour', 'Injoignable', 'Taux %'].map(escapeCsv).join(';') + '\r\n';
       d.presenceStats.parNA.forEach(m => {
-        csv += [m.nomComplet, m.suivi_par_nom || '-', m.nbPresences, m.nbAbsences, m.nbExcuses, m.nbAutreCampus || 0, m.nbPasRevenir || 0, m.nbInjoignable || 0, m.tauxPresence].map(escapeCsv).join(';') + '\r\n';
+        csv += [m.nomComplet, m.suivi_par_nom || '-', m.nbPresences, m.nbAbsences, m.nbExcuses, m.nbAutreCampus || 0, m.nbEnLigne || 0, m.nbPasRevenir || 0, m.nbInjoignable || 0, m.tauxPresence].map(escapeCsv).join(';') + '\r\n';
       });
     }
     if (csv === '\uFEFF') {
@@ -2194,6 +2210,7 @@ const PagesStatistiques = {
         <td class="text-center">${m.nbAbsences}</td>
         <td class="text-center">${m.nbExcuses}</td>
         <td class="text-center">${m.nbAutreCampus || 0}</td>
+        <td class="text-center">${m.nbEnLigne || 0}</td>
         <td class="text-center">${m.nbPasRevenir || 0}</td>
         <td class="text-center">${m.nbInjoignable || 0}</td>
         <td class="text-center">${m.tauxPresence}%</td>
@@ -2240,6 +2257,7 @@ const PagesStatistiques = {
     <div class="stat-box"><div class="stat-value" style="color: #F44336;">${g.absent || 0}</div><div class="stat-label">Absents</div></div>
     <div class="stat-box"><div class="stat-value" style="color: #FF9800;">${g.excuse || 0}</div><div class="stat-label">Excusés</div></div>
     <div class="stat-box"><div class="stat-value" style="color: #2196F3;">${g.autre_campus || 0}</div><div class="stat-label">Autre campus</div></div>
+    <div class="stat-box"><div class="stat-value" style="color: #673AB7;">${g.en_ligne || 0}</div><div class="stat-label">En ligne</div></div>
     <div class="stat-box"><div class="stat-value" style="color: #795548;">${g.pas_revenir || 0}</div><div class="stat-label">Pas retour</div></div>
     <div class="stat-box"><div class="stat-value" style="color: #607D8B;">${g.injoignable || 0}</div><div class="stat-label">Injoignable</div></div>
     <div class="stat-box"><div class="stat-value" style="color: #9C27B0;">${g.tauxPresence || 0}%</div><div class="stat-label">Taux</div></div>
@@ -2255,6 +2273,7 @@ const PagesStatistiques = {
         <th class="text-center">Absents</th>
         <th class="text-center">Excusés</th>
         <th class="text-center">Autre campus</th>
+        <th class="text-center">En ligne</th>
         <th class="text-center">Pas retour</th>
         <th class="text-center">Injoignable</th>
         <th class="text-center">Taux</th>

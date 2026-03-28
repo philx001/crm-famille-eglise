@@ -182,18 +182,47 @@ const SessionsEvangelisation = {
 
   // Obtenir toutes les sessions
   getAll() {
-    return EvangelisationData.sessions;
+    return this.getVisibleSessions();
   },
 
-  // Obtenir une session par ID
-  getById(id) {
+  /** Sessions visibles pour l'utilisateur courant (filtrage mentors). */
+  getVisibleSessions() {
+    return EvangelisationData.sessions.filter(s => this.sessionVisibleForCurrentUser(s));
+  },
+
+  /**
+   * Une session est visible pour un mentor si : il l'a créée (created_by),
+   * ou il en est le responsable, ou il est mobilisé comme participant.
+   * Les rôles avec vue globale voient toutes les sessions de la famille.
+   */
+  sessionVisibleForCurrentUser(session) {
+    if (!session || !AppState.user) return false;
+    if (Permissions.canViewAllEvangelisationSessions()) return true;
+    const uid = AppState.user.id;
+    if (session.created_by === uid) return true;
+    if (session.responsable_id === uid) return true;
+    const parts = session.participants || [];
+    if (parts.some(p => p.membre_id === uid)) return true;
+    return false;
+  },
+
+  /** Accès interne au cache sans filtre de visibilité (mises à jour Firestore). */
+  getByIdFromCache(id) {
     return EvangelisationData.sessions.find(s => s.id === id);
+  },
+
+  // Obtenir une session par ID (respecte la visibilité mentor)
+  getById(id) {
+    const session = this.getByIdFromCache(id);
+    if (!session) return undefined;
+    if (!this.sessionVisibleForCurrentUser(session)) return undefined;
+    return session;
   },
 
   // Obtenir les sessions à venir
   getUpcoming(limit = 5) {
     const now = new Date();
-    return EvangelisationData.sessions
+    return this.getVisibleSessions()
       .filter(s => {
         const date = s.date?.toDate ? s.date.toDate() : new Date(s.date);
         return date >= now && s.statut !== 'annulee';
@@ -209,7 +238,7 @@ const SessionsEvangelisation = {
   // Obtenir les sessions passées
   getPast(limit = 10) {
     const now = new Date();
-    return EvangelisationData.sessions
+    return this.getVisibleSessions()
       .filter(s => {
         const date = s.date?.toDate ? s.date.toDate() : new Date(s.date);
         return date < now || s.statut === 'terminee';
@@ -234,6 +263,8 @@ const SessionsEvangelisation = {
         lieu_rdv: data.lieu_rdv || null,
         responsable_id: data.responsable_id || AppState.user.id,
         responsable_nom: data.responsable_nom || `${AppState.user.prenom} ${AppState.user.nom}`,
+        created_by: AppState.user.id,
+        created_by_nom: `${AppState.user.prenom} ${AppState.user.nom}`,
         participants: data.participants || [],
         statut: 'planifiee',
         nb_contacts: 0,
@@ -266,7 +297,12 @@ const SessionsEvangelisation = {
         Toast.error('Permission refusée');
         return false;
       }
-      
+      const existing = this.getByIdFromCache(id);
+      if (!existing || !Permissions.canEditEvangelisationSession(existing)) {
+        Toast.error('Vous ne pouvez pas modifier cette session.');
+        return false;
+      }
+
       await db.collection('sessions_evangelisation').doc(id).update({
         ...data,
         updated_at: firebase.firestore.FieldValue.serverTimestamp()
@@ -286,12 +322,43 @@ const SessionsEvangelisation = {
     }
   },
 
+  // Supprimer une session (droits : créateur ou admin / superviseur / adjoint superviseur)
+  async delete(id) {
+    try {
+      if (!Permissions.canManageEvangelisation()) {
+        Toast.error('Permission refusée');
+        return false;
+      }
+      const session = this.getByIdFromCache(id);
+      if (!session) {
+        Toast.error('Session non trouvée');
+        return false;
+      }
+      if (!Permissions.canDeleteEvangelisationSession(session)) {
+        Toast.error('Vous ne pouvez pas supprimer cette session.');
+        return false;
+      }
+      await db.collection('sessions_evangelisation').doc(id).delete();
+      EvangelisationData.sessions = EvangelisationData.sessions.filter(s => s.id !== id);
+      Toast.success('Session supprimée');
+      return true;
+    } catch (error) {
+      console.error('Erreur suppression session:', error);
+      Toast.error('Erreur lors de la suppression');
+      return false;
+    }
+  },
+
   // Ajouter un contact à une session
   async addContact(sessionId, contactData) {
     try {
-      const session = this.getById(sessionId);
+      const session = this.getByIdFromCache(sessionId);
       if (!session) {
         Toast.error('Session non trouvée');
+        return false;
+      }
+      if (!Permissions.canEditEvangelisationSession(session)) {
+        Toast.error('Vous ne pouvez pas modifier cette session.');
         return false;
       }
       
@@ -335,9 +402,13 @@ const SessionsEvangelisation = {
   // Modifier un contact
   async updateContact(sessionId, contactId, contactData) {
     try {
-      const session = this.getById(sessionId);
+      const session = this.getByIdFromCache(sessionId);
       if (!session) {
         Toast.error('Session non trouvée');
+        return false;
+      }
+      if (!Permissions.canEditEvangelisationSession(session)) {
+        Toast.error('Vous ne pouvez pas modifier cette session.');
         return false;
       }
       
@@ -384,8 +455,12 @@ const SessionsEvangelisation = {
   // Supprimer un contact
   async deleteContact(sessionId, contactId) {
     try {
-      const session = this.getById(sessionId);
+      const session = this.getByIdFromCache(sessionId);
       if (!session) return false;
+      if (!Permissions.canEditEvangelisationSession(session)) {
+        Toast.error('Vous ne pouvez pas modifier cette session.');
+        return false;
+      }
       
       const contacts = (session.contacts || []).filter(c => c.id !== contactId);
       
@@ -414,8 +489,12 @@ const SessionsEvangelisation = {
   // Convertir un contact en nouvelle âme
   async convertContactToNouvelleAme(sessionId, contactId) {
     try {
-      const session = this.getById(sessionId);
+      const session = this.getByIdFromCache(sessionId);
       if (!session) return false;
+      if (!Permissions.canEditEvangelisationSession(session)) {
+        Toast.error('Vous ne pouvez pas modifier cette session.');
+        return false;
+      }
       
       const contact = session.contacts?.find(c => c.id === contactId);
       if (!contact) return false;
@@ -478,7 +557,7 @@ const SessionsEvangelisation = {
 
   // Obtenir les statistiques
   getStats() {
-    const sessions = EvangelisationData.sessions;
+    const sessions = this.getVisibleSessions();
     const thisMonth = new Date();
     thisMonth.setDate(1);
     thisMonth.setHours(0, 0, 0, 0);
@@ -499,7 +578,7 @@ const SessionsEvangelisation = {
 
   // Statistiques détaillées pour évangélisation
   getDetailedStats() {
-    const sessions = EvangelisationData.sessions;
+    const sessions = this.getVisibleSessions();
     const now = new Date();
     const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
@@ -593,7 +672,7 @@ const SessionsEvangelisation = {
 
   /** Statistiques par mentor/responsable : pour vue globale des rôles supérieurs. */
   getStatsByResponsable() {
-    const sessions = EvangelisationData.sessions;
+    const sessions = this.getVisibleSessions();
     const byResponsable = {};
     sessions.forEach(s => {
       const rid = s.responsable_id || 'inconnu';
@@ -632,10 +711,14 @@ const SessionsEvangelisation = {
   // Ajouter un membre mobilisé à une session
   async addParticipant(sessionId, membreId) {
     try {
-      const session = this.getById(sessionId);
+      const session = this.getByIdFromCache(sessionId);
       const membre = Membres.getById(membreId);
       if (!session || !membre) {
         Toast.error('Données non trouvées');
+        return false;
+      }
+      if (!Permissions.canEditEvangelisationSession(session)) {
+        Toast.error('Vous ne pouvez pas modifier cette session.');
         return false;
       }
       const participants = session.participants || [];
@@ -671,8 +754,12 @@ const SessionsEvangelisation = {
   // Retirer un membre mobilisé
   async removeParticipant(sessionId, membreId) {
     try {
-      const session = this.getById(sessionId);
+      const session = this.getByIdFromCache(sessionId);
       if (!session) return false;
+      if (!Permissions.canEditEvangelisationSession(session)) {
+        Toast.error('Vous ne pouvez pas modifier cette session.');
+        return false;
+      }
       const participants = (session.participants || []).filter(p => p.membre_id !== membreId);
       await db.collection('sessions_evangelisation').doc(sessionId).update({
         participants: participants,
@@ -692,8 +779,12 @@ const SessionsEvangelisation = {
   // Mettre à jour la présence d'un participant
   async updatePresence(sessionId, membreId, statutPresence) {
     try {
-      const session = this.getById(sessionId);
+      const session = this.getByIdFromCache(sessionId);
       if (!session) return false;
+      if (!Permissions.canEditEvangelisationSession(session)) {
+        Toast.error('Vous ne pouvez pas modifier cette session.');
+        return false;
+      }
       const participants = [...(session.participants || [])];
       const idx = participants.findIndex(p => p.membre_id === membreId);
       if (idx === -1) return false;
@@ -912,9 +1003,11 @@ const PagesEvangelisation = {
   renderSessionCard(session) {
     const date = session.date?.toDate ? session.date.toDate() : new Date(session.date);
     const secteur = session.secteur_nom || 'Non défini';
-    
+    const canEdit = Permissions.canEditEvangelisationSession(session);
+
     return `
-      <div class="session-card" onclick="App.navigate('evangelisation-detail', {id: '${session.id}'})">
+      <div class="session-card" style="display: flex; align-items: stretch; gap: 0;">
+        <div class="session-card-main" onclick="App.navigate('evangelisation-detail', {id: '${session.id}'})" style="flex: 1; display: flex; align-items: center; min-width: 0; cursor: pointer;">
         <div class="session-date">
           <div class="session-day">${date.getDate()}</div>
           <div class="session-month">${date.toLocaleString('fr-FR', { month: 'short' })}</div>
@@ -938,6 +1031,12 @@ const PagesEvangelisation = {
             ${SessionsEvangelisation.getStatutLabel(session.statut)}
           </span>
         </div>
+        </div>
+        ${canEdit ? `
+        <div class="session-card-actions" style="display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 8px; border-left: 1px solid var(--border-color); flex-shrink: 0;" onclick="event.stopPropagation();">
+          <button type="button" class="btn btn-sm btn-outline" title="Modifier la session" onclick="PagesEvangelisation.showEditSessionModal('${session.id}')"><i class="fas fa-edit"></i></button>
+          <button type="button" class="btn btn-sm btn-outline" style="color: var(--danger); border-color: rgba(244,67,54,0.35);" title="Supprimer la session" onclick="PagesEvangelisation.confirmDeleteSession('${session.id}')"><i class="fas fa-trash-alt"></i></button>
+        </div>` : ''}
       </div>
     `;
   },
@@ -1005,8 +1104,10 @@ const PagesEvangelisation = {
   renderPlanningSessionRow(session) {
     const date = session.date?.toDate ? session.date.toDate() : new Date(session.date);
     const participants = session.participants || [];
+    const canEdit = Permissions.canEditEvangelisationSession(session);
     return `
-      <div class="planning-session-row" onclick="App.navigate('evangelisation-detail', {id: '${session.id}'})" style="cursor: pointer;">
+      <div class="planning-session-row" style="cursor: default;">
+        <div style="display: flex; flex: 1; align-items: center; gap: var(--spacing-md); flex-wrap: wrap; min-width: 0; cursor: pointer;" onclick="App.navigate('evangelisation-detail', {id: '${session.id}'})">
         <div class="planning-date">
           <div class="planning-day">${date.getDate()}</div>
           <div class="planning-month">${date.toLocaleString('fr-FR', { month: 'short' })}</div>
@@ -1028,6 +1129,12 @@ const PagesEvangelisation = {
         <span class="badge" style="background: ${SessionsEvangelisation.getStatutColor(session.statut)}20; color: ${SessionsEvangelisation.getStatutColor(session.statut)};">
           ${SessionsEvangelisation.getStatutLabel(session.statut)}
         </span>
+        </div>
+        ${canEdit ? `
+        <div style="display: flex; gap: 4px; flex-shrink: 0;" onclick="event.stopPropagation();">
+          <button type="button" class="btn btn-sm btn-outline" title="Modifier" onclick="PagesEvangelisation.showEditSessionModal('${session.id}')"><i class="fas fa-edit"></i></button>
+          <button type="button" class="btn btn-sm btn-outline" style="color: var(--danger);" title="Supprimer" onclick="PagesEvangelisation.confirmDeleteSession('${session.id}')"><i class="fas fa-trash-alt"></i></button>
+        </div>` : ''}
       </div>
     `;
   },
@@ -1311,7 +1418,8 @@ const PagesEvangelisation = {
     if (!session) {
       return '<div class="alert alert-danger">Session non trouvée</div>';
     }
-    
+    const canEditSession = Permissions.canEditEvangelisationSession(session);
+
     const date = session.date?.toDate ? session.date.toDate() : new Date(session.date);
     const contacts = session.contacts || [];
     
@@ -1334,9 +1442,13 @@ const PagesEvangelisation = {
             <i class="fas ${SessionsEvangelisation.getStatutIcon(session.statut)}"></i>
             ${SessionsEvangelisation.getStatutLabel(session.statut)}
           </span>
+          ${canEditSession ? `
           <button class="btn btn-outline" onclick="PagesEvangelisation.showEditSessionModal('${id}')">
             <i class="fas fa-edit"></i> Modifier
           </button>
+          <button class="btn btn-outline" style="color: var(--danger); border-color: rgba(244,67,54,0.35);" onclick="PagesEvangelisation.confirmDeleteSession('${id}')">
+            <i class="fas fa-trash-alt"></i> Supprimer
+          </button>` : ''}
           <button class="btn btn-secondary" onclick="App.navigate('evangelisation')">
             <i class="fas fa-arrow-left"></i> Retour
           </button>
@@ -1347,23 +1459,25 @@ const PagesEvangelisation = {
         <div class="card">
           <div class="card-header">
             <h3 class="card-title"><i class="fas fa-user-friends"></i> Membres mobilisés (${(session.participants || []).length})</h3>
+            ${canEditSession ? `
             <button class="btn btn-sm btn-primary" onclick="PagesEvangelisation.showAddParticipantModal('${id}')">
               <i class="fas fa-plus"></i> Mobiliser
-            </button>
+            </button>` : ''}
           </div>
           <div class="card-body" style="padding: 0;">
-            ${this.renderParticipantsSection(session)}
+            ${this.renderParticipantsSection(session, canEditSession)}
           </div>
         </div>
         <div class="card">
           <div class="card-header">
             <h3 class="card-title"><i class="fas fa-users"></i> Contacts (${contacts.length})</h3>
+            ${canEditSession ? `
             <button class="btn btn-sm btn-primary" onclick="PagesEvangelisation.showAddContactModal('${id}')">
               <i class="fas fa-plus"></i> Ajouter
-            </button>
+            </button>` : ''}
           </div>
           <div class="card-body" style="padding: 0;">
-            ${contacts.length > 0 ? contacts.map(c => this.renderContactItem(c, id, session.statut)).join('') : `
+            ${contacts.length > 0 ? contacts.map(c => this.renderContactItem(c, id, session.statut, canEditSession)).join('') : `
             <div class="empty-state" style="padding: var(--spacing-lg);">
               <i class="fas fa-user-plus"></i>
               <h4>Aucun contact</h4>
@@ -1393,12 +1507,12 @@ const PagesEvangelisation = {
                 <p class="mb-0">${Utils.escapeHtml(session.bilan)}</p>
               </div>
             </div>
-            ` : session.statut === 'planifiee' || session.statut === 'en_cours' ? `
+            ` : session.statut === 'planifiee' || session.statut === 'en_cours' ? (canEditSession ? `
             <button class="btn btn-success" onclick="PagesEvangelisation.showBilanModal('${id}')">
               <i class="fas fa-flag-checkered"></i> Terminer la session
             </button>
-            ` : ''}
-            ${session.statut === 'terminee' && Permissions.canManageEvangelisation() ? `
+            ` : '<p class="text-muted mb-0">Seul le créateur ou un responsable peut terminer cette session.</p>') : ''}
+            ${session.statut === 'terminee' && canEditSession ? `
             <button type="button" class="btn btn-outline" onclick="PagesEvangelisation.showEditNotesBilanModal('${id}')" style="margin-top: var(--spacing-md);">
               <i class="fas fa-edit"></i> Modifier notes et bilan
             </button>
@@ -1497,25 +1611,26 @@ const PagesEvangelisation = {
   },
 
   // Rendu de la section membres mobilisés
-  renderParticipantsSection(session) {
+  renderParticipantsSection(session, canEditSession) {
     const participants = session.participants || [];
     const id = session.id;
-    
+    const canEdit = !!canEditSession;
+
     if (participants.length === 0) {
       return `
         <div class="empty-state" style="padding: var(--spacing-lg);">
           <i class="fas fa-user-friends"></i>
           <h4>Aucun membre mobilisé</h4>
-          <p>Mobilisez des membres de la famille pour cette session.</p>
+          <p>${canEdit ? 'Mobilisez des membres de la famille pour cette session.' : 'Aucun membre n’a été mobilisé pour cette session.'}</p>
         </div>
       `;
     }
-    
-    return participants.map(p => this.renderParticipantItem(p, id)).join('');
+
+    return participants.map(p => this.renderParticipantItem(p, id, canEdit)).join('');
   },
 
   // Rendu d'un participant mobilisé
-  renderParticipantItem(participant, sessionId) {
+  renderParticipantItem(participant, sessionId, canEdit) {
     const statut = participant.statut_presence || 'planifie';
     return `
       <div class="participant-item" style="display: flex; align-items: center; gap: var(--spacing-md); padding: var(--spacing-md); border-bottom: 1px solid var(--border-color);">
@@ -1528,6 +1643,7 @@ const PagesEvangelisation = {
             <i class="fas ${SessionsEvangelisation.getPresenceIcon(statut)}"></i> ${SessionsEvangelisation.getPresenceLabel(statut)}
           </span>
         </div>
+        ${canEdit ? `
         <div class="participant-actions" style="display: flex; gap: 4px; align-items: center;">
           <select class="form-control form-control-sm" style="width: auto; padding: 4px 8px; min-width: 100px;" 
                   onchange="PagesEvangelisation.updatePresenceParticipant('${sessionId}', '${participant.membre_id}', this.value)">
@@ -1538,15 +1654,19 @@ const PagesEvangelisation = {
           <button class="btn btn-sm btn-danger" onclick="PagesEvangelisation.removeParticipant('${sessionId}', '${participant.membre_id}')" title="Retirer">
             <i class="fas fa-times"></i>
           </button>
-        </div>
+        </div>` : ''}
       </div>
     `;
   },
 
   // Afficher la modal pour mobiliser un membre
   showAddParticipantModal(sessionId) {
-    const membresActifs = AppState.membres.filter(m => m.statut_compte === 'actif');
     const session = SessionsEvangelisation.getById(sessionId);
+    if (!session || !Permissions.canEditEvangelisationSession(session)) {
+      Toast.error('Vous ne pouvez pas modifier cette session.');
+      return;
+    }
+    const membresActifs = AppState.membres.filter(m => m.statut_compte === 'actif');
     const inscrits = (session.participants || []).map(p => p.membre_id);
     const disponibles = membresActifs.filter(m => !inscrits.includes(m.id));
     
@@ -1615,7 +1735,8 @@ const PagesEvangelisation = {
   },
 
   // Rendu d'un contact
-  renderContactItem(contact, sessionId, sessionStatut) {
+  renderContactItem(contact, sessionId, sessionStatut, canEditSession) {
+    const canEdit = !!canEditSession;
     return `
       <div class="contact-item">
         <div class="contact-avatar">
@@ -1627,6 +1748,7 @@ const PagesEvangelisation = {
           <div class="contact-email" style="font-size: 0.8rem; color: var(--text-muted);"><i class="fas fa-envelope"></i> ${Utils.escapeHtml(contact.email || '-')}</div>
           ${contact.lieu ? `<div class="contact-lieu" style="font-size: 0.8rem; color: var(--text-muted);"><i class="fas fa-map-marker-alt"></i> ${Utils.escapeHtml(contact.lieu)}</div>` : ''}
         </div>
+        ${canEdit ? `
         <div class="contact-actions" style="display: flex; gap: 4px;">
           <button class="btn btn-sm btn-outline" onclick="PagesEvangelisation.showEditContactModal('${sessionId}', '${contact.id}')" title="Modifier">
             <i class="fas fa-edit"></i>
@@ -1637,13 +1759,18 @@ const PagesEvangelisation = {
           <button class="btn btn-sm btn-danger" onclick="PagesEvangelisation.deleteContact('${sessionId}', '${contact.id}')" title="Supprimer">
             <i class="fas fa-trash"></i>
           </button>
-        </div>
+        </div>` : ''}
       </div>
     `;
   },
 
   // Afficher la modal d'ajout de contact
   showAddContactModal(sessionId) {
+    const session = SessionsEvangelisation.getById(sessionId);
+    if (!session || !Permissions.canEditEvangelisationSession(session)) {
+      Toast.error('Vous ne pouvez pas modifier cette session.');
+      return;
+    }
     const modalId = 'add-contact-modal';
     const modalHtml = `
       <div class="modal-overlay active" id="${modalId}">
@@ -1719,6 +1846,11 @@ const PagesEvangelisation = {
 
   // Afficher la modal de bilan
   showBilanModal(sessionId) {
+    const session = SessionsEvangelisation.getById(sessionId);
+    if (!session || !Permissions.canEditEvangelisationSession(session)) {
+      Toast.error('Vous ne pouvez pas modifier cette session.');
+      return;
+    }
     const modalId = 'bilan-modal';
     const modalHtml = `
       <div class="modal-overlay active" id="${modalId}">
@@ -1762,6 +1894,10 @@ const PagesEvangelisation = {
   showEditNotesBilanModal(sessionId) {
     const session = SessionsEvangelisation.getById(sessionId);
     if (!session) return;
+    if (!Permissions.canEditEvangelisationSession(session)) {
+      Toast.error('Vous ne pouvez pas modifier cette session.');
+      return;
+    }
     const modalId = 'edit-notes-bilan-modal';
     const modalHtml = `
       <div class="modal-overlay active" id="${modalId}">
@@ -1809,7 +1945,11 @@ const PagesEvangelisation = {
   showEditContactModal(sessionId, contactId) {
     const session = SessionsEvangelisation.getById(sessionId);
     if (!session) return;
-    
+    if (!Permissions.canEditEvangelisationSession(session)) {
+      Toast.error('Vous ne pouvez pas modifier cette session.');
+      return;
+    }
+
     const contact = session.contacts?.find(c => c.id === contactId);
     if (!contact) return;
     
@@ -1899,6 +2039,10 @@ const PagesEvangelisation = {
   showEditSessionModal(sessionId) {
     const session = SessionsEvangelisation.getById(sessionId);
     if (!session) return;
+    if (!Permissions.canEditEvangelisationSession(session)) {
+      Toast.error('Vous ne pouvez pas modifier cette session.');
+      return;
+    }
     
     const secteurs = Secteurs.getAll();
     const date = session.date?.toDate ? session.date.toDate() : new Date(session.date);
@@ -1960,6 +2104,23 @@ const PagesEvangelisation = {
       </div>
     `;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
+  },
+
+  confirmDeleteSession(sessionId) {
+    const session = SessionsEvangelisation.getById(sessionId);
+    if (!session) return;
+    if (!Permissions.canDeleteEvangelisationSession(session)) {
+      Toast.error('Vous ne pouvez pas supprimer cette session.');
+      return;
+    }
+    Modal.confirm(
+      'Supprimer la session',
+      'Supprimer définitivement cette session d\'évangélisation ? Les contacts et la mobilisation seront perdus.',
+      async () => {
+        const ok = await SessionsEvangelisation.delete(sessionId);
+        if (ok) App.navigate('evangelisation');
+      }
+    );
   },
 
   // Mettre à jour le nom du secteur caché (modal édition)

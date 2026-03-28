@@ -442,8 +442,8 @@ const PagesPresences = {
   },
 
   renderSummary() {
-    const counts = { present: 0, absent: 0, excuse: 0, autre_campus: 0, non_renseigne: 0 };
-    const countsNA = { present: 0, absent: 0, excuse: 0, non_renseigne: 0, autre_campus: 0, pas_revenir: 0, injoignable: 0 };
+    const counts = { present: 0, absent: 0, excuse: 0, autre_campus: 0, en_ligne: 0, non_renseigne: 0 };
+    const countsNA = { present: 0, absent: 0, excuse: 0, non_renseigne: 0, autre_campus: 0, en_ligne: 0, pas_revenir: 0, injoignable: 0 };
 
     this.presencesData.forEach(p => { counts[p.statut] = (counts[p.statut] || 0) + 1; });
     this.presencesNAData.forEach(p => { countsNA[p.statut] = (countsNA[p.statut] || 0) + 1; });
@@ -470,6 +470,10 @@ const PagesPresences = {
         <div class="summary-value">${counts.autre_campus || 0}</div>
         <div class="summary-label">Autre campus</div>
       </div>
+      <div class="summary-item" style="color: #673AB7;">
+        <div class="summary-value">${counts.en_ligne || 0}</div>
+        <div class="summary-label">En ligne</div>
+      </div>
       <div class="summary-item" style="color: var(--primary);">
         <div class="summary-value">${taux}%</div>
         <div class="summary-label">Taux membres</div>
@@ -483,10 +487,10 @@ const PagesPresences = {
         <div class="summary-value">${tauxNA}%</div>
         <div class="summary-label">Taux NA/NC</div>
       </div>
-      ${(countsNA.autre_campus || 0) + (countsNA.pas_revenir || 0) + (countsNA.injoignable || 0) > 0 ? `
+      ${(countsNA.autre_campus || 0) + (countsNA.en_ligne || 0) + (countsNA.pas_revenir || 0) + (countsNA.injoignable || 0) > 0 ? `
       <div class="summary-item" style="color: #607D8B; font-size: 0.85rem;">
-        <div class="summary-value">${countsNA.autre_campus || 0} / ${countsNA.pas_revenir || 0} / ${countsNA.injoignable || 0}</div>
-        <div class="summary-label">Autre campus / Pas retour / Injoignable</div>
+        <div class="summary-value">${countsNA.autre_campus || 0} / ${countsNA.en_ligne || 0} / ${countsNA.pas_revenir || 0} / ${countsNA.injoignable || 0}</div>
+        <div class="summary-label">Autre campus / En ligne / Pas retour / Injoignable</div>
       </div>
       ` : ''}
       ` : ''}

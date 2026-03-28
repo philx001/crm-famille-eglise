@@ -767,6 +767,36 @@ const Permissions = {
     return this.hasRole('mentor');
   },
 
+  /**
+   * Voit toutes les sessions d'évangélisation de la famille (liste, stats, calendrier).
+   * Un mentor classique ne doit pas passer par ici (sinon il verrait toutes les sessions).
+   * NB : n'utilise pas hasRole('berger') ici — les rôles berger/adjoint_berger ne sont pas dans
+   * Utils.getRoleLevel(), ce qui faisait hasRole('berger') vrai pour tout le monde.
+   */
+  canViewAllEvangelisationSessions() {
+    if (!AppState.user) return false;
+    const r = AppState.user.role;
+    if (this.isAdmin() || r === 'superviseur' || r === 'adjoint_superviseur') return true;
+    if (r === 'berger' || r === 'adjoint_berger') return true;
+    return false;
+  },
+
+  /**
+   * Peut modifier une session d'évangélisation : créateur de la session, ou admin, adjoint superviseur, superviseur.
+   * Anciennes sessions sans created_by : le responsable_id est utilisé comme créateur probable.
+   */
+  canEditEvangelisationSession(session) {
+    if (!AppState.user || !session) return false;
+    if (this.isAdmin() || this.hasRole('superviseur') || this.hasRole('adjoint_superviseur')) return true;
+    const creatorId = session.created_by || session.responsable_id;
+    return creatorId === AppState.user.id;
+  },
+
+  /** Suppression de session : mêmes droits que l'édition. */
+  canDeleteEvangelisationSession(session) {
+    return this.canEditEvangelisationSession(session);
+  },
+
   canEditMember(membreId) {
     if (!AppState.user) return false;
     if (membreId === AppState.user.id) return true;

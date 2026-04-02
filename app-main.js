@@ -1202,6 +1202,11 @@ const App = {
   },
 
   viewMembre(id) {
+    const m = Membres.getById(id);
+    if (!m || !Permissions.canViewMembreFiche(m)) {
+      Toast.error('Vous ne pouvez pas consulter la fiche de ce membre.');
+      return;
+    }
     document.querySelector('.page-content').innerHTML = Pages.renderProfil(id);
   },
 
@@ -1290,7 +1295,13 @@ const App = {
     }
   },
 
-  editMembre(id) { document.querySelector('.page-content').innerHTML = Pages.renderProfilEdit(id); },
+  editMembre(id) {
+    if (!Permissions.canEditMember(id)) {
+      Toast.error('Vous n\'avez pas la permission de modifier ce profil.');
+      return;
+    }
+    document.querySelector('.page-content').innerHTML = Pages.renderProfilEdit(id);
+  },
   viewProgramme(id) { this.navigate('programme-detail', { programmeId: id }); },
   editProgramme(id) { this.navigate('programmes-edit', { programmeId: id }); },
   async deleteProgramme(id) {

@@ -115,15 +115,35 @@ service cloud.firestore {
       );
     }
 
-    // PLANNING CONDUCTEURS PRIÈRE (adjoint_superviseur, superviseur, admin : écriture ; autres : lecture)
+    // PLANNING CONDUCTEURS PRIÈRE (pilotage : tout ; mentor : uniquement ses créneaux created_by)
     match /planning_conducteurs_priere/{slotId} {
-      allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
+      allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id) && (
+        hasRole('adjoint_superviseur') || hasRole('superviseur') || isAdmin() ||
+        getUserData().role != 'mentor' ||
+        resource.data.created_by == request.auth.uid
+      );
       allow create: if isAuthenticated() &&
         belongsToFamily(request.resource.data.famille_id) &&
-        (hasRole('adjoint_superviseur') || hasRole('superviseur') || isAdmin());
-      allow update, delete: if isAuthenticated() &&
+        (
+          hasRole('adjoint_superviseur') || hasRole('superviseur') || isAdmin() ||
+          (getUserData().role == 'mentor' && request.resource.data.created_by == request.auth.uid)
+        );
+      allow update: if isAuthenticated() &&
         belongsToFamily(resource.data.famille_id) &&
-        (hasRole('adjoint_superviseur') || hasRole('superviseur') || isAdmin());
+        (
+          hasRole('adjoint_superviseur') || hasRole('superviseur') || isAdmin() ||
+          (
+            getUserData().role == 'mentor' &&
+            resource.data.created_by == request.auth.uid &&
+            request.resource.data.created_by == resource.data.created_by
+          )
+        );
+      allow delete: if isAuthenticated() &&
+        belongsToFamily(resource.data.famille_id) &&
+        (
+          hasRole('adjoint_superviseur') || hasRole('superviseur') || isAdmin() ||
+          (getUserData().role == 'mentor' && resource.data.created_by == request.auth.uid)
+        );
     }
 
     // NOTIFICATIONS

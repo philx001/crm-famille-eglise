@@ -39,7 +39,7 @@ const SujetsPriere = {
     ];
   },
 
-  /** Sujets liés à un créneau (slot_id) : lecture seule pour tous, gestion par canManagePlanningConducteurs */
+  /** Sujets liés à un créneau (slot_id) : gestion si droit sur le créneau (pilotage ou mentor créateur). */
   getBySlotId(slotId) {
     return this.items.filter(s => s.slot_id === slotId);
   },
@@ -83,7 +83,7 @@ const SujetsPriere = {
     try {
       const sujet = this.items.find(s => s.id === id);
       if (!sujet) throw new Error('Sujet non trouvé');
-      const canManageSlot = sujet.slot_id && Permissions.canManagePlanningConducteurs();
+      const canManageSlot = priereCanManageSujetSlot(sujet);
       if (!canManageSlot && sujet.auteur_id !== AppState.user.id && !Permissions.isAdmin()) {
         throw new Error('Permission refusée');
       }
@@ -129,7 +129,7 @@ const SujetsPriere = {
     try {
       const sujet = this.items.find(s => s.id === id);
       if (!sujet) throw new Error('Sujet non trouvé');
-      const canManageSlot = sujet.slot_id && Permissions.canManagePlanningConducteurs();
+      const canManageSlot = priereCanManageSujetSlot(sujet);
       if (!canManageSlot && sujet.auteur_id !== AppState.user.id && !Permissions.isAdmin()) {
         throw new Error('Permission refusée');
       }
@@ -319,10 +319,24 @@ const PlanningConducteurs = {
       const familleId = AppState.famille?.id;
       if (!familleId) return [];
 
-      const snapshot = await db.collection('planning_conducteurs_priere')
-        .where('famille_id', '==', familleId)
-        .orderBy('date', 'asc')
-        .get();
+      let snapshot;
+      if (Permissions.canManageAllPlanningConducteurs()) {
+        snapshot = await db.collection('planning_conducteurs_priere')
+          .where('famille_id', '==', familleId)
+          .orderBy('date', 'asc')
+          .get();
+      } else if (Permissions.canManageOwnPlanningConducteurs()) {
+        snapshot = await db.collection('planning_conducteurs_priere')
+          .where('famille_id', '==', familleId)
+          .where('created_by', '==', AppState.user.id)
+          .orderBy('date', 'asc')
+          .get();
+      } else {
+        snapshot = await db.collection('planning_conducteurs_priere')
+          .where('famille_id', '==', familleId)
+          .orderBy('date', 'asc')
+          .get();
+      }
 
       this.items = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -366,6 +380,7 @@ const PlanningConducteurs = {
 
       const slot = {
         famille_id: AppState.famille.id,
+        created_by: AppState.user.id,
         date: data.date,
         heure_debut: data.heure_debut || '00:00',
         heure_fin: data.heure_fin || null,
@@ -398,6 +413,8 @@ const PlanningConducteurs = {
   async update(id, data) {
     try {
       if (!Permissions.canManagePlanningConducteurs()) throw new Error('Permission refusée');
+      const existing = this.items.find(s => s.id === id);
+      if (!existing || !Permissions.canEditPlanningConducteurSlot(existing)) throw new Error('Permission refusée');
 
       const updates = {
         ...data,
@@ -420,6 +437,8 @@ const PlanningConducteurs = {
   async delete(id) {
     try {
       if (!Permissions.canManagePlanningConducteurs()) throw new Error('Permission refusée');
+      const existing = this.items.find(s => s.id === id);
+      if (!existing || !Permissions.canEditPlanningConducteurSlot(existing)) throw new Error('Permission refusée');
 
       await db.collection('planning_conducteurs_priere').doc(id).delete();
       this.items = this.items.filter(s => s.id !== id);
@@ -434,6 +453,19 @@ const PlanningConducteurs = {
   }
 };
 
+/** Créneau planning lié à un sujet « programme » (après chargement de PlanningConducteurs). */
+function priereSlotPourSujet(sujet) {
+  if (!sujet || !sujet.slot_id) return null;
+  return PlanningConducteurs.items.find(s => s.id === sujet.slot_id);
+}
+
+/** Gestion des sujets rattachés à un créneau : selon le créateur du créneau (mentor = ses créneaux uniquement). */
+function priereCanManageSujetSlot(sujet) {
+  if (!sujet || !sujet.slot_id || !SujetsPriere.isSujetProgramme(sujet)) return false;
+  const slot = priereSlotPourSujet(sujet);
+  return !!(slot && Permissions.canEditPlanningConducteurSlot(slot));
+}
+
 // ============================================
 // PAGES SUJETS DE PRIÈRE
 // ============================================
@@ -447,6 +479,47 @@ const PagesPriere = {
   planningYear: new Date().getFullYear(),
   planningMonth: new Date().getMonth(),
   planningWeekStart: null, // Date du lundi pour la vue liste
+
+  getMembresPourConducteursPriere() {
+    const all = (AppState.membres || []).filter(m => m.statut_compte !== 'inactif');
+    if (Permissions.canManageAllPlanningConducteurs()) return all;
+    return all.filter(m => m.id === AppState.user.id || m.mentor_id === AppState.user.id);
+  },
+
+  buildConducteurOptionsHtml() {
+    return this.getMembresPourConducteursPriere().map(m => `
+      <option value="${m.id}" data-search="${Utils.escapeHtml(((m.prenom || '') + ' ' + (m.nom || '') + ' ' + (m.email || '')).toLowerCase())}">
+        ${Utils.escapeHtml((m.prenom || '') + ' ' + (m.nom || ''))} ${m.email ? `(${Utils.escapeHtml(m.email)})` : ''}
+      </option>
+    `).join('');
+  },
+
+  getProgrammesPrierePourConducteurDropdown() {
+    const all = typeof Programmes !== 'undefined' ? (AppState.programmes || []).filter(p => Programmes.getTypesPriere && Programmes.getTypesPriere().some(t => t.value === p.type)) : [];
+    if (Permissions.canManageAllPlanningConducteurs()) return all;
+    return all.filter(p => p.created_by === AppState.user.id);
+  },
+
+  buildProgrammesPriereOptionsHtml() {
+    return this.getProgrammesPrierePourConducteurDropdown().map(p => {
+      const d = p.date_debut?.toDate ? p.date_debut.toDate() : new Date(p.date_debut);
+      return `<option value="${p.id}">${Utils.escapeHtml(p.nom || '')} — ${Utils.formatDate(d, 'short')}</option>`;
+    }).join('');
+  },
+
+  refreshConducteurAndProgrammeSelects() {
+    const c1 = document.getElementById('slot-conducteur1');
+    const c2 = document.getElementById('slot-conducteur2');
+    const opts = '<option value="">Conducteur à Désigner</option>' + this.buildConducteurOptionsHtml();
+    if (c1) c1.innerHTML = opts;
+    if (c2) c2.innerHTML = opts;
+    const prog = document.getElementById('slot-programme');
+    if (prog) {
+      const cur = prog.value;
+      prog.innerHTML = '<option value="">— Aucun —</option>' + this.buildProgrammesPriereOptionsHtml();
+      if (cur && [...prog.options].some(o => o.value === cur)) prog.value = cur;
+    }
+  },
 
   async render() {
     await SujetsPriere.loadAll();
@@ -665,10 +738,7 @@ const PagesPriere = {
                 <label class="form-label">Lier à un programme (optionnel)</label>
                 <select class="form-control" id="slot-programme">
                   <option value="">— Aucun —</option>
-                  ${(typeof Programmes !== 'undefined' ? (AppState.programmes || []).filter(p => Programmes.getTypesPriere && Programmes.getTypesPriere().some(t => t.value === p.type)) : []).map(p => {
-                    const d = p.date_debut?.toDate ? p.date_debut.toDate() : new Date(p.date_debut);
-                    return `<option value="${p.id}">${Utils.escapeHtml(p.nom || '')} — ${Utils.formatDate(d, 'short')}</option>`;
-                  }).join('')}
+                  ${this.buildProgrammesPriereOptionsHtml()}
                 </select>
               </div>
               <div class="form-group">
@@ -676,11 +746,7 @@ const PagesPriere = {
                 <input type="text" class="form-control" placeholder="Rechercher un membre..." id="slot-search1" oninput="PagesPriere.filterConducteurOptions(this, 'conducteur1')" autocomplete="off">
                 <select class="form-control mt-1" id="slot-conducteur1" style="max-height: 120px;">
                   <option value="">Conducteur à Désigner</option>
-                  ${(AppState.membres || []).filter(m => m.statut_compte !== 'inactif').map(m => `
-                    <option value="${m.id}" data-search="${Utils.escapeHtml(((m.prenom || '') + ' ' + (m.nom || '') + ' ' + (m.email || '')).toLowerCase())}">
-                      ${Utils.escapeHtml((m.prenom || '') + ' ' + (m.nom || ''))} ${m.email ? `(${Utils.escapeHtml(m.email)})` : ''}
-                    </option>
-                  `).join('')}
+                  ${this.buildConducteurOptionsHtml()}
                 </select>
               </div>
               <div class="form-group">
@@ -688,11 +754,7 @@ const PagesPriere = {
                 <input type="text" class="form-control" placeholder="Rechercher un membre..." id="slot-search2" oninput="PagesPriere.filterConducteurOptions(this, 'conducteur2')" autocomplete="off">
                 <select class="form-control mt-1" id="slot-conducteur2" style="max-height: 120px;">
                   <option value="">Conducteur à Désigner</option>
-                  ${(AppState.membres || []).filter(m => m.statut_compte !== 'inactif').map(m => `
-                    <option value="${m.id}" data-search="${Utils.escapeHtml(((m.prenom || '') + ' ' + (m.nom || '') + ' ' + (m.email || '')).toLowerCase())}">
-                      ${Utils.escapeHtml((m.prenom || '') + ' ' + (m.nom || ''))} ${m.email ? `(${Utils.escapeHtml(m.email)})` : ''}
-                    </option>
-                  `).join('')}
+                  ${this.buildConducteurOptionsHtml()}
                 </select>
               </div>
             </div>
@@ -931,7 +993,7 @@ const PagesPriere = {
     const catValue = sujet.sujet_categorie || 'autre';
     const catLabel = SujetsPriere.getCategoriesSujet().find(c => c.value === catValue)?.label || 'Autre';
     const isProgramme = SujetsPriere.isSujetProgramme(sujet);
-    const canManageSlot = isProgramme && Permissions.canManagePlanningConducteurs();
+    const canManageSlot = priereCanManageSujetSlot(sujet);
     const canDelete = canManageSlot || (!isProgramme && (sujet.auteur_id === AppState.user?.id || Permissions.isAdmin()));
     const slotBadge = isProgramme ? (() => {
       const slot = PlanningConducteurs.items.find(s => s.id === sujet.slot_id);
@@ -972,7 +1034,7 @@ const PagesPriere = {
     if (!sujet) return;
     const date = sujet.created_at?.toDate ? sujet.created_at.toDate() : new Date(sujet.created_at);
     const isProgramme = SujetsPriere.isSujetProgramme(sujet);
-    const canManageSlot = isProgramme && Permissions.canManagePlanningConducteurs();
+    const canManageSlot = priereCanManageSujetSlot(sujet);
     const canEdit = canManageSlot || (!isProgramme && (sujet.auteur_id === AppState.user.id || Permissions.isAdmin()));
     const canDelete = canEdit;
     const canMarkExauce = sujet.auteur_id === AppState.user.id || Permissions.isAdmin();
@@ -1039,7 +1101,7 @@ const PagesPriere = {
   renderSujetCard(sujet) {
     const date = sujet.created_at?.toDate ? sujet.created_at.toDate() : new Date(sujet.created_at);
     const isProgramme = SujetsPriere.isSujetProgramme(sujet);
-    const canManageSlot = isProgramme && Permissions.canManagePlanningConducteurs();
+    const canManageSlot = priereCanManageSujetSlot(sujet);
     const canDelete = canManageSlot || (!isProgramme && (sujet.auteur_id === AppState.user.id || Permissions.isAdmin()));
     const canEdit = canManageSlot || (!isProgramme && (sujet.auteur_id === AppState.user.id || Permissions.isAdmin()));
     const canMarkExauce = sujet.auteur_id === AppState.user.id || Permissions.isAdmin();
@@ -1126,7 +1188,7 @@ const PagesPriere = {
   },
 
   renderPlanningSection() {
-    const canManage = Permissions.canManagePlanningConducteurs();
+    const canManagePlanning = Permissions.canManagePlanningConducteurs();
     const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
     const year = this.planningYear;
     const month = this.planningMonth;
@@ -1170,23 +1232,24 @@ const PagesPriere = {
             const isToday = today.getDate() === dayCount && today.getMonth() === month && today.getFullYear() === year;
             const daySlots = slotsByDay[dayCount] || [];
             weekHtml += `
-              <td class="calendar-day ${isToday ? 'today' : ''}" data-date="${dateStr}" ${canManage ? `onclick="PagesPriere.openSlotModal('${dateStr}')" style="cursor: pointer;"` : ''}>
+              <td class="calendar-day ${isToday ? 'today' : ''}" data-date="${dateStr}" ${canManagePlanning ? `onclick="PagesPriere.openSlotModal('${dateStr}')" style="cursor: pointer;"` : ''}>
                 <div class="day-number">${dayCount}</div>
                 <div class="day-events planning-slots">
                   ${daySlots.map(slot => {
+                    const canEditSlot = Permissions.canEditPlanningConducteurSlot(slot);
                     const titre = (slot.titre || '').trim();
                     const c1 = PlanningConducteurs.getConducteurLabel(slot, 1);
                     const c2 = PlanningConducteurs.getConducteurLabel(slot, 2);
                     const conducteurs = `${c1}${slot.conducteur2_id || slot.conducteur2_nom ? ' / ' + c2 : ''}`;
                     return `
-                    <div class="planning-slot-badge" ${canManage ? `onclick="event.stopPropagation(); PagesPriere.editSlot('${slot.id}')"` : ''}>
+                    <div class="planning-slot-badge" ${canEditSlot ? `onclick="event.stopPropagation(); PagesPriere.editSlot('${slot.id}')"` : ''}>
                       ${titre ? `<span class="slot-titre">${Utils.escapeHtml(titre)}</span>` : ''}
                       <span class="slot-time">${slot.heure_debut || '—'}</span>
                       <span class="slot-conducteurs">${Utils.escapeHtml(conducteurs)}</span>
                     </div>
                   `;
                   }).join('')}
-                  ${canManage && daySlots.length === 0 ? '<div class="slot-add-hint"><i class="fas fa-plus"></i> Ajouter</div>' : ''}
+                  ${canManagePlanning && daySlots.length === 0 ? '<div class="slot-add-hint"><i class="fas fa-plus"></i> Ajouter</div>' : ''}
                 </div>
               </td>
             `;
@@ -1207,6 +1270,7 @@ const PagesPriere = {
             const sujetCount = SujetsPriere.getBySlotId(slot.id).length;
             const exaucesCount = SujetsPriere.getExaucesCountBySlotId(slot.id);
             const sujetsLabel = sujetCount > 0 ? (exaucesCount > 0 ? ` (${sujetCount}) — ${exaucesCount} exaucé${exaucesCount > 1 ? 's' : ''}` : ` (${sujetCount})`) : '';
+            const canEditSlot = Permissions.canEditPlanningConducteurSlot(slot);
             return `
               <div class="planning-slot-row" style="display: flex; align-items: center; justify-content: space-between; padding: var(--spacing-sm) var(--spacing-md); border-bottom: 1px solid var(--border-color); gap: var(--spacing-md); flex-wrap: wrap;">
                 <div>
@@ -1218,7 +1282,7 @@ const PagesPriere = {
                   <button class="btn btn-sm btn-outline" onclick="PagesPriere.showSlotSujetsModal('${slot.id}')" title="Voir et gérer les sujets de prière">
                     <i class="fas fa-praying-hands"></i> Sujets${sujetsLabel}
                   </button>
-                  ${canManage ? `
+                  ${canEditSlot ? `
                     <button class="btn btn-sm btn-secondary" onclick="PagesPriere.editSlot('${slot.id}')"><i class="fas fa-edit"></i></button>
                     <button class="btn btn-sm btn-danger" onclick="PagesPriere.deleteSlot('${slot.id}')"><i class="fas fa-trash"></i></button>
                   ` : ''}
@@ -1235,7 +1299,7 @@ const PagesPriere = {
               <h3 class="card-title mb-0">${monthNames[month]} ${year}</h3>
               <button class="btn btn-icon btn-secondary" onclick="PagesPriere.planningNextMonth()"><i class="fas fa-chevron-right"></i></button>
             </div>
-            ${canManage ? `<button class="btn btn-primary" onclick="PagesPriere.openSlotModal()"><i class="fas fa-plus"></i> Ajouter un créneau</button>` : ''}
+            ${canManagePlanning ? `<button class="btn btn-primary" onclick="PagesPriere.openSlotModal()"><i class="fas fa-plus"></i> Ajouter un créneau</button>` : ''}
           </div>
           <div class="card-body" style="overflow-x: auto;">
             ${viewTabs}
@@ -1266,6 +1330,7 @@ const PagesPriere = {
     const listHtml = weekSlots.length === 0
       ? '<div class="empty-state"><i class="fas fa-calendar-plus"></i><h3>Aucun créneau cette semaine</h3><p>Cliquez sur un jour du calendrier ou sur "Ajouter un créneau" pour planifier les conducteurs.</p></div>'
       : weekSlots.map(slot => {
+          const canEditSlot = Permissions.canEditPlanningConducteurSlot(slot);
           const c1 = PlanningConducteurs.getConducteurLabel(slot, 1);
           const c2 = PlanningConducteurs.getConducteurLabel(slot, 2);
           const sujetCount = SujetsPriere.getBySlotId(slot.id).length;
@@ -1282,7 +1347,7 @@ const PagesPriere = {
                 <button class="btn btn-sm btn-outline" onclick="PagesPriere.showSlotSujetsModal('${slot.id}')" title="Voir et gérer les sujets de prière">
                   <i class="fas fa-praying-hands"></i> Sujets${sujetsLabel}
                 </button>
-                ${canManage ? `
+                ${canEditSlot ? `
                   <button class="btn btn-sm btn-secondary" onclick="PagesPriere.editSlot('${slot.id}')"><i class="fas fa-edit"></i></button>
                   <button class="btn btn-sm btn-danger" onclick="PagesPriere.deleteSlot('${slot.id}')"><i class="fas fa-trash"></i></button>
                 ` : ''}
@@ -1295,7 +1360,7 @@ const PagesPriere = {
       <div class="card">
         <div class="card-header" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--spacing-md);">
           <h3 class="card-title mb-0"><i class="fas fa-list"></i> Semaine du ${Utils.formatDate(weekStart, 'full')}</h3>
-          ${canManage ? `<button class="btn btn-primary" onclick="PagesPriere.openSlotModal()"><i class="fas fa-plus"></i> Ajouter un créneau</button>` : ''}
+          ${canManagePlanning ? `<button class="btn btn-primary" onclick="PagesPriere.openSlotModal()"><i class="fas fa-plus"></i> Ajouter un créneau</button>` : ''}
         </div>
         <div class="card-body">
           ${viewTabs}
@@ -1365,6 +1430,7 @@ const PagesPriere = {
       if (progEl) progEl.value = '';
       if (document.getElementById('slot-recurrence')) document.getElementById('slot-recurrence').value = '1';
       if (recurEl) recurEl.style.display = '';
+      this.refreshConducteurAndProgrammeSelects();
       PagesPriere.resetConducteurSelects();
       ['slot-search1', 'slot-search2'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
       modal.dataset.slotId = '';
@@ -1375,7 +1441,7 @@ const PagesPriere = {
   async editSlot(slotId) {
     if (!Permissions.canManagePlanningConducteurs()) return;
     const slot = PlanningConducteurs.items.find(s => s.id === slotId);
-    if (!slot) return;
+    if (!slot || !Permissions.canEditPlanningConducteurSlot(slot)) return;
     const modal = document.getElementById('modal-slot-conducteur');
     if (modal) {
       modal.dataset.slotId = slotId;
@@ -1388,10 +1454,11 @@ const PagesPriere = {
       const titreEl = document.getElementById('slot-titre');
       if (titreEl) titreEl.value = slot.titre || '';
       const progEl = document.getElementById('slot-programme');
-      if (progEl) progEl.value = slot.programme_id || '';
       const recurGroup = document.getElementById('slot-recurrence-group');
       if (recurGroup) recurGroup.style.display = 'none';
+      PagesPriere.refreshConducteurAndProgrammeSelects();
       PagesPriere.setConducteurSelects(slot);
+      if (progEl) progEl.value = slot.programme_id || '';
       Modal.show('modal-slot-conducteur');
     }
   },
@@ -1433,6 +1500,25 @@ const PagesPriere = {
     data.conducteur2_prenom = c2?.prenom || null;
     if (!data.date) { Toast.error('Veuillez sélectionner une date'); return; }
     if (!data.titre) { Toast.error('Veuillez renseigner le titre ou lieu du créneau'); return; }
+    if (slotId) {
+      const existingSlot = PlanningConducteurs.items.find(s => s.id === slotId);
+      if (!existingSlot || !Permissions.canEditPlanningConducteurSlot(existingSlot)) {
+        Toast.error('Vous ne pouvez pas modifier ce créneau.');
+        return;
+      }
+    }
+    if (Permissions.canManageOwnPlanningConducteurs() && !Permissions.canManageAllPlanningConducteurs()) {
+      for (const cid of [data.conducteur1_id, data.conducteur2_id]) {
+        if (cid && !Permissions.isMembreInMentorGroupForConducteur(cid)) {
+          Toast.error('Vous ne pouvez désigner que des membres de votre groupe (vos disciples et vous-même).');
+          return;
+        }
+      }
+      if (data.programme_id && !Permissions.canLinkProgrammeToPlanningConducteurSlot(data.programme_id)) {
+        Toast.error('Vous ne pouvez lier que des programmes de prière que vous avez créés.');
+        return;
+      }
+    }
     try {
       if (slotId) {
         await PlanningConducteurs.update(slotId, data);
@@ -1454,6 +1540,8 @@ const PagesPriere = {
 
   async deleteSlot(slotId) {
     if (!Permissions.canManagePlanningConducteurs()) return;
+    const slot = PlanningConducteurs.items.find(s => s.id === slotId);
+    if (!slot || !Permissions.canEditPlanningConducteurSlot(slot)) return;
     if (!confirm('Supprimer ce créneau ?')) return;
     try {
       await PlanningConducteurs.delete(slotId);
@@ -1466,7 +1554,7 @@ const PagesPriere = {
     const slot = PlanningConducteurs.items.find(s => s.id === slotId);
     if (!slot) return;
     const sujets = SujetsPriere.getBySlotId(slotId);
-    const canManage = Permissions.canManagePlanningConducteurs();
+    const canManage = Permissions.canEditPlanningConducteurSlot(slot);
     const slotLabel = `${Utils.formatDate(new Date(slot.date + 'T12:00:00'), 'full')} — ${slot.heure_debut || '—'}${slot.titre ? ' — ' + slot.titre : ''}`;
 
     const titleEl = document.getElementById('modal-slot-sujets-title');
@@ -1603,6 +1691,8 @@ const PagesPriere = {
   },
 
   showAddSujetForSlot(slotId) {
+    const slot = slotId && PlanningConducteurs.items.find(s => s.id === slotId);
+    if (slotId && (!slot || !Permissions.canEditPlanningConducteurSlot(slot))) return;
     document.getElementById('priere-contenu').value = '';
     document.getElementById('priere-categorie').value = 'autre';
     document.getElementById('priere-anonyme').checked = false;

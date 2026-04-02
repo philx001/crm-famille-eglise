@@ -73,8 +73,10 @@ const Pages = {
       membres = membres.filter(m => m.mentor_id === AppState.user.id && m.role !== 'superviseur');
     }
 
-    // Export : superviseur/admin sur "Tous les membres", ou mentor sur "Mes disciples"
+    // Export : superviseur/admin sur "Tous les membres", ou mentor sur "Mes disciples" (pas d’export liste complète pour mentor)
     const showExportButtons = Permissions.canViewAllMembers() || (isMesDisciples && Permissions.hasRole('mentor'));
+
+    const showAddFromThisPage = Permissions.canAddDisciple() && !Permissions.isMentorReadOnlyOnTousLesMembres();
 
     const integresParPeriode = (typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getIntegresParPeriode)
       ? NouvellesAmes.getIntegresParPeriode()
@@ -145,7 +147,7 @@ const Pages = {
           <i class="fas fa-file-pdf"></i> Exporter PDF
         </button>
         ` : ''}
-        ${Permissions.canAddDisciple() ? `
+        ${showAddFromThisPage ? `
         <button class="btn btn-primary" onclick="App.navigate('membres-add')">
           <i class="fas fa-user-plus"></i> Ajouter
         </button>
@@ -223,6 +225,8 @@ const Pages = {
       </div>
     ` : '';
 
+    const canVoirFiche = Permissions.canViewMembreFiche(membre);
+
     return `
       <div class="member-card" data-id="${membre.id}" data-role="${membre.role}" 
            data-name="${(membre.prenom + ' ' + membre.nom).toLowerCase()}" data-mentor-id="${membre.mentor_id || ''}">
@@ -233,7 +237,7 @@ const Pages = {
           <div class="member-name">
             ${isBirthday ? '🎂 ' : ''}${Utils.escapeHtml(membre.prenom)} ${Utils.escapeHtml(membre.nom)}
           </div>
-          <div class="member-email">${Permissions.isAdjointSuperviseurOnly() && membre.id !== AppState.user.id ? '—' : Utils.escapeHtml(membre.email)}</div>
+          <div class="member-email">${(Permissions.isAdjointSuperviseurOnly() || Permissions.isMentorReadOnlyOnTousLesMembres()) && membre.id !== AppState.user.id ? '—' : Utils.escapeHtml(membre.email)}</div>
           ${reassignSelect}
           ${dateArriveeInput}
         </div>
@@ -243,9 +247,11 @@ const Pages = {
           ${mentorLabel !== null ? `<span class="member-mentor-badge" style="font-size: 0.75rem; color: var(--text-muted); margin-left: 8px; white-space: nowrap;" title="Mentor">${Utils.escapeHtml(mentorLabel)}</span>` : ''}
         </div>
         <div class="member-actions">
+          ${canVoirFiche ? `
           <button class="btn btn-icon btn-secondary" onclick="App.viewMembre('${membre.id}')" title="Voir">
             <i class="fas fa-eye"></i>
           </button>
+          ` : ''}
           ${Permissions.canEditMember(membre.id) ? `
           <button class="btn btn-icon btn-secondary" onclick="App.editMembre('${membre.id}')" title="Modifier">
             <i class="fas fa-edit"></i>
@@ -395,16 +401,20 @@ const Pages = {
   renderProfil(membreId = null) {
     const membre = membreId ? Membres.getById(membreId) : AppState.user;
     if (!membre) return '<div class="alert alert-danger">Membre non trouvé</div>';
+    if (membreId && !Permissions.canViewMembreFiche(membre)) {
+      return '<div class="alert alert-warning">Vous ne pouvez pas consulter la fiche de ce membre.</div>';
+    }
 
     const canEdit = Permissions.canEditMember(membre.id);
     const mentor = membre.mentor_id ? Membres.getById(membre.mentor_id) : null;
 
     const isOwnProfil = membre.id === AppState.user.id;
+    const mentorBackPage = AppState.currentPage === 'membres' ? 'membres' : 'mes-disciples';
     return `
       <div class="card" style="max-width: 800px; margin: 0 auto;">
         <div class="card-header" style="display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-md);">
           ${isOwnProfil ? `<button type="button" class="btn btn-outline btn-sm" onclick="App.navigate('mon-compte')"><i class="fas fa-arrow-left"></i> Retour vers Mon compte</button>` : ''}
-          ${!isOwnProfil && Permissions.hasRole('mentor') ? `<button type="button" class="btn btn-outline btn-sm" onclick="App.navigate('mes-disciples')"><i class="fas fa-arrow-left"></i> Retour vers Mes disciples</button>` : ''}
+          ${!isOwnProfil && Permissions.hasRole('mentor') ? `<button type="button" class="btn btn-outline btn-sm" onclick="App.navigate('${mentorBackPage}')"><i class="fas fa-arrow-left"></i> Retour</button>` : ''}
           <div class="d-flex align-center gap-2">
             <div class="member-avatar" style="width: 60px; height: 60px; font-size: 1.5rem; ${membre.photo_url ? `background-image: url('${Utils.escapeHtml(membre.photo_url)}'); background-size: cover; background-position: center;` : `background: ${membre.sexe === 'F' ? '#E91E63' : 'var(--primary)'}`}">
               ${!membre.photo_url ? Utils.getInitials(membre.prenom, membre.nom) : ''}
@@ -442,7 +452,7 @@ const Pages = {
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--spacing-lg);">
             <div>
               <h4 class="mb-2">Informations personnelles</h4>
-              <p><strong>Email:</strong> ${Utils.escapeHtml(membre.email)}</p>
+              <p><strong>Email:</strong> ${(Permissions.isAdjointSuperviseurOnly() || Permissions.isMentorReadOnlyOnTousLesMembres()) && !isOwnProfil ? '—' : Utils.escapeHtml(membre.email)}</p>
               <p><strong>Téléphone:</strong> ${membre.telephone || '-'}</p>
               <p><strong>Sexe:</strong> ${membre.sexe === 'M' ? 'Homme' : membre.sexe === 'F' ? 'Femme' : '-'}</p>
               <p><strong>Date de naissance:</strong> ${Utils.formatDate(membre.date_naissance) || '-'}</p>
@@ -484,6 +494,9 @@ const Pages = {
   renderProfilEdit(membreId = null) {
     const membre = membreId ? Membres.getById(membreId) : AppState.user;
     if (!membre) return '<div class="alert alert-danger">Membre non trouvé</div>';
+    if (membreId && !Permissions.canEditMember(membre.id)) {
+      return '<div class="alert alert-warning">Vous n\'avez pas la permission de modifier ce profil.</div>';
+    }
 
     const formations = ['BDR', '101', '201', 'IEBI', 'Poimano', 'RTT_301'];
     const formationLabels = { 'RTT_301': 'RTT (301)' };

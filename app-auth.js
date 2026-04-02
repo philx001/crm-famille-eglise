@@ -662,14 +662,51 @@ const Permissions = {
     return this.hasRole('superviseur');
   },
 
-  /** Adjoint peut voir la page "Tous les membres" en lecture seule (liste + filtres, pas d'édition/blocage/export). */
+  /**
+   * Voit la page « Tous les membres » avec la liste complète, filtres et stats d’intégration,
+   * sans droits de pilotage (édition, export global, ajout depuis cette page pour le mentor).
+   * Adjoint superviseur et mentor (rôle explicite, pas les niveaux hiérarchiques).
+   */
   canViewMembersListReadOnly() {
-    return this.hasRole('adjoint_superviseur');
+    if (!AppState.user) return false;
+    const r = AppState.user.role;
+    return r === 'adjoint_superviseur' || r === 'mentor';
   },
 
   /** True si l'utilisateur est adjoint_superviseur (et pas superviseur/admin) — pour masquer champs personnels. */
   isAdjointSuperviseurOnly() {
     return AppState.user && AppState.user.role === 'adjoint_superviseur';
+  },
+
+  /** Mentor sur la page « Tous les membres » : liste familiale complète en lecture seule (pas d’ajout depuis cette page). */
+  isMentorReadOnlyOnTousLesMembres() {
+    return !!(AppState.user && AppState.user.role === 'mentor' && AppState.currentPage === 'membres');
+  },
+
+  /** Disciples du mentor connecté (mentor_id = lui) + lui-même. */
+  membreEstDansMonGroupeMentor(membre) {
+    if (!AppState.user || !membre) return false;
+    if (membre.id === AppState.user.id) return true;
+    return membre.mentor_id === AppState.user.id;
+  },
+
+  /**
+   * Fiche détaillée d’un membre : superviseur/admin tout ; adjoint tout ;
+   * mentor uniquement lui-même et les membres de son groupe (ses disciples).
+   */
+  canViewMembreFiche(membreOrId) {
+    if (!AppState.user) return false;
+    const membre = typeof membreOrId === 'string'
+      ? AppState.membres?.find(m => m.id === membreOrId)
+      : membreOrId;
+    if (!membre) return false;
+    if (membre.id === AppState.user.id) return true;
+    if (this.canViewAllMembers() || this.isAdmin()) return true;
+    if (AppState.user.role === 'adjoint_superviseur') return true;
+    if (AppState.user.role === 'mentor') {
+      return this.membreEstDansMonGroupeMentor(membre);
+    }
+    return true;
   },
 
   canAddDisciple() {
@@ -705,9 +742,46 @@ const Permissions = {
     return this.hasRole('superviseur') || this.isAdmin();
   },
 
-  /** Peut créer/modifier/supprimer le planning des conducteurs de prière. Lecture pour tous. */
-  canManagePlanningConducteurs() {
+  /** Adjoint superviseur, superviseur, admin : gestion de tout le planning (tous les membres, tous les créneaux). */
+  canManageAllPlanningConducteurs() {
     return this.hasRole('adjoint_superviseur') || this.hasRole('superviseur') || this.isAdmin();
+  },
+
+  /** Mentor : peut créer/gérer uniquement ses propres créneaux et les conducteurs de son groupe. */
+  canManageOwnPlanningConducteurs() {
+    return !!(AppState.user && AppState.user.role === 'mentor');
+  },
+
+  /** Peut utiliser le planning conducteurs (création / édition selon le périmètre ci-dessus). */
+  canManagePlanningConducteurs() {
+    return this.canManageAllPlanningConducteurs() || this.canManageOwnPlanningConducteurs();
+  },
+
+  /**
+   * Édition/suppression d'un créneau : toute la famille pour les rôles élevés ;
+   * mentor uniquement si le créneau a été créé par lui (created_by).
+   */
+  canEditPlanningConducteurSlot(slot) {
+    if (!AppState.user || !slot) return false;
+    if (this.canManageAllPlanningConducteurs()) return true;
+    if (!this.canManageOwnPlanningConducteurs()) return false;
+    return slot.created_by === AppState.user.id;
+  },
+
+  /** Conducteur assignable par un mentor (son groupe : disciples + lui-même). */
+  isMembreInMentorGroupForConducteur(membreId) {
+    if (!AppState.user || !membreId) return true;
+    if (membreId === AppState.user.id) return true;
+    const m = AppState.membres && AppState.membres.find(x => x.id === membreId);
+    return !!(m && m.mentor_id === AppState.user.id);
+  },
+
+  /** Programme lié à un créneau : mentor ne peut lier que ses propres programmes de prière. */
+  canLinkProgrammeToPlanningConducteurSlot(programmeId) {
+    if (!programmeId) return true;
+    if (this.canManageAllPlanningConducteurs()) return true;
+    const p = AppState.programmes && AppState.programmes.find(x => x.id === programmeId);
+    return !!(p && p.created_by === AppState.user.id);
   },
 
   /** Disciple ou Nouveau : accès à la page Programmes en lecture seule. */

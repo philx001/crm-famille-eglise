@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "planning_conducteurs_priere",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "famille_id", "order": "ASCENDING" },
+        { "fieldPath": "created_by", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

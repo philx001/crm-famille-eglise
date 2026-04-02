@@ -530,14 +530,12 @@ const Statistiques = {
     const sexeNonRenseigne = actifs.filter(m => Utils.normalizeSexeForStats(m) == null).length;
     const totalAvecSexe = hommes + femmes;
 
-    // Tranches d'âge : 18-25, 26-35, 36-45, 46-60, +60 (et "Moins de 18 ans" pour exhaustivité)
+    // Tranches d'âge fixes (4) : de 18 à 25 ans (inclut les moins de 18 ans) ; 26-35 ; 35-45 ; 46+ (inclut 60 ans et plus)
     const tranchesAge = [
-      { key: 'moins18', label: 'Moins de 18 ans', min: 0, max: 17 },
-      { key: '18-25', label: '18-25 ans', min: 18, max: 25 },
-      { key: '26-35', label: '26-35 ans', min: 26, max: 35 },
-      { key: '36-45', label: '36-45 ans', min: 36, max: 45 },
-      { key: '46-60', label: '46-60 ans', min: 46, max: 60 },
-      { key: 'plus60', label: '+ de 60 ans', min: 61, max: 150 }
+      { key: '18-25', label: 'de 18 à 25 ans' },
+      { key: '26-35', label: '26-35 ans' },
+      { key: '35-45', label: '35-45 ans' },
+      { key: '46plus', label: '46 à 60 ans et plus' }
     ];
     const today = new Date();
     const ageByTranche = tranchesAge.map(t => ({ ...t, count: 0 }));
@@ -549,23 +547,26 @@ const Statistiques = {
         return;
       }
       const age = Math.floor((today - d) / (365.25 * 24 * 60 * 60 * 1000));
-      const tranche = tranchesAge.find(t => age >= t.min && age <= t.max);
-      if (tranche) {
-        const entry = ageByTranche.find(x => x.key === tranche.key);
-        if (entry) entry.count++;
-      } else {
+      if (age < 0) {
         ageNonRenseigne++;
+        return;
       }
+      let key = null;
+      if (age <= 25) key = '18-25';
+      else if (age <= 35) key = '26-35';
+      else if (age <= 45) key = '35-45';
+      else key = '46plus';
+      const entry = ageByTranche.find(x => x.key === key);
+      if (entry) entry.count++;
     });
     const totalAvecAge = actifs.length - ageNonRenseigne;
 
-    // Ancienneté : moins de 1 an ; 1-3 ans ; 3-5 ans ; 5-10 ans ; +10 ans
+    // Ancienneté ICC : 4 tranches fixes — < 1 an ; [1,3) ; [3,6) affiché « 3-7 ans » ; [6,∞) « 6 à 10 ans et + » (pas de chevauchement)
     const tranchesAnciennete = [
-      { key: 'moins1', label: 'Moins de 1 an', min: 0, max: 0.999 },
-      { key: '1-3', label: '1-3 ans', min: 1, max: 2.999 },
-      { key: '3-5', label: '3-5 ans', min: 3, max: 4.999 },
-      { key: '5-10', label: '5-10 ans', min: 5, max: 9.999 },
-      { key: 'plus10', label: '+ 10 ans', min: 10, max: 999 }
+      { key: 'moins1', label: '< 1 an' },
+      { key: '1-3', label: '1-3 ans' },
+      { key: '3-7', label: '3-7 ans' },
+      { key: '6plus', label: '6 à 10 ans et +' }
     ];
     const ancienneteByTranche = tranchesAnciennete.map(t => ({ ...t, count: 0 }));
     let ancienneteNonRenseigne = 0;
@@ -576,12 +577,16 @@ const Statistiques = {
         return;
       }
       const annees = (today - d) / (365.25 * 24 * 60 * 60 * 1000);
-      const tranche = tranchesAnciennete.find(t => annees >= t.min && annees <= t.max);
-      if (tranche) {
-        const entry = ancienneteByTranche.find(x => x.key === tranche.key);
-        if (entry) entry.count++;
-      } else {
+      let key = null;
+      if (annees < 0) {
         ancienneteNonRenseigne++;
+      } else if (annees < 1) key = 'moins1';
+      else if (annees < 3) key = '1-3';
+      else if (annees < 6) key = '3-7';
+      else key = '6plus';
+      if (key) {
+        const entry = ancienneteByTranche.find(x => x.key === key);
+        if (entry) entry.count++;
       }
     });
     const totalAvecAnciennete = actifs.length - ancienneteNonRenseigne;
@@ -619,21 +624,18 @@ const Statistiques = {
   },
 
   /**
-   * Tranches réellement dessinées dans le camembert + couleurs identiques à la légende HTML.
-   * (Évite le décalage : avant, la légende listait toutes les tranches avec des couleurs par index fixe
-   * alors que le graphique ne contenait que les parts non nulles — couleurs et libellés ne correspondaient pas.)
+   * Camemberts + légende : mêmes tranches fixes (4 âge, 4 ancienneté), y compris les parts à 0.
    */
   getProfilFamilleChartSeries() {
     const data = Statistiques.getProfilFamilleStats();
     const palette = ['#2D5A7B', '#E91E63', '#4CAF50', '#FF9800', '#9C27B0', '#2196F3'];
-    const tranchesAgeAffichees = data.age.tranches.filter(t => t.key !== 'moins18' || t.count > 0);
-    const ageSlices = tranchesAgeAffichees.filter(t => t.count > 0).map((t, i) => ({
+    const ageSlices = data.age.tranches.map((t, i) => ({
       label: t.label,
       count: t.count,
       proportion: t.proportion,
       color: palette[i % palette.length]
     }));
-    const ancSlices = data.anciennete.tranches.filter(t => t.count > 0).map((t, i) => ({
+    const ancSlices = data.anciennete.tranches.map((t, i) => ({
       label: t.label,
       count: t.count,
       proportion: t.proportion,
@@ -1495,10 +1497,9 @@ const PagesStatistiques = {
             <canvas id="chart-profil-age" height="180"></canvas>
           </div>
           <div class="profil-famille-legend">
-            ${series.ageSlices.length > 0
-              ? series.ageSlices.map(sl => `
-            <div class="profil-legend-item"><span class="profil-legend-dot" style="background: ${sl.color};"></span> ${Utils.escapeHtml(sl.label)} : <strong>${sl.proportion}%</strong> (${sl.count})</div>`).join('')
-              : "<div class=\"profil-legend-item text-muted\">Aucune tranche d'âge (tous sans date de naissance valide).</div>"}
+            ${series.ageSlices.map(sl => `
+            <div class="profil-legend-item"><span class="profil-legend-dot" style="background: ${sl.color};"></span> ${Utils.escapeHtml(sl.label)} : <strong>${sl.proportion}%</strong> (${sl.count})</div>`).join('')}
+            <div class="text-muted" style="font-size:0.75rem; margin-top:4px;">% parmi ${a.totalAvecAge} personne${a.totalAvecAge > 1 ? 's' : ''} avec date de naissance renseignée.</div>
           </div>
           ${a.nonRenseigne > 0 ? `
           <div class="profil-non-renseigne">
@@ -1514,10 +1515,9 @@ const PagesStatistiques = {
             <canvas id="chart-profil-anciennete" height="180"></canvas>
           </div>
           <div class="profil-famille-legend">
-            ${series.ancSlices.length > 0
-              ? series.ancSlices.map(sl => `
-            <div class="profil-legend-item"><span class="profil-legend-dot" style="background: ${sl.color};"></span> ${Utils.escapeHtml(sl.label)} : <strong>${sl.proportion}%</strong> (${sl.count})</div>`).join('')
-              : "<div class=\"profil-legend-item text-muted\">Aucune ancienneté ICC (tous sans date d'arrivée ICC).</div>"}
+            ${series.ancSlices.map(sl => `
+            <div class="profil-legend-item"><span class="profil-legend-dot" style="background: ${sl.color};"></span> ${Utils.escapeHtml(sl.label)} : <strong>${sl.proportion}%</strong> (${sl.count})</div>`).join('')}
+            <div class="text-muted" style="font-size:0.75rem; margin-top:4px;">% parmi ${anc.totalAvecAnciennete} personne${anc.totalAvecAnciennete > 1 ? 's' : ''} avec date d'arrivée ICC renseignée.</div>
           </div>
           ${anc.nonRenseigne > 0 ? `
           <div class="profil-non-renseigne">
@@ -1589,7 +1589,8 @@ const PagesStatistiques = {
         series.sexeSlices.map(s => s.color)
       );
     }
-    if (series.ageSlices.length > 0) {
+    const ageSum = series.ageSlices.reduce((acc, s) => acc + s.count, 0);
+    if (ageSum > 0) {
       ChartsHelper.createPie(
         'chart-profil-age',
         series.ageSlices.map(s => s.label),
@@ -1597,7 +1598,8 @@ const PagesStatistiques = {
         series.ageSlices.map(s => s.color)
       );
     }
-    if (series.ancSlices.length > 0) {
+    const ancSum = series.ancSlices.reduce((acc, s) => acc + s.count, 0);
+    if (ancSum > 0) {
       ChartsHelper.createPie(
         'chart-profil-anciennete',
         series.ancSlices.map(s => s.label),

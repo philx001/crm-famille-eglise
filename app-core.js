@@ -32,6 +32,27 @@ const AppState = {
 // ============================================
 
 const Utils = {
+  /**
+   * ID document famille en string (Firestore peut stocker une ref dans utilisateurs.famille_id).
+   * Indispensable pour les requêtes .where('famille_id', '==', id) cohérentes avec les créations.
+   */
+  normalizeFamilleId(value) {
+    if (value == null || value === '') return null;
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object' && value !== null && typeof value.id === 'string') return value.id;
+    return String(value);
+  },
+
+  /** Heure « HH:MM » pour comparaisons et stockage cohérent (évite 9:00 vs 09:00). */
+  normalizeHeureHeure(h) {
+    if (h == null || h === '') return '00:00';
+    const s = String(h).trim();
+    const parts = s.split(':');
+    const hh = Math.min(23, Math.max(0, parseInt(parts[0], 10) || 0));
+    const mm = Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0));
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  },
+
   getInitials(prenom, nom) {
     return `${(prenom || '')[0] || ''}${(nom || '')[0] || ''}`.toUpperCase();
   },
@@ -188,7 +209,9 @@ const Utils = {
       'disciple': 1,
       'nouveau': 1,
       'mentor': 2,
+      'berger': 2,
       'adjoint_superviseur': 3,
+      'adjoint_berger': 3,
       'superviseur': 4,
       'admin': 5
     };

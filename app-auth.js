@@ -177,8 +177,10 @@ const Auth = {
             if (userDoc.exists) {
               const userData = userDoc.data();
               AppState.user = { id: firebaseUser.uid, ...userData };
-              const familleId = localStorage.getItem('crm_famille_id') || userData.famille_id;
+              const rawFamilleId = localStorage.getItem('crm_famille_id') || userData.famille_id;
+              const familleId = Utils.normalizeFamilleId(rawFamilleId);
               if (familleId) {
+                localStorage.setItem('crm_famille_id', familleId);
                 const familleDoc = await db.collection('familles').doc(familleId).get();
                 if (familleDoc.exists) {
                   AppState.famille = { id: familleId, ...familleDoc.data() };
@@ -747,9 +749,12 @@ const Permissions = {
     return this.hasRole('adjoint_superviseur') || this.hasRole('superviseur') || this.isAdmin();
   },
 
-  /** Mentor : peut créer/gérer uniquement ses propres créneaux et les conducteurs de son groupe. */
+  /**
+   * Mentor / berger : créer/gérer uniquement ses propres créneaux (created_by).
+   * Exclut adjoint_berger et rôles au-dessus (ils passent par canManageAllPlanningConducteurs).
+   */
   canManageOwnPlanningConducteurs() {
-    return !!(AppState.user && AppState.user.role === 'mentor');
+    return this.hasRole('mentor') && !this.hasRole('adjoint_superviseur');
   },
 
   /** Peut utiliser le planning conducteurs (création / édition selon le périmètre ci-dessus). */
@@ -776,12 +781,17 @@ const Permissions = {
     return !!(m && m.mentor_id === AppState.user.id);
   },
 
-  /** Programme lié à un créneau : mentor ne peut lier que ses propres programmes de prière. */
+  /**
+   * Programme lié à un créneau : tout programme de prière déjà créé pour la famille
+   * (même auteur qu’un autre mentor) peut être relié.
+   */
   canLinkProgrammeToPlanningConducteurSlot(programmeId) {
     if (!programmeId) return true;
-    if (this.canManageAllPlanningConducteurs()) return true;
     const p = AppState.programmes && AppState.programmes.find(x => x.id === programmeId);
-    return !!(p && p.created_by === AppState.user.id);
+    if (!p) return false;
+    const fid = Utils.normalizeFamilleId(AppState.famille?.id);
+    const pf = Utils.normalizeFamilleId(p.famille_id);
+    return !!(fid && pf === fid);
   },
 
   /** Disciple ou Nouveau : accès à la page Programmes en lecture seule. */

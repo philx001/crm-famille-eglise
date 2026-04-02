@@ -316,27 +316,13 @@ const PlanningConducteurs = {
 
   async loadAll() {
     try {
-      const familleId = AppState.famille?.id;
+      const familleId = Utils.normalizeFamilleId(AppState.famille?.id);
       if (!familleId) return [];
 
-      let snapshot;
-      if (Permissions.canManageAllPlanningConducteurs()) {
-        snapshot = await db.collection('planning_conducteurs_priere')
-          .where('famille_id', '==', familleId)
-          .orderBy('date', 'asc')
-          .get();
-      } else if (Permissions.canManageOwnPlanningConducteurs()) {
-        snapshot = await db.collection('planning_conducteurs_priere')
-          .where('famille_id', '==', familleId)
-          .where('created_by', '==', AppState.user.id)
-          .orderBy('date', 'asc')
-          .get();
-      } else {
-        snapshot = await db.collection('planning_conducteurs_priere')
-          .where('famille_id', '==', familleId)
-          .orderBy('date', 'asc')
-          .get();
-      }
+      const snapshot = await db.collection('planning_conducteurs_priere')
+        .where('famille_id', '==', familleId)
+        .orderBy('date', 'asc')
+        .get();
 
       this.items = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -346,8 +332,32 @@ const PlanningConducteurs = {
       return this.items;
     } catch (error) {
       console.error('Erreur chargement planning conducteurs:', error);
+      if (error.code === 'failed-precondition') {
+        console.error(
+          'Index Firestore manquant pour planning_conducteurs_priere (famille_id + date). Déployez les index : firebase deploy --only firestore:indexes'
+        );
+      }
       return [];
     }
+  },
+
+  /**
+   * Un seul créneau par famille à la même date et même heure de début (tous mentors confondus).
+   * excludeId : id du document à ignorer (mise à jour).
+   */
+  async findConflictSameDateHeure(familleId, dateStr, heureDebut, excludeId) {
+    if (!familleId || !dateStr) return null;
+    const hNorm = Utils.normalizeHeureHeure(heureDebut);
+    const snap = await db.collection('planning_conducteurs_priere')
+      .where('famille_id', '==', familleId)
+      .where('date', '==', dateStr)
+      .get();
+    for (const doc of snap.docs) {
+      if (excludeId && doc.id === excludeId) continue;
+      const d = doc.data();
+      if (Utils.normalizeHeureHeure(d.heure_debut) === hNorm) return doc.id;
+    }
+    return null;
   },
 
   getByDate(dateStr) {
@@ -378,11 +388,24 @@ const PlanningConducteurs = {
     try {
       if (!Permissions.canManagePlanningConducteurs()) throw new Error('Permission refusée');
 
+      const uid = typeof auth !== 'undefined' && auth.currentUser ? auth.currentUser.uid : AppState.user?.id;
+      if (!uid) throw new Error('Session expirée. Reconnectez-vous.');
+      const familleIdSlot = Utils.normalizeFamilleId(AppState.famille?.id);
+      if (!familleIdSlot) throw new Error('Famille non chargée.');
+
+      const heureNorm = Utils.normalizeHeureHeure(data.heure_debut || '00:00');
+      const conflictId = await this.findConflictSameDateHeure(familleIdSlot, data.date, heureNorm, null);
+      if (conflictId) {
+        const msg = 'Un créneau existe déjà à cette date et à cette heure. Choisissez une autre heure ou un autre jour.';
+        Toast.error(msg);
+        throw new Error(msg);
+      }
+
       const slot = {
-        famille_id: AppState.famille.id,
-        created_by: AppState.user.id,
+        famille_id: familleIdSlot,
+        created_by: uid,
         date: data.date,
-        heure_debut: data.heure_debut || '00:00',
+        heure_debut: heureNorm,
         heure_fin: data.heure_fin || null,
         titre: (data.titre || '').trim() || null,
         programme_id: data.programme_id || null,
@@ -405,7 +428,11 @@ const PlanningConducteurs = {
       return newSlot;
     } catch (error) {
       console.error('Erreur création créneau:', error);
-      Toast.error(error.message || 'Erreur lors de l\'ajout');
+      let msg = error.message || 'Erreur lors de l\'ajout';
+      if (error.code === 'permission-denied') {
+        msg = 'Permission refusée par Firestore. Les règles de sécurité du projet doivent être publiées (firebase deploy --only firestore:rules) pour autoriser les mentors à créer des créneaux.';
+      }
+      Toast.error(msg);
       throw error;
     }
   },
@@ -416,10 +443,22 @@ const PlanningConducteurs = {
       const existing = this.items.find(s => s.id === id);
       if (!existing || !Permissions.canEditPlanningConducteurSlot(existing)) throw new Error('Permission refusée');
 
+      const familleIdSlot = Utils.normalizeFamilleId(AppState.famille?.id);
+      const nextDate = data.date !== undefined ? data.date : existing.date;
+      const rawHeure = data.heure_debut !== undefined ? data.heure_debut : existing.heure_debut;
+      const heureNorm = Utils.normalizeHeureHeure(rawHeure || '00:00');
+      const conflictId = await this.findConflictSameDateHeure(familleIdSlot, nextDate, heureNorm, id);
+      if (conflictId) {
+        const msg = 'Un créneau existe déjà à cette date et à cette heure. Choisissez une autre heure ou un autre jour.';
+        Toast.error(msg);
+        throw new Error(msg);
+      }
+
       const updates = {
         ...data,
         updated_at: firebase.firestore.FieldValue.serverTimestamp()
       };
+      if (data.heure_debut !== undefined) updates.heure_debut = heureNorm;
 
       await db.collection('planning_conducteurs_priere').doc(id).update(updates);
       const idx = this.items.findIndex(s => s.id === id);
@@ -495,9 +534,9 @@ const PagesPriere = {
   },
 
   getProgrammesPrierePourConducteurDropdown() {
-    const all = typeof Programmes !== 'undefined' ? (AppState.programmes || []).filter(p => Programmes.getTypesPriere && Programmes.getTypesPriere().some(t => t.value === p.type)) : [];
-    if (Permissions.canManageAllPlanningConducteurs()) return all;
-    return all.filter(p => p.created_by === AppState.user.id);
+    return typeof Programmes !== 'undefined'
+      ? (AppState.programmes || []).filter(p => Programmes.getTypesPriere && Programmes.getTypesPriere().some(t => t.value === p.type))
+      : [];
   },
 
   buildProgrammesPriereOptionsHtml() {
@@ -1328,7 +1367,7 @@ const PagesPriere = {
     const weekSlots = PlanningConducteurs.getByWeek(weekStart);
 
     const listHtml = weekSlots.length === 0
-      ? '<div class="empty-state"><i class="fas fa-calendar-plus"></i><h3>Aucun créneau cette semaine</h3><p>Cliquez sur un jour du calendrier ou sur "Ajouter un créneau" pour planifier les conducteurs.</p></div>'
+      ? `<div class="empty-state"><i class="fas fa-calendar-plus"></i><h3>Aucun créneau cette semaine</h3><p>${canManagePlanning ? 'Cliquez sur un jour du calendrier ou sur « Ajouter un créneau » pour planifier les conducteurs.' : 'Les créneaux planifiés par les conducteurs s’affichent ici (lecture seule).'}</p></div>`
       : weekSlots.map(slot => {
           const canEditSlot = Permissions.canEditPlanningConducteurSlot(slot);
           const c1 = PlanningConducteurs.getConducteurLabel(slot, 1);
@@ -1515,7 +1554,7 @@ const PagesPriere = {
         }
       }
       if (data.programme_id && !Permissions.canLinkProgrammeToPlanningConducteurSlot(data.programme_id)) {
-        Toast.error('Vous ne pouvez lier que des programmes de prière que vous avez créés.');
+        Toast.error('Programme introuvable ou non associé à cette famille.');
         return;
       }
     }
@@ -1535,7 +1574,11 @@ const PagesPriere = {
       Modal.hide('modal-slot-conducteur');
       const section = document.getElementById('priere-planning-section');
       if (section) section.innerHTML = this.renderPlanningSection();
-    } catch (e) {}
+    } catch (e) {
+      if (e && e.code === 'permission-denied') {
+        console.error('Planning créneau:', e);
+      }
+    }
   },
 
   async deleteSlot(slotId) {

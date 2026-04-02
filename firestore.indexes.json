@@ -8,6 +8,62 @@
         { "fieldPath": "created_by", "order": "ASCENDING" },
         { "fieldPath": "date", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "planning_conducteurs_priere",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "famille_id", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "documents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "famille_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "famille_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notes_personnelles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "auteur_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "programmes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "famille_id", "order": "ASCENDING" },
+        { "fieldPath": "date_debut", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sujets_priere",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "famille_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "temoignages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "famille_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -43,6 +43,20 @@ const Utils = {
     return String(value);
   },
 
+  /**
+   * Sexe pour statistiques : homogénéise M/F (évite 0 homme si la base contient « m », espaces, etc.).
+   * Retourne 'M', 'F' ou null si non classable.
+   */
+  normalizeSexeForStats(membre) {
+    if (!membre || membre.sexe == null || membre.sexe === '') return null;
+    const raw = String(membre.sexe).trim();
+    if (!raw) return null;
+    const v = raw.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (v === 'M' || v === 'H' || v === 'HOMME' || v === 'MASCULIN') return 'M';
+    if (v === 'F' || v === 'FEMME' || v === 'FEMININ') return 'F';
+    return null;
+  },
+
   /** Heure « HH:MM » pour comparaisons et stockage cohérent (évite 9:00 vs 09:00). */
   normalizeHeureHeure(h) {
     if (h == null || h === '') return '00:00';

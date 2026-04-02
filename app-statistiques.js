@@ -524,10 +524,10 @@ const Statistiques = {
     );
     const total = actifs.length;
 
-    // Sexe
-    const hommes = actifs.filter(m => m.sexe === 'M').length;
-    const femmes = actifs.filter(m => m.sexe === 'F').length;
-    const sexeNonRenseigne = actifs.filter(m => !m.sexe || (m.sexe !== 'M' && m.sexe !== 'F')).length;
+    // Sexe (Utils.normalizeSexeForStats : M/F uniquement, le reste = non renseigné pour les camemberts)
+    const hommes = actifs.filter(m => Utils.normalizeSexeForStats(m) === 'M').length;
+    const femmes = actifs.filter(m => Utils.normalizeSexeForStats(m) === 'F').length;
+    const sexeNonRenseigne = actifs.filter(m => Utils.normalizeSexeForStats(m) == null).length;
     const totalAvecSexe = hommes + femmes;
 
     // Tranches d'âge : 18-25, 26-35, 36-45, 46-60, +60 (et "Moins de 18 ans" pour exhaustivité)
@@ -553,6 +553,8 @@ const Statistiques = {
       if (tranche) {
         const entry = ageByTranche.find(x => x.key === tranche.key);
         if (entry) entry.count++;
+      } else {
+        ageNonRenseigne++;
       }
     });
     const totalAvecAge = actifs.length - ageNonRenseigne;
@@ -578,6 +580,8 @@ const Statistiques = {
       if (tranche) {
         const entry = ancienneteByTranche.find(x => x.key === tranche.key);
         if (entry) entry.count++;
+      } else {
+        ancienneteNonRenseigne++;
       }
     });
     const totalAvecAnciennete = actifs.length - ancienneteNonRenseigne;
@@ -612,6 +616,48 @@ const Statistiques = {
         pctNonRenseigne: total > 0 ? Math.round((ancienneteNonRenseigne / total) * 1000) / 10 : 0
       }
     };
+  },
+
+  /**
+   * Tranches réellement dessinées dans le camembert + couleurs identiques à la légende HTML.
+   * (Évite le décalage : avant, la légende listait toutes les tranches avec des couleurs par index fixe
+   * alors que le graphique ne contenait que les parts non nulles — couleurs et libellés ne correspondaient pas.)
+   */
+  getProfilFamilleChartSeries() {
+    const data = Statistiques.getProfilFamilleStats();
+    const palette = ['#2D5A7B', '#E91E63', '#4CAF50', '#FF9800', '#9C27B0', '#2196F3'];
+    const tranchesAgeAffichees = data.age.tranches.filter(t => t.key !== 'moins18' || t.count > 0);
+    const ageSlices = tranchesAgeAffichees.filter(t => t.count > 0).map((t, i) => ({
+      label: t.label,
+      count: t.count,
+      proportion: t.proportion,
+      color: palette[i % palette.length]
+    }));
+    const ancSlices = data.anciennete.tranches.filter(t => t.count > 0).map((t, i) => ({
+      label: t.label,
+      count: t.count,
+      proportion: t.proportion,
+      color: palette[i % palette.length]
+    }));
+    const sexePalette = ['#2D5A7B', '#E91E63'];
+    const sexeSlices = [];
+    if (data.sexe.hommes > 0) {
+      sexeSlices.push({
+        label: 'Hommes',
+        count: data.sexe.hommes,
+        pct: data.sexe.pctHommes,
+        color: sexePalette[0]
+      });
+    }
+    if (data.sexe.femmes > 0) {
+      sexeSlices.push({
+        label: 'Femmes',
+        count: data.sexe.femmes,
+        pct: data.sexe.pctFemmes,
+        color: sexePalette[1]
+      });
+    }
+    return { data, ageSlices, ancSlices, sexeSlices };
   }
 };
 
@@ -1408,7 +1454,8 @@ const PagesStatistiques = {
 
   // Section Profil de la famille (sexe, âge, ancienneté) - camemberts + légende avec % distincts
   renderProfilFamilleSection() {
-    const data = Statistiques.getProfilFamilleStats();
+    const series = Statistiques.getProfilFamilleChartSeries();
+    const data = series.data;
     if (data.total === 0) {
       return '<div class="text-muted text-center py-3"><i class="fas fa-info-circle"></i> Aucun membre actif dans la famille.</div>';
     }
@@ -1417,11 +1464,11 @@ const PagesStatistiques = {
     const a = data.age;
     const anc = data.anciennete;
 
-    // Tranches d'âge à afficher : 18-25, 26-35, 36-45, 46-60, +60 (et "Moins de 18 ans" si pertinent)
-    const tranchesAgeAffichees = a.tranches.filter(t => t.key !== 'moins18' || t.count > 0);
-
     return `
       <div class="profil-famille-grid">
+        <p class="text-muted" style="font-size: 0.8rem; margin: 0 0 var(--spacing-md) 0; grid-column: 1 / -1;">
+          Chiffres issus des fiches membres en base. Les % hommes/femmes portent sur les <strong>${s.totalAvecSexe}</strong> personne${s.totalAvecSexe > 1 ? 's' : ''} avec sexe renseigné (M/F). L’ancienneté ICC utilise uniquement le champ <strong>date d’arrivée ICC</strong>, pas la date de naissance — les totaux peuvent différer des graphiques âge ou sexe.
+        </p>
         <!-- Sexe -->
         <div class="profil-famille-block">
           <h4 class="profil-famille-title"><i class="fas fa-venus-mars"></i> Répartition hommes / femmes</h4>
@@ -1429,8 +1476,10 @@ const PagesStatistiques = {
             <canvas id="chart-profil-sexe" height="180"></canvas>
           </div>
           <div class="profil-famille-legend">
-            <div class="profil-legend-item"><span class="profil-legend-dot" style="background: var(--primary);"></span> Hommes : <strong>${s.pctHommes}%</strong> (${s.hommes})</div>
-            <div class="profil-legend-item"><span class="profil-legend-dot" style="background: #E91E63;"></span> Femmes : <strong>${s.pctFemmes}%</strong> (${s.femmes})</div>
+            ${series.sexeSlices.length > 0
+              ? series.sexeSlices.map(sl => `
+            <div class="profil-legend-item"><span class="profil-legend-dot" style="background: ${sl.color};"></span> ${Utils.escapeHtml(sl.label)} : <strong>${sl.pct}%</strong> (${sl.count})</div>`).join('') + `<div class="text-muted" style="font-size:0.75rem; margin-top:4px;">% parmi ${s.totalAvecSexe} personne${s.totalAvecSexe > 1 ? 's' : ''} avec sexe renseigné (M/F).</div>`
+              : '<div class="profil-legend-item text-muted">Aucun sexe M/F renseigné pour le graphique.</div>'}
           </div>
           ${s.nonRenseigne > 0 ? `
           <div class="profil-non-renseigne">
@@ -1446,10 +1495,10 @@ const PagesStatistiques = {
             <canvas id="chart-profil-age" height="180"></canvas>
           </div>
           <div class="profil-famille-legend">
-            ${tranchesAgeAffichees.map((t, i) => {
-              const colors = ['#2D5A7B', '#4CAF50', '#FF9800', '#9C27B0', '#2196F3', '#E91E63'];
-              return `<div class="profil-legend-item"><span class="profil-legend-dot" style="background: ${colors[i % colors.length]};"></span> ${Utils.escapeHtml(t.label)} : <strong>${t.proportion}%</strong> (${t.count})</div>`;
-            }).join('')}
+            ${series.ageSlices.length > 0
+              ? series.ageSlices.map(sl => `
+            <div class="profil-legend-item"><span class="profil-legend-dot" style="background: ${sl.color};"></span> ${Utils.escapeHtml(sl.label)} : <strong>${sl.proportion}%</strong> (${sl.count})</div>`).join('')
+              : "<div class=\"profil-legend-item text-muted\">Aucune tranche d'âge (tous sans date de naissance valide).</div>"}
           </div>
           ${a.nonRenseigne > 0 ? `
           <div class="profil-non-renseigne">
@@ -1465,10 +1514,10 @@ const PagesStatistiques = {
             <canvas id="chart-profil-anciennete" height="180"></canvas>
           </div>
           <div class="profil-famille-legend">
-            ${anc.tranches.map((t, i) => {
-              const colors = ['#2D5A7B', '#4CAF50', '#FF9800', '#9C27B0', '#2196F3'];
-              return `<div class="profil-legend-item"><span class="profil-legend-dot" style="background: ${colors[i % colors.length]};"></span> ${Utils.escapeHtml(t.label)} : <strong>${t.proportion}%</strong> (${t.count})</div>`;
-            }).join('')}
+            ${series.ancSlices.length > 0
+              ? series.ancSlices.map(sl => `
+            <div class="profil-legend-item"><span class="profil-legend-dot" style="background: ${sl.color};"></span> ${Utils.escapeHtml(sl.label)} : <strong>${sl.proportion}%</strong> (${sl.count})</div>`).join('')
+              : "<div class=\"profil-legend-item text-muted\">Aucune ancienneté ICC (tous sans date d'arrivée ICC).</div>"}
           </div>
           ${anc.nonRenseigne > 0 ? `
           <div class="profil-non-renseigne">
@@ -1529,25 +1578,33 @@ const PagesStatistiques = {
   // Initialiser les camemberts du Profil famille (appelé après render)
   initProfilFamilleCharts() {
     if (typeof ChartsHelper === 'undefined') return;
-    const data = Statistiques.getProfilFamilleStats();
-    if (data.total === 0) return;
+    const series = Statistiques.getProfilFamilleChartSeries();
+    if (series.data.total === 0) return;
 
-    const s = data.sexe;
-    const a = data.age;
-    const anc = data.anciennete;
-    const tranchesAgeAffichees = a.tranches.filter(t => t.key !== 'moins18' || t.count > 0);
-
-    const sexeLabels = ['Hommes', 'Femmes'].filter((_, i) => [s.hommes, s.femmes][i] > 0);
-    const sexeData = [s.hommes, s.femmes].filter(v => v > 0);
-    const ageLabels = tranchesAgeAffichees.filter(t => t.count > 0).map(t => t.label);
-    const ageData = tranchesAgeAffichees.filter(t => t.count > 0).map(t => t.count);
-    const ancLabels = anc.tranches.filter(t => t.count > 0).map(t => t.label);
-    const ancData = anc.tranches.filter(t => t.count > 0).map(t => t.count);
-
-    const palette = ['#2D5A7B', '#E91E63', '#4CAF50', '#FF9800', '#9C27B0', '#2196F3'];
-    if (sexeData.length > 0) ChartsHelper.createPie('chart-profil-sexe', sexeLabels, sexeData, ['#2D5A7B', '#E91E63']);
-    if (ageData.length > 0) ChartsHelper.createPie('chart-profil-age', ageLabels, ageData, palette);
-    if (ancData.length > 0) ChartsHelper.createPie('chart-profil-anciennete', ancLabels, ancData, palette);
+    if (series.sexeSlices.length > 0) {
+      ChartsHelper.createPie(
+        'chart-profil-sexe',
+        series.sexeSlices.map(s => s.label),
+        series.sexeSlices.map(s => s.count),
+        series.sexeSlices.map(s => s.color)
+      );
+    }
+    if (series.ageSlices.length > 0) {
+      ChartsHelper.createPie(
+        'chart-profil-age',
+        series.ageSlices.map(s => s.label),
+        series.ageSlices.map(s => s.count),
+        series.ageSlices.map(s => s.color)
+      );
+    }
+    if (series.ancSlices.length > 0) {
+      ChartsHelper.createPie(
+        'chart-profil-anciennete',
+        series.ancSlices.map(s => s.label),
+        series.ancSlices.map(s => s.count),
+        series.ancSlices.map(s => s.color)
+      );
+    }
   },
 
   // Couleur selon le taux

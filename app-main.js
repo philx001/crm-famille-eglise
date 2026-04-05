@@ -1643,8 +1643,10 @@ const App = {
       } else {
         const recurrence = d.recurrence;
         const countEl = document.getElementById('prog-duplication-count');
-        const count = (countEl && recurrence === 'hebdomadaire') || (countEl && recurrence === 'mensuel')
-          ? Math.max(1, Math.min(parseInt(countEl.value, 10) || 1, recurrence === 'mensuel' ? 12 : 52))
+        const caps = Programmes.MAX_RECURRENCE_OCCURRENCES;
+        const maxOcc = recurrence === 'mensuel' ? caps.mensuel : caps.hebdomadaire;
+        const count = countEl && (recurrence === 'hebdomadaire' || recurrence === 'mensuel')
+          ? Math.max(1, Math.min(parseInt(countEl.value, 10) || 1, maxOcc))
           : 1;
 
         if ((recurrence === 'hebdomadaire' || recurrence === 'mensuel') && count > 1) {

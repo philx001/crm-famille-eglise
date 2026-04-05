@@ -284,8 +284,14 @@ const Statistiques = {
       const disciples = Membres.getDisciples(mentor.id);
       const discipleIds = new Set(disciples.map(d => d.id));
       
-      // Filtrer les présences pour les disciples de ce mentor
-      const mentorPresences = allPresences.filter(p => discipleIds.has(p.disciple_id));
+      // Filtrer les présences pour les disciples de ce mentor (uniquement si le disciple était déjà dans la famille à la date du programme)
+      const mentorPresences = allPresences.filter(p => {
+        if (!discipleIds.has(p.disciple_id)) return false;
+        const membre = Membres.getById(p.disciple_id);
+        const programme = Programmes.getById(p.programme_id);
+        if (!membre || !programme?.date_debut) return false;
+        return Utils.membreEtaitDansFamilleALaDate(membre, programme.date_debut);
+      });
       
       const nbPresents = mentorPresences.filter(p => p.statut === 'present').length;
       const nbTotal = mentorPresences.length;

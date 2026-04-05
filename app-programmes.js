@@ -3,6 +3,61 @@
 // ============================================
 
 const Programmes = {
+  /** Plafonds pour création en série (passé ou futur) : hebdo = semaines, mensuel = mois. */
+  MAX_RECURRENCE_OCCURRENCES: { hebdomadaire: 156, mensuel: 48 },
+
+  /** Intervalle [début, fin] pour tester le chevauchement (fin incluse ; sans fin = ponctuel). */
+  _getIntervalDatesDebutFin(dateDebut, dateFin) {
+    const s = dateDebut instanceof Date
+      ? dateDebut
+      : (dateDebut?.toDate ? dateDebut.toDate() : new Date(dateDebut));
+    let e;
+    if (dateFin) {
+      e = dateFin instanceof Date ? dateFin : (dateFin?.toDate ? dateFin.toDate() : new Date(dateFin));
+      if (e.getTime() < s.getTime()) e = s;
+    } else {
+      e = s;
+    }
+    return { s, e };
+  },
+
+  _intervalsSeChevauchent(s1, e1, s2, e2) {
+    return s1.getTime() <= e2.getTime() && s2.getTime() <= e1.getTime();
+  },
+
+  /**
+   * Indique si un programme de la famille existe déjà avec un créneau qui chevauche [newDebut, newFin].
+   */
+  hasChevauchementAvecProgrammeExistant(newDateDebut, newDateFin, excludeIds = null) {
+    const fid = AppState.famille?.id;
+    if (!fid) return false;
+    const { s: nS, e: nE } = this._getIntervalDatesDebutFin(newDateDebut, newDateFin);
+    const exclude = excludeIds instanceof Set ? excludeIds : new Set();
+    const list = AppState.programmes || [];
+    for (const p of list) {
+      if (p.famille_id !== fid) continue;
+      if (exclude.has(p.id)) continue;
+      const ds = p.date_debut?.toDate ? p.date_debut.toDate() : new Date(p.date_debut || 0);
+      const de = p.date_fin
+        ? (p.date_fin.toDate ? p.date_fin.toDate() : new Date(p.date_fin))
+        : null;
+      const { s, e } = this._getIntervalDatesDebutFin(ds, de);
+      if (this._intervalsSeChevauchent(nS, nE, s, e)) return true;
+    }
+    return false;
+  },
+
+  /**
+   * Série dont l'ancre est avant aujourd'hui (jour local) : ne pas créer d'occurrences après ce jour calendaire.
+   */
+  _recurrenceSkipFuturPourSerieRetroactive(occurrenceDebut, ancreDebut) {
+    const todayKey = Utils.localDayKey(new Date());
+    const anchorKey = Utils.localDayKey(ancreDebut);
+    if (anchorKey >= todayKey) return false;
+    const occKey = Utils.localDayKey(occurrenceDebut);
+    return occKey > todayKey;
+  },
+
   // Charger tous les programmes de la famille
   async loadAll() {
     try {
@@ -114,8 +169,11 @@ const Programmes = {
     if (!Permissions.canManagePrograms()) {
       throw new Error('Permission refusée');
     }
-    if (count < 1 || count > 100) {
-      throw new Error('Le nombre d\'occurrences doit être entre 1 et 100');
+    const cap = recurrence === 'mensuel'
+      ? Programmes.MAX_RECURRENCE_OCCURRENCES.mensuel
+      : Programmes.MAX_RECURRENCE_OCCURRENCES.hebdomadaire;
+    if (count < 1 || count > cap) {
+      throw new Error(`Le nombre d'occurrences doit être entre 1 et ${cap}`);
     }
 
     const dateDebut = data.date_debut instanceof Date
@@ -129,6 +187,8 @@ const Programmes = {
 
     const durationMs = dateFin ? (dateFin.getTime() - dateDebut.getTime()) : 0;
     const programmes = [];
+    let skippedChevauchement = 0;
+    let skippedFutur = 0;
 
     for (let i = 0; i < count; i++) {
       let newDateDebut;
@@ -149,6 +209,16 @@ const Programmes = {
       } else {
         newDateDebut = new Date(dateDebut);
         newDateFin = dateFin ? new Date(dateFin) : null;
+      }
+
+      if (this._recurrenceSkipFuturPourSerieRetroactive(newDateDebut, dateDebut)) {
+        skippedFutur++;
+        continue;
+      }
+
+      if (this.hasChevauchementAvecProgrammeExistant(newDateDebut, newDateFin)) {
+        skippedChevauchement++;
+        continue;
       }
 
       const programmeData = {
@@ -177,7 +247,16 @@ const Programmes = {
       programmes.push(newProgramme);
     }
 
-    Toast.success(`${programmes.length} programme(s) créé(s) avec succès`);
+    const details = [];
+    if (skippedChevauchement) details.push(`${skippedChevauchement} ignoré(s), créneau déjà occupé`);
+    if (skippedFutur) details.push(`${skippedFutur} ignoré(s), au-delà d'aujourd'hui (série depuis le passé)`);
+    const detailStr = details.length ? ` ${details.join('. ')}.` : '';
+
+    if (programmes.length === 0) {
+      Toast.warning(details.length ? `Aucun programme créé (${details.join(' ; ')}).` : 'Aucun programme créé.');
+    } else {
+      Toast.success(`${programmes.length} programme(s) créé(s).${detailStr}`);
+    }
     return programmes;
   },
 
@@ -186,6 +265,19 @@ const Programmes = {
     try {
       if (!Permissions.canManagePrograms()) {
         throw new Error('Permission refusée');
+      }
+
+      const dDeb = data.date_debut instanceof Date
+        ? data.date_debut
+        : (data.date_debut?.toDate ? data.date_debut.toDate() : new Date(data.date_debut));
+      const dFin = data.date_fin
+        ? (data.date_fin instanceof Date
+          ? data.date_fin
+          : (data.date_fin?.toDate ? data.date_fin.toDate() : new Date(data.date_fin)))
+        : null;
+      if (this.hasChevauchementAvecProgrammeExistant(dDeb, dFin)) {
+        Toast.warning('Aucun programme créé : ce créneau chevauche un programme existant.');
+        return null;
       }
 
       // Convertir les dates en Timestamp Firestore si ce sont des objets Date
@@ -377,6 +469,16 @@ const Presences = {
           if (dateDebut && d < dateDebut) return false;
           if (dateFin && d > dateFin) return false;
           return true;
+        });
+      }
+
+      // Exclure les programmes antérieurs à l'entrée du membre dans la famille (stats perso, historique)
+      const membre = typeof Membres !== 'undefined' && Membres.getById ? Membres.getById(membreId) : null;
+      if (membre) {
+        presences = presences.filter(p => {
+          const programme = Programmes.getById(p.programme_id);
+          if (!programme || !programme.date_debut) return false;
+          return Utils.membreEtaitDansFamilleALaDate(membre, programme.date_debut);
         });
       }
 
@@ -1250,6 +1352,7 @@ const PagesCalendrier = {
                        min="${minDateTime}" max="${maxDateTime}" value="${getDateTimeValue(programme?.date_fin)}" title="Cliquez pour ouvrir le calendrier">
               </div>
             </div>
+            ${!isEdit ? `<p class="text-muted small mb-0 mt-1">Pour une série récurrente, indiquez la <strong>première</strong> occurrence (dans le passé ou à venir) : les suivantes seront espacées chaque semaine ou chaque mois à partir de cette date.</p>` : ''}
 
             <div class="form-group">
               <label class="form-label">Lieu</label>
@@ -1276,10 +1379,10 @@ const PagesCalendrier = {
 
             ${!isEdit ? `
             <div id="prog-duplication-section" class="form-group" style="display: none;">
-              <label class="form-label">Dupliquer sur plusieurs occurrences</label>
-              <p class="text-muted small mb-2">Crée plusieurs programmes identiques (même jour, mêmes horaires) pour éviter de les recréer chaque semaine ou chaque mois.</p>
+              <label class="form-label">Série récurrente</label>
+              <p class="text-muted small mb-2">Crée plusieurs programmes avec le même nom, type, lieu et horaires (durée conservée). Les créneaux qui <strong>chevauchent</strong> un programme déjà existant sont ignorés. Si la série commence <strong>dans le passé</strong>, les dates <strong>après aujourd’hui</strong> ne sont pas créées (évite de dupliquer l’avenir) ; pour une série entièrement à venir, commencez par la première date future ou du jour.</p>
               <div class="d-flex align-items-center gap-2 flex-wrap">
-                <input type="number" class="form-control" id="prog-duplication-count" min="1" max="52" value="1" style="width: 80px;">
+                <input type="number" class="form-control" id="prog-duplication-count" min="1" max="${Programmes.MAX_RECURRENCE_OCCURRENCES.hebdomadaire}" value="1" style="width: 80px;">
                 <span id="prog-duplication-label">occurrence(s)</span>
               </div>
             </div>
@@ -1312,14 +1415,14 @@ const PagesCalendrier = {
     const recurrence = document.getElementById('prog-recurrence')?.value;
     if (recurrence === 'hebdomadaire') {
       section.style.display = 'block';
-      countInput.max = 52;
-      countInput.placeholder = 'ex: 4';
-      labelEl.textContent = 'semaine(s)';
+      countInput.max = Programmes.MAX_RECURRENCE_OCCURRENCES.hebdomadaire;
+      countInput.placeholder = 'ex: 12';
+      labelEl.textContent = 'semaine(s) — une occurrence par semaine';
     } else if (recurrence === 'mensuel') {
       section.style.display = 'block';
-      countInput.max = 12;
-      countInput.placeholder = 'ex: 3';
-      labelEl.textContent = 'mois';
+      countInput.max = Programmes.MAX_RECURRENCE_OCCURRENCES.mensuel;
+      countInput.placeholder = 'ex: 6';
+      labelEl.textContent = 'mois — une occurrence par mois';
     } else {
       section.style.display = 'none';
       countInput.value = 1;

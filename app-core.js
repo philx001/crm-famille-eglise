@@ -125,11 +125,23 @@ const Utils = {
     return src.toDate ? src.toDate() : new Date(src);
   },
 
-  /** Vérifie si le membre était dans la famille à la date du programme (pour pointage/stats). */
+  /** Clé jour calendaire local (YYYYMMDD) pour comparer date d'entrée et date de programme sans effet minuit UTC. */
+  localDayKey(dateVal) {
+    const d = dateVal?.toDate ? dateVal.toDate() : new Date(dateVal);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+  },
+
+  /**
+   * Vérifie si le membre était dans la famille à la date du programme (pointage, stats, historique).
+   * Compare le jour calendaire local d'entrée et celui du programme (cohérent avec « arrivée dans la famille » au jour près).
+   */
   membreEtaitDansFamilleALaDate(membre, dateProgramme) {
-    const dateEntree = this.getDateEntreeFamille(membre);
-    const dProg = dateProgramme?.toDate ? dateProgramme.toDate() : new Date(dateProgramme);
-    return dateEntree <= dProg;
+    const dkProg = this.localDayKey(dateProgramme);
+    if (dkProg == null) return false;
+    const dkEntree = this.localDayKey(this.getDateEntreeFamille(membre));
+    if (dkEntree == null) return false;
+    return dkEntree <= dkProg;
   },
 
   formatRelativeDate(date) {

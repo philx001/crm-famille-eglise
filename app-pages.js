@@ -221,7 +221,7 @@ const Pages = {
                min="${datePastBounds.min}" max="${datePastBounds.max}" 
                value="${Utils.toDateInputValue(membre.date_arrivee_famille)}" 
                onchange="App.updateDateArriveeFamille('${membre.id}', this.value)" 
-               title="Modifier la date (enregistrement immédiat, sans formulaire complet)">
+               title="Pointage et stats : programmes à partir de ce jour (enregistrement immédiat)">
       </div>
     ` : '';
 
@@ -605,8 +605,8 @@ const Pages = {
             ${(Permissions.hasRole('adjoint_superviseur') || Permissions.hasRole('superviseur') || Permissions.isAdmin()) ? `
             <div class="form-group">
               <label class="form-label">Date d'arrivée dans la famille</label>
-              <input type="date" class="form-control input-date" id="edit-date-famille" min="${datePastBounds.min}" max="${datePastBounds.max}" value="${Utils.toDateInputValue(membre.date_arrivee_famille)}" title="Utilisée pour les statistiques de présence">
-              <span class="form-hint">Utilisée pour les statistiques (pointage, taux de présence). Le mentor la renseigne depuis la page Mes disciples.</span>
+              <input type="date" class="form-control input-date" id="edit-date-famille" min="${datePastBounds.min}" max="${datePastBounds.max}" value="${Utils.toDateInputValue(membre.date_arrivee_famille)}" title="Premier jour où la personne est prise en compte pour le pointage et les stats">
+              <span class="form-hint">Les programmes <strong>avant</strong> cette date ne concernent pas ce membre (liste de pointage, statistiques, historique). À défaut, la date ICC ou la création du compte est utilisée.</span>
             </div>
             ` : ''}
             <div class="form-group">

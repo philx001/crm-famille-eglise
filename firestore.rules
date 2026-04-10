@@ -73,7 +73,17 @@ service cloud.firestore {
         sameFamilleId(resource.data.famille_id, getUserData().famille_id)
       );
 
-      allow create: if isAuthenticated() && request.auth.uid == userId;
+      // Création : soit le nouveau compte lui-même, soit un rôle autorisé (même famille ou admin multi-familles)
+      allow create: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        (
+          request.resource.data.role != 'admin' &&
+          (
+            isAdmin() ||
+            (hasRole('mentor') && !isAdmin() && sameFamilleId(request.resource.data.famille_id, getUserData().famille_id))
+          )
+        )
+      );
 
       allow update: if isAuthenticated() && (
         request.auth.uid == userId ||

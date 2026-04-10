@@ -213,17 +213,15 @@ const Auth = {
         throw new Error('Permission refusée');
       }
 
-      // Sauvegarder les infos de l'admin AVANT la création (car createUserWithEmailAndPassword va le déconnecter)
       const adminFamilleId = AppState.famille.id;
-      const adminFamilleNom = AppState.famille.nom;
       const adminUserId = AppState.user.id;
       const rolesSansMentor = ['superviseur', 'nouveau', 'adjoint_superviseur'];
       const mentorId = rolesSansMentor.includes(role) ? null : (membreData.mentor_id || adminUserId);
 
       const tempPassword = Math.random().toString(36).slice(-8) + 'A1!';
 
-      // Créer l'utilisateur Firebase Auth (ATTENTION : ceci connecte le nouveau membre !)
-      const userCredential = await auth.createUserWithEmailAndPassword(
+      // Auth secondaire : le compte est créé sans remplacer la session de l’utilisateur connecté
+      const userCredential = await window.secondaryAuth.createUserWithEmailAndPassword(
         membreData.email,
         tempPassword
       );
@@ -258,34 +256,26 @@ const Auth = {
         updated_at: firebase.firestore.FieldValue.serverTimestamp()
       };
 
-      // Créer le document Firestore (le nouveau membre est maintenant connecté, les règles permettent request.auth.uid == userId)
+      // Document créé par l’utilisateur encore connecté (règles : admin / mentor+ même famille)
       await db.collection('utilisateurs').doc(uid).set(newMembre);
 
-      // Envoyer un email de réinitialisation de mot de passe
       try {
         await auth.sendPasswordResetEmail(membreData.email);
       } catch (emailErr) {
         console.warn('Impossible d\'envoyer l\'email de réinitialisation:', emailErr);
       }
 
-      // Vider l'état AVANT signOut pour éviter que onAuthStateChanged affiche "Session expirée"
-      AppState.user = null;
-      AppState.famille = null;
-      AppState.membres = [];
-      InactivityManager.stop();
+      await window.secondaryAuth.signOut();
 
-      // Déconnecter le nouveau membre (l'utilisateur actuel devra se reconnecter)
-      await auth.signOut();
+      try {
+        if (typeof Membres !== 'undefined' && Membres.loadAll) await Membres.loadAll();
+      } catch (e) {
+        console.warn('Rechargement membres après création:', e);
+      }
 
-      localStorage.removeItem('crm_famille_id');
-      localStorage.setItem('crm_famille_nom', adminFamilleNom);
-
-      App.showLoginPage();
-
-      Toast.success(`${membreData.prenom} a été ajouté avec succès. Reconnectez-vous pour continuer.`);
       console.log('Mot de passe temporaire:', tempPassword);
-      
-      return { id: uid, tempPassword, adminDisconnected: true, ...newMembre };
+
+      return { id: uid, tempPassword, ...newMembre };
 
     } catch (error) {
       console.error('Erreur création membre:', error);
@@ -432,7 +422,7 @@ const Auth = {
     App.showLoading();
     try {
       const tempPassword = Math.random().toString(36).slice(-8) + 'A1!';
-      const userCredential = await auth.createUserWithEmailAndPassword(
+      const userCredential = await window.secondaryAuth.createUserWithEmailAndPassword(
         membreData.email,
         tempPassword
       );
@@ -473,17 +463,16 @@ const Auth = {
         console.warn('Impossible d\'envoyer l\'email de réinitialisation:', emailErr);
       }
 
-      AppState.user = null;
-      AppState.famille = null;
-      AppState.membres = [];
-      InactivityManager.stop();
-      await auth.signOut();
-      localStorage.removeItem('crm_famille_id');
-      localStorage.setItem('crm_famille_nom', familleNom);
-      App.showLoginPage();
-      Toast.success(`${newMembre.prenom} a été ajouté comme superviseur de la famille. Reconnectez-vous.`);
+      await window.secondaryAuth.signOut();
+
+      try {
+        if (typeof Membres !== 'undefined' && Membres.loadAll) await Membres.loadAll();
+      } catch (e) {
+        console.warn('Rechargement membres après création:', e);
+      }
+
       console.log('Mot de passe temporaire:', tempPassword);
-      return { id: uid, tempPassword, adminDisconnected: true, ...newMembre };
+      return { id: uid, tempPassword, ...newMembre };
     } catch (error) {
       console.error('Erreur création membre pour famille:', error);
       if (error.code === 'auth/email-already-in-use') {

@@ -649,7 +649,6 @@ const NouvellesAmes = {
       }
       
       // IMPORTANT: Mettre à jour le statut AVANT de créer le membre
-      // Car Auth.createMembre déconnecte l'utilisateur actuel
       await this.update(id, {
         statut: 'integre',
         date_integration: firebase.firestore.Timestamp.now()
@@ -668,7 +667,6 @@ const NouvellesAmes = {
       const baptemeTermine = naFormations.find(f => f.code === 'bapteme' && f.statut === 'termine');
 
       // Créer le membre via Auth.createMembre (transfert des infos saisies en NA/NC)
-      // Note: Cette fonction va déconnecter l'utilisateur et afficher la page de login
       try {
         const result = await Auth.createMembre({
           prenom: nouvelleAme.prenom,
@@ -685,9 +683,10 @@ const NouvellesAmes = {
           role: 'nouveau',
           mentor_id: nouvelleAme.suivi_par_id
         });
-        
-        // Le membre a été créé avec succès
-        // L'utilisateur sera redirigé vers la page de login
+
+        if (result && result.tempPassword && typeof App !== 'undefined' && App.showTempPasswordModal) {
+          App.showTempPasswordModal(nouvelleAme.prenom, email, result.tempPassword, "App.navigate('nouvelles-ames')");
+        }
         return true;
         
       } catch (authError) {

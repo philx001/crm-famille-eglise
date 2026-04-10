@@ -48,14 +48,28 @@ const Programmes = {
   },
 
   /**
-   * Série dont l'ancre est avant aujourd'hui (jour local) : ne pas créer d'occurrences après ce jour calendaire.
+   * Même famille, même jour calendaire local, même type et même heure:minute de début (doublons fréquents sur le calendrier).
    */
-  _recurrenceSkipFuturPourSerieRetroactive(occurrenceDebut, ancreDebut) {
+  hasDoublonMemeJourTypeHeure(dateDebut, programmeType) {
+    const fid = AppState.famille?.id;
+    if (!fid || !programmeType) return false;
+    const k = Utils.localDayKey(dateDebut);
+    const hm = dateDebut.getHours() * 60 + dateDebut.getMinutes();
+    for (const p of AppState.programmes || []) {
+      if (p.famille_id !== fid) continue;
+      if (p.type !== programmeType) continue;
+      const ps = p.date_debut?.toDate ? p.date_debut.toDate() : new Date(p.date_debut || 0);
+      if (Utils.localDayKey(ps) !== k) continue;
+      if (ps.getHours() * 60 + ps.getMinutes() === hm) return true;
+    }
+    return false;
+  },
+
+  /** Occurrence à enregistrer comme unique (passé strict) ou récurrente (aujourd'hui et futur). */
+  _recurrencePourOccurrence(occurrenceDebut, recurrenceChoisie) {
     const todayKey = Utils.localDayKey(new Date());
-    const anchorKey = Utils.localDayKey(ancreDebut);
-    if (anchorKey >= todayKey) return false;
     const occKey = Utils.localDayKey(occurrenceDebut);
-    return occKey > todayKey;
+    return occKey < todayKey ? 'unique' : recurrenceChoisie;
   },
 
   // Charger tous les programmes de la famille
@@ -176,6 +190,8 @@ const Programmes = {
       throw new Error(`Le nombre d'occurrences doit être entre 1 et ${cap}`);
     }
 
+    await this.loadAll();
+
     const dateDebut = data.date_debut instanceof Date
       ? data.date_debut
       : (data.date_debut?.toDate ? data.date_debut.toDate() : new Date(data.date_debut));
@@ -188,7 +204,6 @@ const Programmes = {
     const durationMs = dateFin ? (dateFin.getTime() - dateDebut.getTime()) : 0;
     const programmes = [];
     let skippedChevauchement = 0;
-    let skippedFutur = 0;
 
     for (let i = 0; i < count; i++) {
       let newDateDebut;
@@ -211,15 +226,15 @@ const Programmes = {
         newDateFin = dateFin ? new Date(dateFin) : null;
       }
 
-      if (this._recurrenceSkipFuturPourSerieRetroactive(newDateDebut, dateDebut)) {
-        skippedFutur++;
-        continue;
-      }
-
-      if (this.hasChevauchementAvecProgrammeExistant(newDateDebut, newDateFin)) {
+      if (
+        this.hasChevauchementAvecProgrammeExistant(newDateDebut, newDateFin) ||
+        this.hasDoublonMemeJourTypeHeure(newDateDebut, data.type)
+      ) {
         skippedChevauchement++;
         continue;
       }
+
+      const recurrenceEnregistree = this._recurrencePourOccurrence(newDateDebut, recurrence);
 
       const programmeData = {
         nom: data.nom,
@@ -227,7 +242,7 @@ const Programmes = {
         date_debut: firebase.firestore.Timestamp.fromDate(newDateDebut),
         date_fin: newDateFin ? firebase.firestore.Timestamp.fromDate(newDateFin) : null,
         lieu: data.lieu,
-        recurrence: data.recurrence,
+        recurrence: recurrenceEnregistree,
         description: data.description,
         pointage_requis: data.pointage_requis !== false,
         famille_id: AppState.famille.id,
@@ -248,8 +263,9 @@ const Programmes = {
     }
 
     const details = [];
-    if (skippedChevauchement) details.push(`${skippedChevauchement} ignoré(s), créneau déjà occupé`);
-    if (skippedFutur) details.push(`${skippedFutur} ignoré(s), au-delà d'aujourd'hui (série depuis le passé)`);
+    if (skippedChevauchement) {
+      details.push(`${skippedChevauchement} ignoré(s), créneau déjà occupé ou doublon (même jour, type et horaire)`);
+    }
     const detailStr = details.length ? ` ${details.join('. ')}.` : '';
 
     if (programmes.length === 0) {
@@ -267,6 +283,8 @@ const Programmes = {
         throw new Error('Permission refusée');
       }
 
+      await this.loadAll();
+
       const dDeb = data.date_debut instanceof Date
         ? data.date_debut
         : (data.date_debut?.toDate ? data.date_debut.toDate() : new Date(data.date_debut));
@@ -275,10 +293,15 @@ const Programmes = {
           ? data.date_fin
           : (data.date_fin?.toDate ? data.date_fin.toDate() : new Date(data.date_fin)))
         : null;
-      if (this.hasChevauchementAvecProgrammeExistant(dDeb, dFin)) {
-        Toast.warning('Aucun programme créé : ce créneau chevauche un programme existant.');
+      if (
+        this.hasChevauchementAvecProgrammeExistant(dDeb, dFin) ||
+        this.hasDoublonMemeJourTypeHeure(dDeb, data.type)
+      ) {
+        Toast.warning('Aucun programme créé : créneau déjà utilisé ou doublon (même jour, type et horaire).');
         return null;
       }
+
+      const recurrenceEff = this._recurrencePourOccurrence(dDeb, data.recurrence || 'unique');
 
       // Convertir les dates en Timestamp Firestore si ce sont des objets Date
       const programmeData = {
@@ -291,7 +314,7 @@ const Programmes = {
           ? firebase.firestore.Timestamp.fromDate(data.date_fin)
           : (data.date_fin || null),
         lieu: data.lieu,
-        recurrence: data.recurrence,
+        recurrence: recurrenceEff,
         description: data.description,
         pointage_requis: data.pointage_requis !== false,
         famille_id: AppState.famille.id,
@@ -1380,7 +1403,7 @@ const PagesCalendrier = {
             ${!isEdit ? `
             <div id="prog-duplication-section" class="form-group" style="display: none;">
               <label class="form-label">Série récurrente</label>
-              <p class="text-muted small mb-2">Crée plusieurs programmes avec le même nom, type, lieu et horaires (durée conservée). Les créneaux qui <strong>chevauchent</strong> un programme déjà existant sont ignorés. Si la série commence <strong>dans le passé</strong>, les dates <strong>après aujourd’hui</strong> ne sont pas créées (évite de dupliquer l’avenir) ; pour une série entièrement à venir, commencez par la première date future ou du jour.</p>
+              <p class="text-muted small mb-2">Crée plusieurs programmes avec le même nom, type, lieu et horaires (durée conservée). Les créneaux déjà pris (chevauchement ou même jour + type + heure) sont ignorés. Les occurrences <strong>avant aujourd’hui</strong> sont enregistrées en <strong>unique</strong> ; à partir d’<strong>aujourd’hui</strong>, la <strong>récurrence</strong> choisie (hebdo / mensuel) s’applique.</p>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <input type="number" class="form-control" id="prog-duplication-count" min="1" max="${Programmes.MAX_RECURRENCE_OCCURRENCES.hebdomadaire}" value="1" style="width: 80px;">
                 <span id="prog-duplication-label">occurrence(s)</span>

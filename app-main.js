@@ -613,8 +613,13 @@ const App = {
     const email = document.getElementById('superviseur-email')?.value?.trim();
     if (!prenom || !nom || !email) { Toast.warning('Remplissez tous les champs'); return; }
     try {
-      await Auth.createMembreForFamily(familleId, { prenom, nom, email, role: 'superviseur' });
+      const result = await Auth.createMembreForFamily(familleId, { prenom, nom, email, role: 'superviseur' });
       document.getElementById('modal-add-superviseur-famille')?.remove();
+      if (result && result.tempPassword) {
+        App.showTempPasswordModal(prenom, email, result.tempPassword, "App.navigate('admin-familles')");
+      } else {
+        App.navigate('admin-familles');
+      }
     } catch (e) {
       Toast.error(e.message || 'Erreur');
     }
@@ -1365,23 +1370,17 @@ const App = {
       const result = await Auth.createMembre(d);
       // Afficher le mot de passe temporaire dans une modale
       if (result && result.tempPassword) {
-        this.showTempPasswordModal(d.prenom, d.email, result.tempPassword, result.adminDisconnected);
+        this.showTempPasswordModal(d.prenom, d.email, result.tempPassword, "App.navigate('membres')");
       } else {
         this.navigate('membres');
       }
     } catch (e) {}
   },
 
-  showTempPasswordModal(prenom, email, tempPassword, adminDisconnected = false) {
+  /** Après fermeture : ex. App.navigate('membres') ou App.navigate('admin-familles') */
+  showTempPasswordModal(prenom, email, tempPassword, afterCloseJs = "App.navigate('membres')") {
     const modalId = 'temp-password-modal';
-    const closeAction = adminDisconnected ? 'App.showLoginPage()' : "App.navigate('membres')";
-    const reconnectWarning = adminDisconnected ? `
-            <div class="alert alert-warning" style="margin-top: 12px;">
-              <i class="fas fa-sign-in-alt"></i>
-              <div>
-                <strong>Reconnexion requise :</strong> Pour des raisons techniques, vous allez être redirigé vers la page de connexion. Reconnectez-vous pour continuer.
-              </div>
-            </div>` : '';
+    const closeAction = afterCloseJs || "App.navigate('membres')";
     const modalHtml = `
       <div class="modal-overlay active" id="${modalId}">
         <div class="modal" style="max-width: 500px;">
@@ -1410,7 +1409,6 @@ const App = {
                 <strong>Alternative :</strong> Un email de réinitialisation a été envoyé à ${Utils.escapeHtml(email)}. Le membre pourra aussi cliquer sur le lien pour définir son propre mot de passe.
               </div>
             </div>
-            ${reconnectWarning}
           </div>
           <div class="modal-footer">
             <button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove(); ${closeAction};">OK, compris</button>

@@ -11,6 +11,15 @@ const firebaseConfig = {
 // Initialisation Firebase
 firebase.initializeApp(firebaseConfig);
 
+// Second app : création de comptes Auth sans remplacer la session de l’utilisateur connecté (principal)
+let secondaryAuth;
+try {
+  secondaryAuth = firebase.auth(firebase.app('UserCreate'));
+} catch (e) {
+  secondaryAuth = firebase.auth(firebase.initializeApp(firebaseConfig, 'UserCreate'));
+}
+window.secondaryAuth = secondaryAuth;
+
 // Services Firebase
 const auth = firebase.auth();
 const db = firebase.firestore();
@@ -31,4 +40,4 @@ db.enablePersistence().catch((err) => {
 });
 
 // Export pour utilisation dans les autres fichiers
-window.firebaseServices = { auth, db, storage };
+window.firebaseServices = { auth, db, storage, secondaryAuth };

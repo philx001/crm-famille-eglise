@@ -64,6 +64,22 @@
         { "fieldPath": "famille_id", "order": "ASCENDING" },
         { "fieldPath": "created_at", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "logs_connexion",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "famille_id", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "logs_modification",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "famille_id", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

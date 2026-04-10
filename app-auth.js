@@ -206,6 +206,7 @@ const Auth = {
   async createMembre(membreData) {
     try {
       App.showLoading();
+      if (window._secondaryAuthPersistenceSet) await window._secondaryAuthPersistenceSet;
 
       const role = membreData.role || 'disciple';
       const canAdd = role === 'nouveau' ? Permissions.canAddNouveau() : Permissions.canAddDisciple();
@@ -421,6 +422,8 @@ const Auth = {
 
     App.showLoading();
     try {
+      if (window._secondaryAuthPersistenceSet) await window._secondaryAuthPersistenceSet;
+
       const tempPassword = Math.random().toString(36).slice(-8) + 'A1!';
       const userCredential = await window.secondaryAuth.createUserWithEmailAndPassword(
         membreData.email,
@@ -1175,6 +1178,7 @@ const AuditLog = {
         user_prenom: userPrenom || '',
         user_nom: userNom || '',
         user_role: userRole || '',
+        famille_id: AppState.famille?.id || null,
         action,
         collection: collectionName,
         document_id: documentId || null,

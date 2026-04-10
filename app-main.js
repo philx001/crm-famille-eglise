@@ -101,10 +101,13 @@ const App = {
     // Intercepter les erreurs Firebase globales
     if (typeof auth !== 'undefined') {
       auth.onAuthStateChanged((user) => {
-        if (!user && AppState.user) {
-          // Session expirée côté Firebase
-          ErrorHandler.showSessionError();
-        }
+        if (user || !AppState.user) return;
+        // Après createUser sur l’auth secondaire, l’état [DEFAULT] peut être brièvement incohérent : ne pas alerter tout de suite
+        setTimeout(() => {
+          if (!auth.currentUser && AppState.user) {
+            ErrorHandler.showSessionError();
+          }
+        }, 400);
       });
     }
 

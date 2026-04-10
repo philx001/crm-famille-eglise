@@ -12,12 +12,17 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 
 // Second app : création de comptes Auth sans remplacer la session de l’utilisateur connecté (principal)
-let secondaryAuth;
+let secondaryApp;
 try {
-  secondaryAuth = firebase.auth(firebase.app('UserCreate'));
+  secondaryApp = firebase.app('UserCreate');
 } catch (e) {
-  secondaryAuth = firebase.auth(firebase.initializeApp(firebaseConfig, 'UserCreate'));
+  secondaryApp = firebase.initializeApp(firebaseConfig, 'UserCreate');
 }
+const secondaryAuth = firebase.auth(secondaryApp);
+// Persistance mémoire uniquement : évite les collisions IndexedDB / événements fantômes sur l’auth [DEFAULT]
+window._secondaryAuthPersistenceSet = secondaryAuth
+  .setPersistence(firebase.auth.Auth.Persistence.NONE)
+  .catch((err) => console.warn('Persistance auth secondaire:', err.message));
 window.secondaryAuth = secondaryAuth;
 
 // Services Firebase

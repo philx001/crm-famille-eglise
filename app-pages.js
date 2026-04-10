@@ -1080,8 +1080,29 @@ const Pages = {
     `;
   },
 
-  renderLogs() {
+  async renderLogs() {
     if (!Permissions.isAdmin()) return '<div class="alert alert-danger">Accès réservé à l\'administrateur.</div>';
+    let families = [];
+    try {
+      const snapshot = await db.collection('familles').get();
+      families = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      families.sort((a, b) => (a.nom_affichage || a.nom || '').localeCompare(b.nom_affichage || b.nom || ''));
+    } catch (e) {
+      console.error('Erreur chargement familles (logs):', e);
+      return '<div class="alert alert-danger">Impossible de charger les familles pour le journal.</div>';
+    }
+    const defaultFamilleId = AppState.famille?.id || '';
+    let selectedFamilleId = defaultFamilleId;
+    if (families.length && !families.some((f) => f.id === selectedFamilleId)) {
+      selectedFamilleId = families[0].id;
+    }
+    const familyOptions = families.length === 0
+      ? '<option value="">— Aucune famille —</option>'
+      : families.map((f) => {
+          const label = Utils.escapeHtml(f.nom_affichage || f.nom || f.id);
+          const sel = f.id === selectedFamilleId ? ' selected' : '';
+          return `<option value="${Utils.escapeHtml(f.id)}"${sel}>${label}</option>`;
+        }).join('');
     const roleOptions = [
       { value: '', label: 'Tous les rôles' },
       { value: 'admin', label: 'Administrateur' },
@@ -1100,6 +1121,12 @@ const Pages = {
           <h3 class="card-title mb-0"><i class="fas fa-filter"></i> Filtres</h3>
           <div class="d-flex flex-wrap gap-2 align-items-center">
             <label class="d-flex align-items-center gap-1">
+              <span class="text-muted" style="font-size: 0.9rem;">Famille</span>
+              <select class="form-control form-control-sm" id="logs-filter-famille" style="min-width: 200px; max-width: 280px;" onchange="Pages.loadLogsData()" title="Journal limité à cette famille">
+                ${familyOptions}
+              </select>
+            </label>
+            <label class="d-flex align-items-center gap-1">
               <span class="text-muted" style="font-size: 0.9rem;">Du</span>
               <input type="date" class="form-control form-control-sm input-date" id="logs-filter-du"
                      min="${bounds.min}" max="${bounds.max}" style="width: 140px;"
@@ -1116,6 +1143,11 @@ const Pages = {
               <select class="form-control form-control-sm" id="logs-filter-role" style="width: 160px;" onchange="Pages.filterLogs()">
                 ${roleOptions.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
               </select>
+            </label>
+            <label class="d-flex align-items-center gap-1">
+              <span class="text-muted" style="font-size: 0.9rem;">Nom ou e-mail</span>
+              <input type="search" class="form-control form-control-sm" id="logs-filter-nom" placeholder="Rechercher…" style="width: 180px;"
+                     autocomplete="off" oninput="Pages.filterLogs()" title="Filtre sur prénom, nom ou e-mail (connexions et auteur des modifications)">
             </label>
           </div>
         </div>
@@ -1154,7 +1186,7 @@ const Pages = {
           </div>
         </div>
       </div>
-      <p class="text-muted mt-2" style="font-size: 0.85rem;">Dernières 100 entrées par type. Filtrage par date et rôle. Les données sont strictement réservées à l'administrateur.</p>
+      <p class="text-muted mt-2" style="font-size: 0.85rem;">Connexions et modifications : jusqu'à 300 entrées les plus récentes pour la <strong>famille choisie</strong>. Filtres date, rôle et nom ou e-mail s'appliquent aux tableaux ci-dessous. Déployez les index Firestore (<code>firestore.indexes.json</code>) si une erreur d'index apparaît en console. Réservé à l'administrateur.</p>
     `;
     setTimeout(() => Pages.loadLogsData(), 0);
     return html;
@@ -1165,62 +1197,45 @@ const Pages = {
     const tbodyConnexions = document.getElementById('logs-tbody-connexions');
     const tbodyModifications = document.getElementById('logs-tbody-modifications');
     if (!tbodyConnexions || !tbodyModifications) return;
+    const sel = document.getElementById('logs-filter-famille');
+    let familleId = (sel && sel.value) || AppState.famille?.id || '';
+    if (!familleId) {
+      tbodyConnexions.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Sélectionnez une famille pour charger les connexions.</td></tr>';
+      tbodyModifications.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Sélectionnez une famille pour charger les modifications.</td></tr>';
+      Pages.logsConnexions = [];
+      Pages.logsModifications = [];
+      return;
+    }
+    tbodyConnexions.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> Chargement...</td></tr>';
+    tbodyModifications.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> Chargement...</td></tr>';
+    const LIMIT = 300;
     try {
-      const [snapConnexions, snapModifications] = await Promise.all([
-        db.collection('logs_connexion').orderBy('date', 'desc').limit(100).get(),
-        db.collection('logs_modification').orderBy('date', 'desc').limit(100).get()
-      ]);
+      const qConn = db.collection('logs_connexion').where('famille_id', '==', familleId).orderBy('date', 'desc').limit(LIMIT);
+      const qMod = db.collection('logs_modification').where('famille_id', '==', familleId).orderBy('date', 'desc').limit(LIMIT);
+      const [snapConnexions, snapModifications] = await Promise.all([qConn.get(), qMod.get()]);
       const connexions = snapConnexions.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const modifications = snapModifications.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       Pages.logsConnexions = connexions;
       Pages.logsModifications = modifications;
-      Pages.renderLogsTables(connexions, modifications);
+      Pages.filterLogs();
     } catch (e) {
       console.error('Erreur chargement logs:', e);
-      tbodyConnexions.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">Impossible de charger. Vérifiez les règles Firestore (lecture réservée à l\'admin).</td></tr>';
-      tbodyModifications.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Erreur de chargement.</td></tr>';
+      const hint = (e.code === 'failed-precondition' || (e.message && e.message.includes('index')))
+        ? ' Créez les index composites (logs_connexion et logs_modification : famille_id + date) via la console Firebase ou <code>firebase deploy --only firestore:indexes</code>.'
+        : '';
+      tbodyConnexions.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-4">Impossible de charger les connexions.${hint}</td></tr>`;
+      tbodyModifications.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">Impossible de charger les modifications.${hint}</td></tr>`;
+      Pages.logsConnexions = [];
+      Pages.logsModifications = [];
     }
   },
 
-  renderLogsTables(connexions, modifications) {
-    const formatLogDate = (d) => {
-      if (!d) return '-';
-      const t = d.toDate ? d.toDate() : new Date(d);
-      return isNaN(t.getTime()) ? '-' : t.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    };
-    const tbodyConnexions = document.getElementById('logs-tbody-connexions');
-    const tbodyModifications = document.getElementById('logs-tbody-modifications');
-    if (!tbodyConnexions || !tbodyModifications) return;
-    tbodyConnexions.innerHTML = connexions.length === 0
-      ? '<tr><td colspan="5" class="text-center text-muted">Aucune connexion enregistrée.</td></tr>'
-      : connexions.map(l => `
-        <tr>
-          <td>${formatLogDate(l.date)}</td>
-          <td>${Utils.escapeHtml((l.prenom || '') + ' ' + (l.nom || ''))}</td>
-          <td><span class="badge badge-${l.role || 'secondary'}">${l.role ? (Utils.getRoleLabel ? Utils.getRoleLabel(l.role) : l.role) : '-'}</span></td>
-          <td>${Utils.escapeHtml(l.email || '')}</td>
-          <td><code>${Utils.escapeHtml(l.famille_id || '')}</code></td>
-        </tr>
-      `).join('');
-    tbodyModifications.innerHTML = modifications.length === 0
-      ? '<tr><td colspan="6" class="text-center text-muted">Aucune modification enregistrée.</td></tr>'
-      : modifications.map(l => `
-        <tr>
-          <td>${formatLogDate(l.date)}</td>
-          <td>${Utils.escapeHtml((l.user_prenom || '') + ' ' + (l.user_nom || ''))} <span class="text-muted">${Utils.escapeHtml(l.user_email || '')}</span></td>
-          <td><span class="badge badge-${l.user_role || 'secondary'}">${l.user_role ? (Utils.getRoleLabel ? Utils.getRoleLabel(l.user_role) : l.user_role) : '-'}</span></td>
-          <td>${Utils.escapeHtml(l.action || '')}</td>
-          <td>${Utils.escapeHtml(l.collection || '')} / ${Utils.escapeHtml(l.document_id || '')}</td>
-          <td>${l.details ? Utils.escapeHtml(String(l.details)) : '-'}</td>
-        </tr>
-      `).join('');
-  },
-
   filterLogs() {
-    if (!Pages.logsConnexions || !Pages.logsModifications) return;
+    if (!Array.isArray(Pages.logsConnexions) || !Array.isArray(Pages.logsModifications)) return;
     const duVal = document.getElementById('logs-filter-du')?.value || '';
     const auVal = document.getElementById('logs-filter-au')?.value || '';
     const roleVal = document.getElementById('logs-filter-role')?.value || '';
+    const nomVal = (document.getElementById('logs-filter-nom')?.value || '').trim().toLowerCase();
     const formatLogDate = (d) => {
       if (!d) return '-';
       const t = d.toDate ? d.toDate() : new Date(d);
@@ -1234,8 +1249,18 @@ const Pages = {
       if (roleVal && r !== roleVal) return false;
       return true;
     };
-    const filteredConnexions = Pages.logsConnexions.filter(l => filterRow(l, 'date', 'role'));
-    const filteredModifications = Pages.logsModifications.filter(l => filterRow(l, 'date', 'user_role'));
+    const matchesNomConnexion = (l) => {
+      if (!nomVal) return true;
+      const hay = `${l.prenom || ''} ${l.nom || ''} ${l.email || ''}`.toLowerCase();
+      return hay.includes(nomVal);
+    };
+    const matchesNomModification = (l) => {
+      if (!nomVal) return true;
+      const hay = `${l.user_prenom || ''} ${l.user_nom || ''} ${l.user_email || ''}`.toLowerCase();
+      return hay.includes(nomVal);
+    };
+    const filteredConnexions = Pages.logsConnexions.filter(l => filterRow(l, 'date', 'role') && matchesNomConnexion(l));
+    const filteredModifications = Pages.logsModifications.filter(l => filterRow(l, 'date', 'user_role') && matchesNomModification(l));
     const tbodyConnexions = document.getElementById('logs-tbody-connexions');
     const tbodyModifications = document.getElementById('logs-tbody-modifications');
     if (tbodyConnexions) {

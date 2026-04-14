@@ -813,8 +813,16 @@ const Permissions = {
     return AppState.user.role === 'disciple' || AppState.user.role === 'nouveau';
   },
 
+  /** Ajout de documents : mentor et rôles supérieurs (aligné Firestore create). */
   canManageDocuments() {
-    return this.hasRole('adjoint_superviseur');
+    return this.hasRole('mentor');
+  },
+
+  /** Suppression : adjoint+ tout document ; mentor uniquement les siens (aligné Firestore documents). */
+  canDeleteDocument(doc) {
+    if (!AppState.user || !doc) return false;
+    if (this.hasRole('adjoint_superviseur')) return true;
+    return doc.uploaded_by === AppState.user.id && this.hasRole('mentor');
   },
 
   // Nouvelles Âmes

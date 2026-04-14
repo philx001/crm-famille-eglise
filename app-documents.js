@@ -111,12 +111,11 @@ const Documents = {
 
   async delete(id) {
     try {
-      if (!Permissions.canManageDocuments()) {
-        throw new Error('Permission refusée');
-      }
-
       const doc = this.items.find(d => d.id === id);
       if (!doc) throw new Error('Document non trouvé');
+      if (!Permissions.canDeleteDocument(doc)) {
+        throw new Error('Permission refusée');
+      }
 
       // Supprimer de Storage
       if (doc.fichier_url) {
@@ -496,7 +495,7 @@ const PagesDocuments = {
     const date = doc.created_at?.toDate ? doc.created_at.toDate() : new Date(doc.created_at);
     const uploader = Membres.getById(doc.uploaded_by);
     const visibilite = Documents.getVisibilites().find(v => v.value === doc.visibilite);
-    const canDelete = Permissions.canManageDocuments();
+    const canDelete = Permissions.canDeleteDocument(doc);
 
     return `
       <div class="doc-card">

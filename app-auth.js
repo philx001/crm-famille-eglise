@@ -343,8 +343,8 @@ const Auth = {
       await deleteQueryBatch(db.collection('presences').where('programme_id', 'in', chunk));
     }
 
-    // 2. programmes, notifications, sujets_priere, temoignages, documents, planning_conducteurs_priere
-    const colsPhase2 = ['programmes', 'notifications', 'sujets_priere', 'temoignages', 'documents', 'planning_conducteurs_priere'];
+    // 2. programmes, notifications, sujets_priere, temoignages, documents, document_dossiers, planning_conducteurs_priere
+    const colsPhase2 = ['programmes', 'notifications', 'sujets_priere', 'temoignages', 'documents', 'document_dossiers', 'planning_conducteurs_priere'];
     for (const col of colsPhase2) {
       await deleteQueryBatch(db.collection(col).where('famille_id', '==', familleId));
     }
@@ -818,11 +818,28 @@ const Permissions = {
     return this.hasRole('mentor');
   },
 
-  /** Suppression : adjoint+ tout document ; mentor uniquement les siens (aligné Firestore documents). */
+  /** Création de répertoires : adjoint superviseur et rôles au-dessus uniquement (les mentors ajoutent seulement des fichiers). */
+  canManageDocumentFolders() {
+    return this.hasRole('adjoint_superviseur');
+  },
+
+  /** Renommer / supprimer un répertoire existant : créateur du dossier ou rôle au moins adjoint superviseur (aligné Firestore). */
+  canModifyDocumentFolder(folder) {
+    if (!AppState.user || !folder) return false;
+    if (folder.created_by === AppState.user.id) return true;
+    return this.hasRole('adjoint_superviseur');
+  },
+
+  /** Suppression document : adjoint+ tout document ; mentor uniquement les siens (aligné Firestore documents). */
   canDeleteDocument(doc) {
     if (!AppState.user || !doc) return false;
     if (this.hasRole('adjoint_superviseur')) return true;
     return doc.uploaded_by === AppState.user.id && this.hasRole('mentor');
+  },
+
+  /** Édition métadonnées / déplacement (catégorie, répertoire, etc.) : mêmes règles que la suppression. */
+  canEditDocument(doc) {
+    return this.canDeleteDocument(doc);
   },
 
   // Nouvelles Âmes

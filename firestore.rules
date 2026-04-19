@@ -57,6 +57,56 @@ service cloud.firestore {
       return isAuthenticated() && u != null && u.role == 'admin';
     }
 
+    /** dossier_id sur un document : absent, null, ou dossier de la même famille. */
+    function documentDossierValidForFamily(familleId, dossierId) {
+      return dossierId == null || (
+        exists(/databases/$(database)/documents/document_dossiers/$(dossierId)) &&
+        sameFamilleId(
+          get(/databases/$(database)/documents/document_dossiers/$(dossierId)).data.famille_id,
+          familleId
+        )
+      );
+    }
+
+    /** parent_id d’un répertoire : absent, null, ou parent de la même famille. */
+    function documentDossierParentValid(familleId, parentId) {
+      return parentId == null || (
+        exists(/databases/$(database)/documents/document_dossiers/$(parentId)) &&
+        sameFamilleId(
+          get(/databases/$(database)/documents/document_dossiers/$(parentId)).data.famille_id,
+          familleId
+        )
+      );
+    }
+
+    /** Répertoires système racine (non supprimables) : Documents divers, Comptes rendus. */
+    function isSystemRootFolderData(data) {
+      return data != null && data.keys().hasAny(['system_key']) &&
+        (data.system_key == 'documents_divers' || data.system_key == 'comptes_rendus_reunion');
+    }
+
+    /** system_key : absent / null pour dossiers normaux ; uniquement DD/CR à la racine à la création. */
+    function documentDossierSystemKeyValidOnCreate() {
+      let pid = request.resource.data.parent_id;
+      let sk = request.resource.data.system_key;
+      return sk == null || (
+        pid == null && (sk == 'documents_divers' || sk == 'comptes_rendus_reunion')
+      );
+    }
+
+    /** Bootstrap DD/CR : ID doc = famroot_{famille_id}_documents_divers | famroot_{famille_id}_comptes_rendus_reunion */
+    function isSystemRootBootstrapCreate(dossierId) {
+      let fid = request.resource.data.famille_id;
+      let pid = request.resource.data.parent_id;
+      let sk = request.resource.data.system_key;
+      return pid == null &&
+        (sk == 'documents_divers' || sk == 'comptes_rendus_reunion') &&
+        (
+          dossierId == 'famroot_' + fid + '_documents_divers' ||
+          dossierId == 'famroot_' + fid + '_comptes_rendus_reunion'
+        );
+    }
+
     // FAMILLES : lecture sans auth pour la page de connexion (recherche par nom)
     match /familles/{familleId} {
       allow read: if request.auth == null || (isAuthenticated() && belongsToFamily(familleId));
@@ -114,11 +164,43 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && (hasRole('superviseur') || isAdmin());
     }
 
+    // RÉPERTOIRES DOCUMENTS (création : adjoint+ ; DD/CR racine système non supprimables ; system_key immuable)
+    match /document_dossiers/{dossierId} {
+      allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
+      allow create: if isAuthenticated() && belongsToFamily(request.resource.data.famille_id) &&
+        documentDossierParentValid(request.resource.data.famille_id, request.resource.data.parent_id) &&
+        (
+          (
+            hasRole('adjoint_superviseur') &&
+            documentDossierSystemKeyValidOnCreate()
+          ) ||
+          isSystemRootBootstrapCreate(dossierId)
+        );
+      allow update: if isAuthenticated() && belongsToFamily(resource.data.famille_id) &&
+        request.resource.data.famille_id == resource.data.famille_id &&
+        documentDossierParentValid(resource.data.famille_id, request.resource.data.parent_id) &&
+        request.resource.data.system_key == resource.data.system_key &&
+        (
+          hasRole('adjoint_superviseur') ||
+          resource.data.created_by == request.auth.uid
+        );
+      allow delete: if isAuthenticated() && belongsToFamily(resource.data.famille_id) &&
+        !isSystemRootFolderData(resource.data) && (
+          hasRole('adjoint_superviseur') ||
+          resource.data.created_by == request.auth.uid
+        );
+    }
+
     // DOCUMENTS (fichiers partagés)
     match /documents/{documentId} {
       allow read: if isAuthenticated() && belongsToFamily(resource.data.famille_id);
-      allow create: if isAuthenticated() && belongsToFamily(request.resource.data.famille_id);
-      allow update, delete: if isAuthenticated() && belongsToFamily(resource.data.famille_id) && (
+      allow create: if isAuthenticated() && belongsToFamily(request.resource.data.famille_id) &&
+        documentDossierValidForFamily(request.resource.data.famille_id, request.resource.data.dossier_id);
+      allow update: if isAuthenticated() && belongsToFamily(resource.data.famille_id) &&
+        request.resource.data.famille_id == resource.data.famille_id &&
+        documentDossierValidForFamily(resource.data.famille_id, request.resource.data.dossier_id) &&
+        (resource.data.uploaded_by == request.auth.uid || hasRole('adjoint_superviseur'));
+      allow delete: if isAuthenticated() && belongsToFamily(resource.data.famille_id) && (
         resource.data.uploaded_by == request.auth.uid
         || hasRole('adjoint_superviseur')
       );

@@ -117,8 +117,8 @@ async function main() {
     if (grandTotal > 0) console.log(`  presences: ${grandTotal} supprimés`);
   }
 
-  // 2. programmes, notifications, sujets_priere, temoignages, documents
-  const collectionsPhase2 = ['programmes', 'notifications', 'sujets_priere', 'temoignages', 'documents'];
+  // 2. programmes, notifications, sujets_priere, temoignages, documents, document_dossiers
+  const collectionsPhase2 = ['programmes', 'notifications', 'sujets_priere', 'temoignages', 'documents', 'document_dossiers'];
   for (const col of collectionsPhase2) {
     const q = db.collection(col).where('famille_id', '==', familleId);
     const n = await deleteQueryBatch(db, q);

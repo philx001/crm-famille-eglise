@@ -26,6 +26,7 @@ const CONTENT_COLLECTIONS = [
   'sujets_priere',
   'temoignages',
   'documents',
+  'document_dossiers',
   'suivis_ames',
   'nouvelles_ames',
   'sessions_evangelisation',

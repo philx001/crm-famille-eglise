@@ -164,6 +164,15 @@ const Utils = {
     return div.innerHTML;
   },
 
+  /** Valeur sûre pour attribut HTML (ex. data-dossier-id). */
+  escapeAttr(text) {
+    if (text == null || text === '') return '';
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;');
+  },
+
   /** Première ligne du contenu (titre affiché si pas de champ titre), max 80 car. */
   getTitleFromContent(text) {
     if (!text || typeof text !== 'string') return 'Sans titre';

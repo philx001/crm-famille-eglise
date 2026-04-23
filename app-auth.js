@@ -938,7 +938,11 @@ const Permissions = {
     return this.hasRole('adjoint_superviseur') || this.hasRole('superviseur') || this.isAdmin();
   },
 
-  /** Peut réaffecter ce membre (disciple, nouveau, mentor, admin) à un autre mentor. Adjoint superviseur exclu : compte de service, non affectable. */
+  /**
+   * Peut réaffecter ce membre (disciple, nouveau, mentor, admin) à un autre mentor.
+   * Les comptes adjoint_superviseur ne peuvent pas être cibles de réaffectation (rôle exclu).
+   * Un adjoint connecté a les mêmes droits de réaffectation qu’un superviseur (hors édition complète du profil).
+   */
   canReassignMentor(membre) {
     if (!AppState.user || !membre) return false;
     if (membre.role === 'adjoint_superviseur') return false;
@@ -998,9 +1002,15 @@ const Membres = {
     try {
       const membre = this.getById(id);
       const canEditFull = Permissions.canEditMember(id);
+      const dataKeys = Object.keys(data);
       const canEditDateOnly = membre && Permissions.canEditDateArriveeFamille(membre) &&
-        Object.keys(data).length === 1 && data.hasOwnProperty('date_arrivee_famille');
-      if (!canEditFull && !canEditDateOnly) {
+        dataKeys.length === 1 && data.hasOwnProperty('date_arrivee_famille');
+      /** Réaffectation mentor (liste membres) : adjoint / superviseur / admin / mentor sur ses affectés — sans édition complète du profil. */
+      const canEditMentorIdOnly = membre &&
+        dataKeys.length === 1 &&
+        data.hasOwnProperty('mentor_id') &&
+        Permissions.canReassignMentor(membre);
+      if (!canEditFull && !canEditDateOnly && !canEditMentorIdOnly) {
         throw new Error('Permission refusée');
       }
       // Superviseur et adjoint_superviseur : jamais de mentor_id (comptes de service)

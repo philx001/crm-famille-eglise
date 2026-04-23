@@ -1036,7 +1036,13 @@ const Membres = {
       return true;
     } catch (error) {
       console.error('Erreur mise à jour membre:', error);
-      Toast.error('Erreur lors de la mise à jour');
+      const code = error && error.code;
+      const msg = (error && error.message) || '';
+      Toast.error(
+        code === 'permission-denied'
+          ? 'Permission refusée par la base de données. Déployez les règles Firestore du projet ou contactez un administrateur.'
+          : (msg || 'Erreur lors de la mise à jour')
+      );
       return false;
     }
   },

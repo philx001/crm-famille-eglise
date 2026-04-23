@@ -39,6 +39,26 @@ service cloud.firestore {
         (resource.data.role == 'disciple' || resource.data.role == 'nouveau');
     }
 
+    /** Compte de service adjoint (pas le niveau hiérarchique hasRole qui inclurait le superviseur). */
+    function isAdjointServiceRole() {
+      let r = getUserData().role;
+      return r == 'adjoint_superviseur' || r == 'adjoint_berger';
+    }
+
+    /**
+     * Réaffectation mentor : adjoint/berger, même famille, cible non admin, seuls mentor_id + updated_at.
+     * Couvre aussi les cibles rôle « mentor » (mentorCanUpdateDisciple ne s’applique pas) et limite l’escalade de droits.
+     */
+    function adjointServiceMentorReassignUpdate(cibleUserId) {
+      return isAuthenticated() && isAdjointServiceRole() &&
+        request.auth.uid != cibleUserId &&
+        getUserData().famille_id != null &&
+        sameFamilleId(resource.data.famille_id, getUserData().famille_id) &&
+        resource.data.role != 'admin' &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['mentor_id', 'updated_at']);
+    }
+
     function belongsToFamily(familleId) {
       let userData = getUserData();
       return userData != null && (
@@ -141,6 +161,7 @@ service cloud.firestore {
         (hasRole('superviseur') && sameFamilleId(resource.data.famille_id, getUserData().famille_id) && resource.data.role != 'admin') ||
         (hasRole('mentor') && resource.data.mentor_id == request.auth.uid) ||
         mentorCanUpdateDisciple() ||
+        adjointServiceMentorReassignUpdate(userId) ||
         isAdmin()
       );
 

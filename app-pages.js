@@ -111,6 +111,18 @@ const Pages = {
       </div>
     ` : '';
 
+    const naNcs = (!isMesDisciples && AppState.currentPage === 'membres' && typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getAll)
+      ? NouvellesAmes.getAll().filter(na => {
+          if (!na || na.statut === 'integre') return false;
+          if (Permissions.canViewAllMembers() || Permissions.canViewMembersListReadOnly()) return true;
+          return na.contacte_par_id === AppState.user.id || na.suivi_par_id === AppState.user.id;
+        })
+      : [];
+    const cardsHtml = [
+      ...membres.map(m => this.renderMembreCard(m)),
+      ...naNcs.map(na => this.renderNANCCard(na))
+    ].join('');
+
     return `
       ${statsIntegrationsSection}
       ${statsSection}
@@ -119,10 +131,11 @@ const Pages = {
           <div class="search-box">
             <i class="fas fa-search"></i>
             <input type="text" class="form-control" id="search-membres" 
-                   placeholder="Rechercher un membre..." onkeyup="App.filterMembres()">
+                   placeholder="Rechercher un membre ou une NA/NC..." onkeyup="App.filterMembres()">
           </div>
           <select class="form-control" id="filter-role" onchange="App.filterMembres()" style="width: auto;">
             <option value="">Tous les rôles</option>
+            ${naNcs.length > 0 ? '<option value="na_nc">NA/NC</option>' : ''}
             <option value="disciple">Disciples</option>
             <option value="nouveau">Nouveaux</option>
             ${(isMesDisciples && AppState.user && AppState.user.role === 'mentor') ? '' : `
@@ -157,7 +170,7 @@ const Pages = {
       <div class="card">
         <div class="card-body" style="padding: 0;">
           <div id="membres-list">
-            ${membres.length > 0 ? membres.map(m => this.renderMembreCard(m)).join('') : `
+            ${(membres.length + naNcs.length) > 0 ? cardsHtml : `
               <div class="empty-state">
                 <i class="fas fa-users"></i>
                 <h3>Aucun membre</h3>
@@ -267,6 +280,37 @@ const Pages = {
             <i class="fas fa-trash-alt"></i>
           </button>
           ` : ''}
+        </div>
+      </div>
+    `;
+  },
+
+  renderNANCCard(na) {
+    const categorie = na.categorie === 'nc' ? 'NC' : 'NA';
+    const categorieColor = na.categorie === 'nc' ? '#E91E63' : '#2196F3';
+    const statutLabel = (typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getStatutLabel)
+      ? NouvellesAmes.getStatutLabel(na.statut)
+      : (na.statut || '-');
+    return `
+      <div class="member-card na-nc-card" data-id="${na.id}" data-role="na_nc"
+           data-name="${((na.prenom || '') + ' ' + (na.nom || '')).toLowerCase()}" data-mentor-id="${na.suivi_par_id || ''}"
+           style="border-left: 4px solid #9C27B0; background: linear-gradient(90deg, #9C27B012 0%, transparent 22%);">
+        <div class="member-avatar" style="background: #9C27B0;">
+          ${Utils.getInitials(na.prenom || '', na.nom || '')}
+        </div>
+        <div class="member-info">
+          <div class="member-name">${Utils.escapeHtml(na.prenom || '')} ${Utils.escapeHtml(na.nom || '')}</div>
+          <div class="member-email">Suivi: ${Utils.escapeHtml(na.suivi_par_nom || '-')}</div>
+        </div>
+        <div class="member-meta">
+          <span class="badge" style="background: #9C27B0; color: white;">NA/NC</span>
+          <span class="badge" style="background: ${categorieColor}; color: white; margin-left: 4px;">${categorie}</span>
+          <span class="badge" style="background: #607D8B; color: white; margin-left: 4px;">${Utils.escapeHtml(statutLabel)}</span>
+        </div>
+        <div class="member-actions">
+          <button class="btn btn-icon btn-secondary" onclick="App.navigate('nouvelle-ame-detail', { id: '${na.id}' })" title="Voir fiche NA/NC">
+            <i class="fas fa-eye"></i>
+          </button>
         </div>
       </div>
     `;

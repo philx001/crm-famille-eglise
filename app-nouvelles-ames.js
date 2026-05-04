@@ -1813,7 +1813,9 @@ const PagesNouvellesAmes = {
       </div>`;
     }
     const suivis = await SuivisAmes.loadByNouvelleAme(id);
-    const canal = CANAUX.find(c => c.value === na.canal) || {};
+    const suivisAccordionId = `na-suivis-acc-extra-${id}`;
+    const suivisVisibles = suivis.slice(0, 3);
+    const suivisMasques = suivis.slice(3);
     const avatarBg = na.sexe === 'F' ? '#E91E63' : 'var(--primary)';
     
     const dateContact = na.date_premier_contact?.toDate 
@@ -1828,12 +1830,6 @@ const PagesNouvellesAmes = {
         <div class="na-detail-info">
           <h2>${Utils.escapeHtml(na.prenom)} ${Utils.escapeHtml(na.nom)}</h2>
           <div class="na-detail-badges">
-            <span class="badge badge-secondary" style="background: ${(CATEGORIES_NA_NC.find(c => c.value === na.categorie) || {}).color || '#607D8B'}20; color: ${(CATEGORIES_NA_NC.find(c => c.value === na.categorie) || {}).color || '#607D8B'};">
-              ${NouvellesAmes.getCategorieLabel(na.categorie)}
-            </span>
-            <span class="badge-canal" style="background: ${canal.color}20; color: ${canal.color}">
-              <i class="fas ${canal.icon}"></i> ${canal.label}
-            </span>
             <span class="badge-statut" style="background: ${NouvellesAmes.getStatutColor(na.statut)}">
               ${NouvellesAmes.getStatutLabel(na.statut)}
             </span>
@@ -1842,8 +1838,8 @@ const PagesNouvellesAmes = {
         </div>
         <div class="na-detail-actions">
           ${NouvellesAmes.canEditNouvelleAme(na) ? `
-          <button class="btn btn-outline-primary" onclick="PagesNouvellesAmes.showEditModal('${id}')" title="Modifier toutes les informations">
-            <i class="fas fa-edit"></i> Modifier
+          <button class="btn btn-outline-primary" onclick="PagesNouvellesAmes.showEditModal('${id}', 'full')" title="Modifier toutes les informations">
+            <i class="fas fa-edit"></i> Modifier tout
           </button>
           ` : ''}
           <button class="btn btn-primary" onclick="App.navigate('nouvelle-ame-suivi', {id: '${id}'})">
@@ -1865,10 +1861,18 @@ const PagesNouvellesAmes = {
           <div class="card">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
               <h3 class="card-title"><i class="fas fa-user"></i> Informations personnelles</h3>
-              ${NouvellesAmes.canEditNouvelleAme(na) ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
+              ${NouvellesAmes.canEditNouvelleAme(na) ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}', 'personnel')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
             </div>
             <div class="card-body">
               <div class="info-grid">
+                <div class="info-item">
+                  <span class="info-label">Prénom</span>
+                  <span class="info-value">${Utils.escapeHtml(na.prenom || '-')}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Nom</span>
+                  <span class="info-value">${Utils.escapeHtml(na.nom || '-')}</span>
+                </div>
                 <div class="info-item">
                   <span class="info-label">Téléphone</span>
                   <span class="info-value">${Utils.escapeHtml(na.telephone || '-')}</span>
@@ -1885,12 +1889,31 @@ const PagesNouvellesAmes = {
                   <span class="info-label">Ville/Quartier</span>
                   <span class="info-value">${Utils.escapeHtml(na.adresse_ville || '-')}</span>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="na-detail-section">
+          <div class="card">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <h3 class="card-title"><i class="fas fa-route"></i> Suivi</h3>
+              ${NouvellesAmes.canEditNouvelleAme(na) ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}', 'suivi')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
+            </div>
+            <div class="card-body">
+              <p class="text-muted" style="font-size: 0.85rem; margin: 0 0 var(--spacing-md) 0;">Statut, origine du contact et responsables.</p>
+              <div class="info-grid">
                 <div class="info-item">
-                  <span class="info-label">Premier contact</span>
+                  <span class="info-label">Statut</span>
+                  <span class="info-value">${NouvellesAmes.getStatutLabel(na.statut)}</span>
+                </div>
+                ${na.thematique ? `<div class="info-item"><span class="info-label">Thématique</span><span class="info-value">${NouvellesAmes.getThematiqueLabel(na.thematique)}</span></div>` : ''}
+                <div class="info-item">
+                  <span class="info-label">Date du premier contact</span>
                   <span class="info-value">${Utils.formatDate(dateContact)}</span>
                 </div>
                 <div class="info-item">
-                  <span class="info-label">Lieu de contact</span>
+                  <span class="info-label">Lieu du contact</span>
                   <span class="info-value">${Utils.escapeHtml(na.lieu_contact || '-')}</span>
                 </div>
                 <div class="info-item">
@@ -1909,34 +1932,8 @@ const PagesNouvellesAmes = {
         <div class="na-detail-section">
           <div class="card">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-              <h3 class="card-title"><i class="fas fa-tag"></i> Catégorie, statut et canal</h3>
-              ${NouvellesAmes.canEditNouvelleAme(na) ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
-            </div>
-            <div class="card-body">
-              <div class="info-grid">
-                <div class="info-item">
-                  <span class="info-label">Catégorie</span>
-                  <span class="info-value">${NouvellesAmes.getCategorieLabel(na.categorie)}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">Statut</span>
-                  <span class="info-value">${NouvellesAmes.getStatutLabel(na.statut)}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">Canal</span>
-                  <span class="info-value"><i class="fas ${canal.icon}" style="color: ${canal.color}"></i> ${canal.label}</span>
-                </div>
-                ${na.thematique ? `<div class="info-item"><span class="info-label">Thématique</span><span class="info-value">${NouvellesAmes.getThematiqueLabel(na.thematique)}</span></div>` : ''}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="na-detail-section">
-          <div class="card">
-            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
               <h3 class="card-title"><i class="fas fa-tasks"></i> Défis et commentaires</h3>
-              ${NouvellesAmes.canEditNouvelleAme(na) ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
+              ${NouvellesAmes.canEditNouvelleAme(na) ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}', 'defis')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
             </div>
             <div class="card-body">
               ${na.defis && na.defis.length > 0 ? `
@@ -1971,7 +1968,7 @@ const PagesNouvellesAmes = {
           <div class="card mt-3">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
               <h3 class="card-title"><i class="fas fa-graduation-cap"></i> Formations (PCNC, BDR, Baptême)</h3>
-              ${NouvellesAmes.canEditNouvelleAme(na) ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
+              ${NouvellesAmes.canEditNouvelleAme(na) ? `<button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation(); PagesNouvellesAmes.showEditModal('${id}', 'formations')"><i class="fas fa-edit"></i> Modifier</button>` : ''}
             </div>
             <div class="card-body">
               ${this.renderFormationsDetail(na)}
@@ -1988,8 +1985,19 @@ const PagesNouvellesAmes = {
             <div class="card-body" style="padding: 0;">
               ${suivis.length > 0 ? `
               <div class="timeline">
-                ${suivis.map(s => this.renderSuiviItem(s)).join('')}
+                ${suivisVisibles.map(s => this.renderSuiviItem(s)).join('')}
               </div>
+              ${suivisMasques.length > 0 ? `
+              <div id="${suivisAccordionId}" class="timeline na-suivis-timeline-extra" style="display: none;">
+                ${suivisMasques.map(s => this.renderSuiviItem(s)).join('')}
+              </div>
+              <div class="na-suivis-acc-bar">
+                <button type="button" class="btn btn-sm btn-outline" aria-expanded="false" onclick="PagesNouvellesAmes.toggleHistoriqueSuivisAccordion('${suivisAccordionId}', this)">
+                  <span class="na-suivis-acc-more"><i class="fas fa-chevron-down"></i> ${suivisMasques.length === 1 ? 'Voir 1 autre suivi' : `Voir les ${suivisMasques.length} autres suivis`}</span>
+                  <span class="na-suivis-acc-less" hidden><i class="fas fa-chevron-up"></i> Voir moins</span>
+                </button>
+              </div>
+              ` : ''}
               ` : `
               <div class="empty-state" style="padding: var(--spacing-lg);">
                 <i class="fas fa-comments"></i>
@@ -1997,21 +2005,6 @@ const PagesNouvellesAmes = {
                 <p>Ajoutez un premier suivi pour cette personne.</p>
               </div>
               `}
-            </div>
-          </div>
-          
-          <!-- Cultes en Semaine -->
-          <div class="card mt-3">
-            <div class="card-header">
-              <h3 class="card-title"><i class="fas fa-graduation-cap"></i> Cultes en Semaine</h3>
-              ${na.statut !== 'integre' ? `
-              <button class="btn btn-sm btn-primary" onclick="PagesNouvellesAmes.showInscriptionModal('${id}')">
-                <i class="fas fa-plus"></i> Inscrire
-              </button>
-              ` : ''}
-            </div>
-            <div class="card-body" style="padding: 0;">
-              ${this.renderProgrammesInscrits(na)}
             </div>
           </div>
         </div>
@@ -2134,6 +2127,19 @@ const PagesNouvellesAmes = {
           background: var(--bg-primary);
           padding: var(--spacing-sm);
           border-radius: var(--radius-sm);
+          line-height: 1.55;
+          min-height: 3.25em;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+        .na-suivis-timeline-extra {
+          padding: 0 var(--spacing-md);
+          padding-bottom: 0;
+        }
+        .na-suivis-acc-bar {
+          padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
+          border-top: 1px solid var(--border-color);
+          text-align: center;
         }
       </style>
     `;
@@ -2199,6 +2205,20 @@ const PagesNouvellesAmes = {
         </div>
       </div>
     `;
+  },
+
+  /** Affiche / masque les suivis au-delà des 3 plus récents. */
+  toggleHistoriqueSuivisAccordion(extraTimelineId, buttonEl) {
+    const wrap = document.getElementById(extraTimelineId);
+    if (!wrap || !buttonEl) return;
+    const expanded = buttonEl.getAttribute('aria-expanded') === 'true';
+    const nextExpanded = !expanded;
+    wrap.style.display = nextExpanded ? 'block' : 'none';
+    buttonEl.setAttribute('aria-expanded', String(nextExpanded));
+    const more = buttonEl.querySelector('.na-suivis-acc-more');
+    const less = buttonEl.querySelector('.na-suivis-acc-less');
+    if (more) more.hidden = nextExpanded;
+    if (less) less.hidden = !nextExpanded;
   },
 
   // Page ajout de suivi
@@ -2293,29 +2313,9 @@ const PagesNouvellesAmes = {
     );
   },
 
-  // Ouvrir la modal d'édition (détail) — tous les champs éditables
-  showEditModal(id) {
-    const na = NouvellesAmes.getById(id);
-    if (!na) return;
-    const mentors = Membres.getMentors();
-    const dateContact = na.date_premier_contact?.toDate ? na.date_premier_contact.toDate() : new Date(na.date_premier_contact || Date.now());
-    const dateStr = isNaN(dateContact.getTime()) ? '' : dateContact.toISOString().split('T')[0];
-
-    const modalId = 'modal-edit-na';
-    let existing = document.getElementById(modalId);
-    if (existing) existing.remove();
-
-    const defisChecked = (na.defis || []).reduce((acc, d) => { acc[d] = true; return acc; }, {});
-
-    const modalHtml = `
-      <div class="modal-overlay" id="${modalId}">
-        <div class="modal" style="max-width: 600px; max-height: 90vh; overflow: auto;">
-          <div class="modal-header">
-            <h3 class="modal-title"><i class="fas fa-edit"></i> Modifier la nouvelle âme</h3>
-            <button class="modal-close" onclick="Modal.hide('${modalId}'); document.getElementById('${modalId}').remove();">&times;</button>
-          </div>
-          <div class="modal-body">
-            <form id="form-edit-na" onsubmit="PagesNouvellesAmes.submitEdit(event, '${id}')">
+  /** Fragments HTML du formulaire d'édition (réutilisés selon la rubrique). */
+  _htmlEditModalPersonnel(na) {
+    return `
               <h4 class="section-title">Informations personnelles</h4>
               <div class="form-row">
                 <div class="form-group">
@@ -2350,8 +2350,11 @@ const PagesNouvellesAmes = {
                   <label class="form-label">Ville / Quartier</label>
                   <input type="text" class="form-control" name="adresse_ville" value="${Utils.escapeHtml(na.adresse_ville || '')}" placeholder="Ex: Abidjan, Cocody">
                 </div>
-              </div>
+              </div>`;
+  },
 
+  _htmlEditModalSuiviBloc(na, mentors, dateStr) {
+    return `
               <h4 class="section-title">Catégorie et statut</h4>
               <div class="form-group">
                 <label class="form-label">Catégorie</label>
@@ -2406,14 +2409,24 @@ const PagesNouvellesAmes = {
                   ${mentors.map(m => `<option value="${m.id}" ${(na.contacte_par_id || '') === m.id ? 'selected' : ''}>${m.prenom} ${m.nom}</option>`).join('')}
                 </select>
               </div>
+              <div class="form-group">
+                <label class="form-label">Suivi par</label>
+                <select class="form-control" name="suivi_par_id">
+                  <option value="">Moi-même</option>
+                  ${mentors.map(m => `<option value="${m.id}" ${(na.suivi_par_id || '') === m.id ? 'selected' : ''}>${m.prenom} ${m.nom}</option>`).join('')}
+                </select>
+              </div>`;
+  },
 
+  _htmlEditModalFormations(na) {
+    return `
               <h4 class="section-title">Formations (PCNC, BDR, Baptême)</h4>
               <div class="form-group">
                 <label class="form-label">Formations suivies</label>
                 <div class="formations-edit-list">
                   ${FORMATIONS_NA_NC.map(f => {
                     const entry = (na.formations || []).find(x => x.code === f.value);
-                    const dateStr = entry?.date ? (entry.date.toDate ? entry.date.toDate() : new Date(entry.date)).toISOString().split('T')[0] : '';
+                    const fdStr = entry?.date ? (entry.date.toDate ? entry.date.toDate() : new Date(entry.date)).toISOString().split('T')[0] : '';
                     return `
                       <div class="formation-edit-item" style="padding: 12px; margin-bottom: 8px; background: var(--bg-primary); border-radius: 8px; border: 1px solid var(--border-color);">
                         <label class="checkbox-item" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
@@ -2422,7 +2435,7 @@ const PagesNouvellesAmes = {
                         </label>
                         <div class="formation-date-group" id="formation-date-${f.value}" style="display: ${entry ? 'flex' : 'none'}; gap: 8px; align-items: center; margin-left: 24px;">
                           <label class="form-label" style="margin: 0; font-size: 0.85rem;">Date inscription/baptême</label>
-                          <input type="date" class="form-control input-date" name="formation_date_${f.value}" value="${dateStr}" style="max-width: 180px;">
+                          <input type="date" class="form-control input-date" name="formation_date_${f.value}" value="${fdStr}" style="max-width: 180px;">
                           <select class="form-control" name="formation_statut_${f.value}" style="max-width: 140px;">
                             ${STATUTS_FORMATION.map(s => `<option value="${s.value}" ${(entry?.statut || 'inscrit') === s.value ? 'selected' : ''}>${s.label}</option>`).join('')}
                           </select>
@@ -2431,16 +2444,13 @@ const PagesNouvellesAmes = {
                     `;
                   }).join('')}
                 </div>
-              </div>
+              </div>`;
+  },
 
-              <h4 class="section-title">Suivi</h4>
-              <div class="form-group">
-                <label class="form-label">Suivi par</label>
-                <select class="form-control" name="suivi_par_id">
-                  <option value="">Moi-même</option>
-                  ${mentors.map(m => `<option value="${m.id}" ${(na.suivi_par_id || '') === m.id ? 'selected' : ''}>${m.prenom} ${m.nom}</option>`).join('')}
-                </select>
-              </div>
+  _htmlEditModalDefis(na) {
+    const defisChecked = (na.defis || []).reduce((acc, d) => { acc[d] = true; return acc; }, {});
+    return `
+              <h4 class="section-title">Défis et commentaires</h4>
               <div class="form-group">
                 <label class="form-label">Défis / Attentes</label>
                 <div class="checkbox-group">
@@ -2455,7 +2465,62 @@ const PagesNouvellesAmes = {
               <div class="form-group">
                 <label class="form-label">Commentaires</label>
                 <textarea class="form-control" name="commentaires" rows="3">${Utils.escapeHtml(na.commentaires || '')}</textarea>
-              </div>
+              </div>`;
+  },
+
+  /**
+   * Ouvre la modal d'édition.
+   * @param {string} id — id Firestore
+   * @param {'full'|'personnel'|'suivi'|'formations'|'defis'} section — rubrique affichée (défaut : toute la fiche)
+   */
+  showEditModal(id, section = 'full') {
+    const na = NouvellesAmes.getById(id);
+    if (!na) return;
+    const sect = ['full', 'personnel', 'suivi', 'formations', 'defis'].includes(section) ? section : 'full';
+    const mentors = Membres.getMentors();
+    const dateContact = na.date_premier_contact?.toDate ? na.date_premier_contact.toDate() : new Date(na.date_premier_contact || Date.now());
+    const dateStr = isNaN(dateContact.getTime()) ? '' : dateContact.toISOString().split('T')[0];
+
+    const modalId = 'modal-edit-na';
+    let existing = document.getElementById(modalId);
+    if (existing) existing.remove();
+
+    const titles = {
+      full: 'Modifier la nouvelle âme',
+      personnel: 'Informations personnelles',
+      suivi: 'Suivi',
+      formations: 'Formations (PCNC, BDR, Baptême)',
+      defis: 'Défis et commentaires'
+    };
+    const title = titles[sect] || titles.full;
+
+    let formInner = '';
+    if (sect === 'full') {
+      formInner =
+        this._htmlEditModalPersonnel(na) +
+        this._htmlEditModalSuiviBloc(na, mentors, dateStr) +
+        this._htmlEditModalFormations(na) +
+        this._htmlEditModalDefis(na);
+    } else if (sect === 'personnel') {
+      formInner = this._htmlEditModalPersonnel(na);
+    } else if (sect === 'suivi') {
+      formInner = this._htmlEditModalSuiviBloc(na, mentors, dateStr);
+    } else if (sect === 'formations') {
+      formInner = this._htmlEditModalFormations(na);
+    } else if (sect === 'defis') {
+      formInner = this._htmlEditModalDefis(na);
+    }
+
+    const modalHtml = `
+      <div class="modal-overlay" id="${modalId}">
+        <div class="modal" style="max-width: 600px; max-height: 90vh; overflow: auto;">
+          <div class="modal-header">
+            <h3 class="modal-title"><i class="fas fa-edit"></i> ${Utils.escapeHtml(title)}</h3>
+            <button class="modal-close" onclick="Modal.hide('${modalId}'); document.getElementById('${modalId}').remove();">&times;</button>
+          </div>
+          <div class="modal-body">
+            <form id="form-edit-na" onsubmit="PagesNouvellesAmes.submitEdit(event, '${id}', '${sect}')">
+              ${formInner}
               <div class="form-actions">
                 <button type="button" class="btn btn-secondary" onclick="Modal.hide('${modalId}'); document.getElementById('${modalId}').remove();">Annuler</button>
                 <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Enregistrer</button>
@@ -2467,7 +2532,9 @@ const PagesNouvellesAmes = {
     `;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     Modal.show(modalId);
-    PagesNouvellesAmes.toggleThematiqueEdit();
+    if (sect === 'full' || sect === 'suivi') {
+      PagesNouvellesAmes.toggleThematiqueEdit();
+    }
   },
 
   toggleThematiqueEdit() {
@@ -2481,68 +2548,94 @@ const PagesNouvellesAmes = {
     if (el) el.style.display = checked ? 'flex' : 'none';
   },
 
-  async submitEdit(event, id) {
+  async submitEdit(event, id, section = 'full') {
     event.preventDefault();
+    const sect = ['full', 'personnel', 'suivi', 'formations', 'defis'].includes(section) ? section : 'full';
     const form = event.target;
     const formData = new FormData(form);
-    const defis = [];
-    form.querySelectorAll('input[name="defis"]:checked').forEach(cb => defis.push(cb.value));
 
-    const contacteParId = formData.get('contacte_par_id');
-    let contacteParNom = '';
-    if (contacteParId) {
-      const m = Membres.getById(contacteParId);
-      if (m) contacteParNom = `${m.prenom} ${m.nom}`;
-    }
-    const suiviParId = formData.get('suivi_par_id');
-    let suiviParNom = `${AppState.user.prenom} ${AppState.user.nom}`;
-    if (suiviParId) {
-      const m = Membres.getById(suiviParId);
-      if (m) suiviParNom = `${m.prenom} ${m.nom}`;
-    }
-
-    const email = (formData.get('email') || '').trim() || null;
-    if (!email) {
-      Toast.error('L\'email est obligatoire.');
-      return;
-    }
-    const formations = [];
-    FORMATIONS_NA_NC.forEach(f => {
-      const cb = form.querySelector(`input[name="formation_${f.value}"]`);
-      if (cb && cb.checked) {
-        const dateVal = formData.get(`formation_date_${f.value}`);
-        const statutVal = formData.get(`formation_statut_${f.value}`) || 'inscrit';
-        formations.push({
-          code: f.value,
-          date: dateVal ? firebase.firestore.Timestamp.fromDate(new Date(dateVal)) : null,
-          statut: statutVal
-        });
+    const readSuiviBloc = () => {
+      const contacteParId = formData.get('contacte_par_id');
+      let contacteParNom = '';
+      if (contacteParId) {
+        const m = Membres.getById(contacteParId);
+        if (m) contacteParNom = `${m.prenom} ${m.nom}`;
       }
-    });
-
-    const data = {
-      prenom: formData.get('prenom'),
-      nom: formData.get('nom'),
-      telephone: formData.get('telephone'),
-      email: email,
-      sexe: formData.get('sexe') || null,
-      adresse_ville: formData.get('adresse_ville') || null,
-      categorie: formData.get('categorie') === 'nc' ? 'nc' : 'na',
-      statut: formData.get('statut') || 'nouveau',
-      canal: formData.get('canal'),
-      thematique: formData.get('canal') === 'exhortation' ? (formData.get('thematique') || null) : null,
-      date_premier_contact: formData.get('date_premier_contact')
-        ? firebase.firestore.Timestamp.fromDate(new Date(formData.get('date_premier_contact')))
-        : null,
-      lieu_contact: formData.get('lieu_contact') || null,
-      contacte_par_id: contacteParId || null,
-      contacte_par_nom: contacteParNom || null,
-      suivi_par_id: suiviParId || AppState.user.id,
-      suivi_par_nom: suiviParNom,
-      defis,
-      commentaires: formData.get('commentaires') || null,
-      formations
+      const suiviParId = formData.get('suivi_par_id');
+      let suiviParNom = `${AppState.user.prenom} ${AppState.user.nom}`;
+      if (suiviParId) {
+        const m = Membres.getById(suiviParId);
+        if (m) suiviParNom = `${m.prenom} ${m.nom}`;
+      }
+      return {
+        categorie: formData.get('categorie') === 'nc' ? 'nc' : 'na',
+        statut: formData.get('statut') || 'nouveau',
+        canal: formData.get('canal'),
+        thematique: formData.get('canal') === 'exhortation' ? (formData.get('thematique') || null) : null,
+        date_premier_contact: formData.get('date_premier_contact')
+          ? firebase.firestore.Timestamp.fromDate(new Date(formData.get('date_premier_contact')))
+          : null,
+        lieu_contact: formData.get('lieu_contact') || null,
+        contacte_par_id: contacteParId || null,
+        contacte_par_nom: contacteParNom || null,
+        suivi_par_id: suiviParId || AppState.user.id,
+        suivi_par_nom: suiviParNom
+      };
     };
+
+    const readFormations = () => {
+      const formations = [];
+      FORMATIONS_NA_NC.forEach(f => {
+        const cb = form.querySelector(`input[name="formation_${f.value}"]`);
+        if (cb && cb.checked) {
+          const dateVal = formData.get(`formation_date_${f.value}`);
+          const statutVal = formData.get(`formation_statut_${f.value}`) || 'inscrit';
+          formations.push({
+            code: f.value,
+            date: dateVal ? firebase.firestore.Timestamp.fromDate(new Date(dateVal)) : null,
+            statut: statutVal
+          });
+        }
+      });
+      return formations;
+    };
+
+    let data = {};
+
+    if (sect === 'full' || sect === 'personnel') {
+      const email = (formData.get('email') || '').trim() || null;
+      if (!email) {
+        Toast.error('L\'email est obligatoire.');
+        return;
+      }
+      data = {
+        ...data,
+        prenom: formData.get('prenom'),
+        nom: formData.get('nom'),
+        telephone: formData.get('telephone'),
+        email,
+        sexe: formData.get('sexe') || null,
+        adresse_ville: formData.get('adresse_ville') || null
+      };
+    }
+
+    if (sect === 'full' || sect === 'suivi') {
+      data = { ...data, ...readSuiviBloc() };
+    }
+
+    if (sect === 'full' || sect === 'formations') {
+      data = { ...data, formations: readFormations() };
+    }
+
+    if (sect === 'full' || sect === 'defis') {
+      const defis = [];
+      form.querySelectorAll('input[name="defis"]:checked').forEach(cb => defis.push(cb.value));
+      data = {
+        ...data,
+        defis,
+        commentaires: formData.get('commentaires') || null
+      };
+    }
 
     const ok = await NouvellesAmes.update(id, data);
     if (ok) {
@@ -2770,227 +2863,6 @@ const PagesNouvellesAmes = {
     } else {
       Toast.error('Export PDF indisponible.');
     }
-  },
-
-  // ============================================
-  // CULTES EN SEMAINE
-  // ============================================
-
-  // Rendu de la liste des programmes inscrits
-  renderProgrammesInscrits(na) {
-    const inscriptions = na.programmes_inscrits || [];
-    
-    if (inscriptions.length === 0) {
-      return `
-        <div class="empty-state" style="padding: var(--spacing-lg);">
-          <i class="fas fa-graduation-cap"></i>
-          <h4>Aucune inscription</h4>
-          <p>Inscrivez cette personne à un culte en semaine.</p>
-        </div>
-      `;
-    }
-    
-    return `
-      <div class="inscriptions-list">
-        ${inscriptions.map(i => this.renderInscriptionItem(i, na.id)).join('')}
-      </div>
-      <style>
-        .inscriptions-list {
-          display: flex;
-          flex-direction: column;
-        }
-        .inscription-item {
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-md);
-          padding: var(--spacing-md);
-          border-bottom: 1px solid var(--border-color);
-        }
-        .inscription-item:last-child {
-          border-bottom: none;
-        }
-        .inscription-icon {
-          width: 40px;
-          height: 40px;
-          border-radius: var(--radius-sm);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 1.2rem;
-          color: white;
-        }
-        .inscription-info {
-          flex: 1;
-        }
-        .inscription-name {
-          font-weight: 600;
-          margin-bottom: 2px;
-        }
-        .inscription-meta {
-          font-size: 0.8rem;
-          color: var(--text-muted);
-        }
-        .inscription-actions {
-          display: flex;
-          gap: var(--spacing-xs);
-        }
-      </style>
-    `;
-  },
-
-  // Rendu d'une inscription
-  renderInscriptionItem(inscription, nouvelleAmeId) {
-    const typeInfo = Programmes.getTypes().find(t => t.value === inscription.programme_type) || {};
-    const statutInfo = InscriptionsProgrammes.getStatuts().find(s => s.value === inscription.statut) || {};
-    const dateInscription = new Date(inscription.date_inscription);
-    
-    return `
-      <div class="inscription-item">
-        <div class="inscription-icon" style="background: ${typeInfo.color || '#607D8B'}">
-          <i class="fas ${typeInfo.icon || 'fa-book'}"></i>
-        </div>
-        <div class="inscription-info">
-          <div class="inscription-name">${Utils.escapeHtml(inscription.programme_nom)}</div>
-          <div class="inscription-meta">
-            Inscrit le ${dateInscription.toLocaleDateString('fr-FR')}
-            ${inscription.date_debut ? `| Début: ${new Date(inscription.date_debut).toLocaleDateString('fr-FR')}` : ''}
-          </div>
-        </div>
-        <span class="badge" style="background: ${statutInfo.color}20; color: ${statutInfo.color}">
-          <i class="fas ${statutInfo.icon}"></i> ${statutInfo.label}
-        </span>
-        <div class="inscription-actions">
-          <select class="form-control form-control-sm" style="width: auto; padding: 4px 8px;" 
-                  onchange="PagesNouvellesAmes.updateInscriptionStatut('${nouvelleAmeId}', '${inscription.programme_id}', this.value)">
-            ${InscriptionsProgrammes.getStatuts().map(s => 
-              `<option value="${s.value}" ${s.value === inscription.statut ? 'selected' : ''}>${s.label}</option>`
-            ).join('')}
-          </select>
-          <button class="btn btn-sm btn-danger" onclick="PagesNouvellesAmes.desinscrireProgramme('${nouvelleAmeId}', '${inscription.programme_id}')" title="Désinscrire">
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-      </div>
-    `;
-  },
-
-  // Afficher la modal d'inscription à un programme
-  showInscriptionModal(nouvelleAmeId) {
-    const na = NouvellesAmes.getById(nouvelleAmeId);
-    if (!na) return;
-    
-    // Récupérer les cultes en semaine
-    const programmesExhort = InscriptionsProgrammes.getProgrammesExhortation();
-    const inscrits = (na.programmes_inscrits || []).map(i => i.programme_id);
-    const disponibles = programmesExhort.filter(p => !inscrits.includes(p.id));
-    
-    const modalId = 'inscription-programme-modal';
-    const modalHtml = `
-      <div class="modal-overlay active" id="${modalId}">
-        <div class="modal">
-          <div class="modal-header">
-            <h3 class="modal-title"><i class="fas fa-graduation-cap"></i> Inscrire à un programme</h3>
-            <button class="modal-close" onclick="document.getElementById('${modalId}').remove();">&times;</button>
-          </div>
-          <div class="modal-body">
-            <div class="alert alert-info mb-3">
-              <i class="fas fa-user"></i> ${Utils.escapeHtml(na.prenom)} ${Utils.escapeHtml(na.nom)}
-            </div>
-            
-            ${disponibles.length > 0 ? `
-            <div class="programmes-grid">
-              ${disponibles.map(p => {
-                const typeInfo = Programmes.getTypes().find(t => t.value === p.type) || {};
-                const date = p.date_debut?.toDate ? p.date_debut.toDate() : new Date(p.date_debut);
-                return `
-                <div class="programme-option" onclick="PagesNouvellesAmes.inscrireAuProgramme('${nouvelleAmeId}', '${p.id}')">
-                  <div class="programme-option-icon" style="background: ${typeInfo.color}">
-                    <i class="fas ${typeInfo.icon || 'fa-book'}"></i>
-                  </div>
-                  <div class="programme-option-info">
-                    <div class="programme-option-name">${Utils.escapeHtml(p.nom)}</div>
-                    <div class="programme-option-date">${date.toLocaleDateString('fr-FR')}</div>
-                  </div>
-                </div>
-              `;
-              }).join('')}
-            </div>
-            ` : `
-            <div class="alert alert-warning">
-              <i class="fas fa-info-circle"></i>
-              Aucun culte en semaine disponible. Créez d'abord un programme de type "Culte en Semaine" dans le calendrier.
-            </div>
-            `}
-          </div>
-        </div>
-      </div>
-      <style>
-        .programmes-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-          gap: var(--spacing-md);
-        }
-        .programme-option {
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-md);
-          padding: var(--spacing-md);
-          border: 1px solid var(--border-color);
-          border-radius: var(--radius-md);
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .programme-option:hover {
-          border-color: var(--primary);
-          background: var(--bg-primary);
-        }
-        .programme-option-icon {
-          width: 40px;
-          height: 40px;
-          border-radius: var(--radius-sm);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-        }
-        .programme-option-name {
-          font-weight: 600;
-        }
-        .programme-option-date {
-          font-size: 0.8rem;
-          color: var(--text-muted);
-        }
-      </style>
-    `;
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-  },
-
-  // Inscrire au programme
-  async inscrireAuProgramme(nouvelleAmeId, programmeId) {
-    const result = await InscriptionsProgrammes.inscrire(nouvelleAmeId, programmeId);
-    if (result) {
-      document.getElementById('inscription-programme-modal')?.remove();
-      App.navigate('nouvelle-ame-detail', { id: nouvelleAmeId });
-    }
-  },
-
-  // Mettre à jour le statut d'inscription
-  async updateInscriptionStatut(nouvelleAmeId, programmeId, nouveauStatut) {
-    await InscriptionsProgrammes.updateStatut(nouvelleAmeId, programmeId, nouveauStatut);
-  },
-
-  // Désinscrire d'un programme
-  desinscrireProgramme(nouvelleAmeId, programmeId) {
-    Modal.confirm(
-      'Désinscrire du programme',
-      'Êtes-vous sûr de vouloir désinscrire cette personne de ce programme ?',
-      async () => {
-        const result = await InscriptionsProgrammes.desinscrire(nouvelleAmeId, programmeId);
-        if (result) {
-          App.navigate('nouvelle-ame-detail', { id: nouvelleAmeId });
-        }
-      }
-    );
   },
 
   initCharts() {

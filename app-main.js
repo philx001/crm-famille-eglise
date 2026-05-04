@@ -287,7 +287,10 @@ const App = {
       case 'dashboard': pageTitle = 'Tableau de bord'; pageContent = await this.renderDashboardEnhanced(); break;
       case 'membres': {
         const nbMembres = (typeof Membres !== 'undefined' && Membres.getMembresPourStatsEtPointage) ? Membres.getMembresPourStatsEtPointage().length : (AppState.membres || []).filter(m => m.statut_compte === 'actif' && !m.compte_test).length;
-        pageTitle = `Membres (${nbMembres})`;
+        const nbNANC = (typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getAll)
+          ? NouvellesAmes.getAll().filter(na => na.statut !== 'integre').length
+          : 0;
+        pageTitle = `Membres (${nbMembres}${nbNANC > 0 ? ` + ${nbNANC} NA/NC` : ''})`;
         pageContent = Pages.renderMembres();
         break;
       }
@@ -876,6 +879,7 @@ const App = {
               <div class="nav-item ${AppState.currentPage === 'mes-disciples' ? 'active' : ''}" onclick="App.navigate('mes-disciples')"><i class="fas fa-user-friends"></i><span>Mes disciples</span></div>
               <div class="nav-item ${AppState.currentPage === 'programmes' ? 'active' : ''}" onclick="App.navigate('programmes')"><i class="fas fa-clipboard-list"></i><span>Programmes</span></div>
               <div class="nav-item ${AppState.currentPage === 'statistiques' ? 'active' : ''}" onclick="App.navigate('statistiques')"><i class="fas fa-chart-bar"></i><span>Statistiques</span></div>
+              <div class="nav-item ${AppState.currentPage === 'statistiques-na' ? 'active' : ''}" onclick="App.navigate('statistiques-na')"><i class="fas fa-chart-line"></i><span>Statistiques NA/NC</span></div>
               <div class="nav-item ${AppState.currentPage === 'nouvelles-ames' || AppState.currentPage === 'nouvelles-ames-add' || AppState.currentPage === 'nouvelle-ame-detail' || AppState.currentPage === 'nouvelle-ame-suivi' ? 'active' : ''}" onclick="App.navigate('nouvelles-ames')"><i class="fas fa-seedling"></i><span>Nouvelles âmes</span></div>
               <div class="nav-item ${AppState.currentPage === 'evangelisation' || AppState.currentPage === 'evangelisation-add' || AppState.currentPage === 'evangelisation-detail' || AppState.currentPage === 'evangelisation-planning' || AppState.currentPage === 'evangelisation-stats' || AppState.currentPage === 'secteurs' ? 'active' : ''}" onclick="App.navigate('evangelisation')"><i class="fas fa-bullhorn"></i><span>Évangélisation</span></div>
             </div>` : ''}

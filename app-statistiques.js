@@ -462,7 +462,6 @@ const Statistiques = {
     
     let programmes = AppState.programmes.filter(p => {
       if (!p.date_debut) return false;
-      if (!Programmes.pointageRequis(p)) return false;
       const d = p.date_debut.toDate ? p.date_debut.toDate() : new Date(p.date_debut);
       if (dateDebut && d < dateDebut) return false;
       if (dateFin && d > dateFin) return false;
@@ -757,11 +756,16 @@ const PagesStatistiques = {
                    title="Cliquez pour ouvrir le calendrier" onchange="PagesStatistiques.updateStats()">
           </div>
         </div>
+        <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap; align-items: center;">
+        <button class="btn btn-outline" onclick="App.navigate('statistiques-na')">
+          <i class="fas fa-seedling"></i> Stats NA/NC
+        </button>
         ${Permissions.canExportPDF() ? `
         <button class="btn btn-primary" onclick="PagesStatistiques.exportPDF()">
           <i class="fas fa-file-pdf"></i> Exporter PDF
         </button>
         ` : ''}
+        </div>
       </div>
 
       <!-- Cartes de résumé -->

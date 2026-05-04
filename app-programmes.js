@@ -692,15 +692,12 @@ const Presences = {
     const dateFin = new Date();
     const dateDebut = new Date(dateFin.getTime() - days * 24 * 60 * 60 * 1000);
     const presences = await this.loadByMembre(AppState.user.id, dateDebut, dateFin);
-    const presencesAvecPointage = presences.filter(p => {
-      const prog = Programmes.getById(p.programme_id);
-      return prog && Programmes.pointageRequis(prog);
-    });
-    const total = presencesAvecPointage.length;
-    const present = presencesAvecPointage.filter(p => p.statut === 'present').length;
-    const absent = presencesAvecPointage.filter(p => p.statut === 'absent').length;
-    const excuse = presencesAvecPointage.filter(p => p.statut === 'excuse').length;
-    const non_renseigne = presencesAvecPointage.filter(p => p.statut === 'non_renseigne').length;
+    const presencesValides = presences.filter(p => Programmes.getById(p.programme_id));
+    const total = presencesValides.length;
+    const present = presencesValides.filter(p => p.statut === 'present').length;
+    const absent = presencesValides.filter(p => p.statut === 'absent').length;
+    const excuse = presencesValides.filter(p => p.statut === 'excuse').length;
+    const non_renseigne = presencesValides.filter(p => p.statut === 'non_renseigne').length;
     const rate = total > 0 ? Math.round((present / total) * 100) : 0;
     return { present, absent, excuse, non_renseigne, total, rate };
   },
@@ -715,7 +712,7 @@ const Presences = {
     const withProgramme = presences.map(p => {
       const programme = Programmes.getById(p.programme_id);
       return programme ? { programme, presence: p } : null;
-    }).filter(Boolean).filter(wp => Programmes.pointageRequis(wp.programme));
+    }).filter(Boolean);
     withProgramme.sort((a, b) => {
       const da = a.programme.date_debut?.toDate ? a.programme.date_debut.toDate() : new Date(0);
       const db = b.programme.date_debut?.toDate ? b.programme.date_debut.toDate() : new Date(0);
@@ -729,7 +726,6 @@ const Presences = {
     try {
       const programme = Programmes.getById(programmeId);
       if (!programme || !programme.date_debut) return true;
-      if (!Programmes.pointageRequis(programme)) return true; // Pas de pointage requis = considéré comme pointé
 
       const dateProg = programme.date_debut.toDate ? programme.date_debut.toDate() : new Date(programme.date_debut);
 
@@ -767,7 +763,7 @@ const Presences = {
   // Obtenir les programmes passés récents non complètement pointés (uniquement ceux avec pointage requis)
   async getUnpointedProgrammes(days = 7) {
     try {
-      const programmesRecents = Programmes.getRecentPast(days).filter(p => Programmes.pointageRequis(p));
+      const programmesRecents = Programmes.getRecentPast(days);
       const programmesNonPointes = [];
 
       for (const programme of programmesRecents) {
@@ -1284,7 +1280,7 @@ const PagesCalendrier = {
           <button class="btn btn-sm btn-secondary" onclick="App.viewProgramme('${programme.id}')" title="Voir">
             <i class="fas fa-eye"></i>
           </button>
-          ${Permissions.canAccessPresencesPage() && Programmes.pointageRequis(programme) ? `
+          ${Permissions.canAccessPresencesPage() ? `
           <button class="btn btn-sm btn-primary" onclick="App.navigate('presences', {programmeId: '${programme.id}'})" title="Présences">
             <i class="fas fa-clipboard-check"></i>
           </button>
@@ -1487,7 +1483,7 @@ const PagesCalendrier = {
             </span>
           </div>
           <div class="d-flex gap-1">
-            ${Permissions.canAccessPresencesPage() && Programmes.pointageRequis(programme) ? `
+            ${Permissions.canAccessPresencesPage() ? `
             <button class="btn btn-primary" onclick="App.navigate('presences', {programmeId: '${programmeId}'})">
               <i class="fas fa-clipboard-check"></i> Pointer
             </button>
@@ -1505,12 +1501,7 @@ const PagesCalendrier = {
           </div>
         </div>
         <div class="card-body">
-          ${!Programmes.pointageRequis(programme) ? `
-          <div class="ma-presence-block mb-4 p-3" style="background: var(--bg-secondary); border-radius: var(--radius-md);">
-            <p class="text-muted mb-0"><i class="fas fa-info-circle"></i> Programme informatif — le pointage des présences n'est pas requis. Ce programme n'est pas comptabilisé dans les statistiques.</p>
-          </div>
-          ` : ''}
-          ${Programmes.pointageRequis(programme) && Permissions.canMarkOwnPresence() ? (membreEtaitAttendu ? `
+          ${Permissions.canMarkOwnPresence() ? (membreEtaitAttendu ? `
           <div class="ma-presence-block mb-4 p-3" style="background: var(--bg-primary); border-radius: var(--radius-md);">
             <h4 class="mb-2"><i class="fas fa-user-check"></i> Ma présence</h4>
             <p class="text-muted small mb-2">Indiquez votre présence pour ce programme.</p>

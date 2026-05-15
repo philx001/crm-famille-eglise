@@ -100,11 +100,12 @@ const PagesPresences = {
     });
 
     const showModeSelector = isRoleSuperior && hasDisciples;
+    const hasNANCPanel = this.presencesNAData.length > 0;
 
     return `
       <div class="presences-header">
         <div>
-          <h2>${Utils.escapeHtml(programme.nom)} <span class="badge badge-secondary" style="font-size: 0.75rem; font-weight: 600;">${membres.length} membre${membres.length !== 1 ? 's' : ''}</span>${this.presencesNAData.length > 0 ? ` <span class="badge" style="font-size: 0.75rem; font-weight: 600; background: #9C27B0; color: white;">${this.presencesNAData.length} NA/NC</span>` : ''}</h2>
+          <h2>${Utils.escapeHtml(programme.nom)}</h2>
           <p class="text-muted">
             <i class="fas fa-calendar"></i> ${Utils.formatDate(dateDebutProg, 'full')} à 
             ${dateDebutProg.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
@@ -146,33 +147,48 @@ const PagesPresences = {
           </div>
         </div>
         <div class="card-body" style="padding: 0;">
-          <div class="presence-legend">
-            ${Presences.getStatuts().filter(s => s.value !== 'non_renseigne').map(s => `
-              <span class="legend-item">
-                <i class="fas ${s.icon}" style="color: ${s.color}"></i> ${s.label}
+          ${hasNANCPanel ? `
+          <div class="presence-tabs" role="tablist" aria-label="Basculer Membres ou NA/NC">
+            <button type="button" class="presence-tab presence-tab--membres active" role="tab" id="presence-tab-membres" aria-selected="true"
+                    onclick="PagesPresences.selectPresenceTab('membres')">
+              <i class="fas fa-users"></i> Membres
+              <span class="presence-tab-badge presence-tab-badge--membres">${membres.length}</span>
+            </button>
+            <button type="button" class="presence-tab presence-tab--na" role="tab" id="presence-tab-na" aria-selected="false"
+                    onclick="PagesPresences.selectPresenceTab('na')">
+              <i class="fas fa-seedling"></i> NA / NC
+              <span class="presence-tab-badge presence-tab-badge--na">${this.presencesNAData.length}</span>
+            </button>
+          </div>
+          ` : ''}
+          <div id="presence-panel-membres" class="presence-tab-panel" role="${hasNANCPanel ? 'tabpanel' : 'region'}">
+            <div class="presence-legend">
+              ${Presences.getStatuts().filter(s => s.value !== 'non_renseigne').map(s => `
+                <span class="legend-item">
+                  <i class="fas ${s.icon}" style="color: ${s.color}"></i> ${s.label}
+                </span>
+              `).join('')}
+              <span class="legend-item" title="Annuler le pointage pour ce membre">
+                <i class="fas fa-undo" style="color: #9E9E9E"></i> Annuler
               </span>
-            `).join('')}
-            <span class="legend-item" title="Annuler le pointage pour ce membre">
-              <i class="fas fa-undo" style="color: #9E9E9E"></i> Annuler
-            </span>
-          </div>
-          
-          <div class="presence-list" id="presence-list">
-            ${this.presencesData.map((p, index) => this.renderPresenceRow(p, index)).join('')}
-          </div>
-          ${this.presencesNAData.length > 0 ? `
-          <div class="presence-section-na" style="border-top: 2px solid #9C27B0; margin-top: var(--spacing-md); padding-top: var(--spacing-md);">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--spacing-md); margin-bottom: var(--spacing-md);">
-              <h4 style="margin: 0; color: #9C27B0;"><i class="fas fa-seedling"></i> Nouvelles âmes / Nouveaux convertis (NA/NC)</h4>
-              ${this.presencesNAData.length > 5 ? `
-              <div class="search-box" style="min-width: 200px;">
-                <i class="fas fa-search"></i>
-                <input type="text" class="form-control" placeholder="Rechercher NA/NC..."
-                       onkeyup="PagesPresences.filterPresencesNATable(this.value)">
-              </div>
-              ` : ''}
             </div>
-            <div class="presence-legend" style="margin-bottom: var(--spacing-md);">
+            ${membres.length > 14 ? `
+            <div class="presence-panel-toolbar">
+              <div class="search-box presence-panel-toolbar-search">
+                <i class="fas fa-search"></i>
+                <input type="text" class="form-control" placeholder="Filtrer par nom (membres)…"
+                       onkeyup="PagesPresences.filterPresencesSection('membres', this.value)"
+                       aria-label="Filtrer la liste des membres">
+              </div>
+            </div>
+            ` : ''}
+            <div class="presence-list" id="presence-list">
+              ${this.presencesData.map((p, index) => this.renderPresenceRow(p, index)).join('')}
+            </div>
+          </div>
+          ${hasNANCPanel ? `
+          <div id="presence-panel-na" class="presence-tab-panel" role="tabpanel" style="display: none;">
+            <div class="presence-legend">
               ${(Presences.getStatutsNA ? Presences.getStatutsNA() : Presences.getStatuts()).filter(s => s.value !== 'non_renseigne').map(s => `
                 <span class="legend-item" title="${s.title || s.label}">
                   <i class="fas ${s.icon}" style="color: ${s.color}"></i> ${s.label}
@@ -182,6 +198,16 @@ const PagesPresences = {
                 <i class="fas fa-undo" style="color: #9E9E9E"></i> Annuler
               </span>
             </div>
+            ${this.presencesNAData.length > 8 ? `
+            <div class="presence-panel-toolbar">
+              <div class="search-box presence-panel-toolbar-search">
+                <i class="fas fa-search"></i>
+                <input type="text" class="form-control" placeholder="Filtrer par nom ou mentor (NA/NC)…"
+                       onkeyup="PagesPresences.filterPresencesSection('na', this.value)"
+                       aria-label="Filtrer la liste NA/NC">
+              </div>
+            </div>
+            ` : ''}
             <div class="presence-list" id="presence-list-na">
               ${this.presencesNAData.map((p, index) => this.renderPresenceRowNA(p, index)).join('')}
             </div>
@@ -204,6 +230,75 @@ const PagesPresences = {
         }
         .presences-header h2 {
           margin-bottom: var(--spacing-xs);
+        }
+        .presence-tabs {
+          display: flex;
+          gap: 0;
+          padding: 0 var(--spacing-sm);
+          background: var(--bg-primary);
+          border-bottom: 1px solid var(--border-color);
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+        .presence-tab {
+          flex: 1;
+          max-width: 320px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          padding: var(--spacing-md) var(--spacing-lg);
+          border: none;
+          border-bottom: 3px solid transparent;
+          margin-bottom: -1px;
+          cursor: pointer;
+          font-family: var(--font-family);
+          font-size: 1rem;
+          font-weight: 700;
+          transition:
+            color var(--transition-fast),
+            border-color var(--transition-fast),
+            background var(--transition-fast),
+            box-shadow var(--transition-fast);
+          white-space: nowrap;
+        }
+        .presence-tab-panel {
+          animation: presence-panel-fade 0.2s ease;
+        }
+        @keyframes presence-panel-fade {
+          from { opacity: 0.75; }
+          to { opacity: 1; }
+        }
+        .presence-panel-toolbar {
+          padding: var(--spacing-sm) var(--spacing-md);
+          background: var(--bg-primary);
+          border-bottom: 1px solid var(--border-color);
+        }
+        .presence-panel-toolbar-search {
+          position: relative;
+          max-width: 380px;
+        }
+        .presence-panel-toolbar-search .form-control {
+          padding-left: 36px;
+        }
+        .presence-row--flash {
+          animation: presence-row-flash 2.1s ease;
+          position: relative;
+          z-index: 1;
+        }
+        body.theme-dark .presence-row--flash {
+          animation-name: presence-row-flash-dark;
+        }
+        @keyframes presence-row-flash {
+          0% { box-shadow: 0 0 0 0 rgba(45, 90, 123, 0); background: transparent; }
+          15% { box-shadow: 0 0 0 3px rgba(45, 90, 123, 0.35); background: rgba(45, 90, 123, 0.07); }
+          100% { box-shadow: 0 0 0 0 rgba(45, 90, 123, 0); background: transparent; }
+        }
+        @keyframes presence-row-flash-dark {
+          0% { box-shadow: 0 0 0 0 transparent; background: transparent; }
+          15% { box-shadow: 0 0 0 3px rgba(74, 122, 155, 0.45); background: rgba(74, 122, 155, 0.12); }
+          100% { box-shadow: 0 0 0 0 transparent; background: transparent; }
         }
         .presences-actions {
           display: flex;
@@ -232,6 +327,9 @@ const PagesPresences = {
         .presence-summary {
           display: flex;
           gap: var(--spacing-md);
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          align-items: flex-start;
         }
         .summary-item {
           text-align: center;
@@ -240,8 +338,8 @@ const PagesPresences = {
           border-radius: var(--radius-sm);
         }
         .summary-value {
-          font-size: 1.25rem;
-          font-weight: 700;
+          font-size: 1.38rem;
+          font-weight: 800;
         }
         .summary-label {
           font-size: 0.75rem;
@@ -344,9 +442,10 @@ const PagesPresences = {
     const membre = presence.membre;
     const statuts = Presences.getStatuts().filter(s => s.value !== 'non_renseigne');
     const hasChoice = presence.statut && presence.statut !== 'non_renseigne';
+    const searchText = ((membre.prenom || '') + ' ' + (membre.nom || '') + ' ' + (Utils.getRoleLabel(membre.role) || '')).toLowerCase();
 
     return `
-      <div class="presence-row" data-index="${index}" data-type="membre">
+      <div class="presence-row" data-index="${index}" data-type="membre" data-disciple-id="${membre.id}" data-search="${Utils.escapeAttr(searchText)}">
         <div class="presence-membre">
           <div class="member-avatar" style="background: ${membre.sexe === 'F' ? '#E91E63' : 'var(--primary)'}; width: 40px; height: 40px; font-size: 0.9rem;">
             ${Utils.getInitials(membre.prenom, membre.nom)}
@@ -389,7 +488,7 @@ const PagesPresences = {
     const searchText = (na.prenom + ' ' + na.nom + ' ' + (na.suivi_par_nom || '')).toLowerCase().replace(/"/g, "'");
 
     return `
-      <div class="presence-row" data-index="${index}" data-type="na" data-search="${searchText}">
+      <div class="presence-row" data-index="${index}" data-type="na" data-nouvelle-ame-id="${na.id}" data-search="${Utils.escapeAttr(searchText)}">
         <div class="presence-membre">
           <div class="member-avatar" style="background: #9C27B0; width: 40px; height: 40px; font-size: 0.9rem;">
             ${Utils.getInitials(na.prenom, na.nom)}
@@ -877,12 +976,111 @@ const PagesPresences = {
   },
 
   filterPresencesNATable(search) {
-    const rows = document.querySelectorAll('#presence-list-na .presence-row[data-type="na"]');
+    this.filterPresencesSection('na', search);
+  },
+
+  /** Filtre membres ou NA/NC dans le panneau courant (champ local). */
+  filterPresencesSection(which, search) {
     const s = (search || '').toLowerCase().trim();
-    rows.forEach(row => {
-      const text = row.dataset.search || '';
+    const listSel = which === 'na' ? '#presence-list-na' : '#presence-list';
+    document.querySelectorAll(`${listSel} .presence-row`).forEach(row => {
+      const text = (row.getAttribute('data-search') || '').toLowerCase();
       row.style.display = !s || text.includes(s) ? '' : 'none';
     });
+  },
+
+  /** Affiche à nouveau toutes les lignes (après recherche globale ou vide). */
+  resetPresenceRowFilters() {
+    document.querySelectorAll('#presence-list .presence-row, #presence-list-na .presence-row').forEach(row => {
+      row.style.display = '';
+    });
+  },
+
+  /** Filtre les deux listes selon la recherche en-tête (personnes présentes à ce programme uniquement). */
+  applyGlobalPresenceSearchFilter(query) {
+    const s = (query || '').trim().toLowerCase();
+    if (!s) {
+      this.resetPresenceRowFilters();
+      return;
+    }
+    ['#presence-list', '#presence-list-na'].forEach(listSel => {
+      document.querySelectorAll(`${listSel} .presence-row`).forEach(row => {
+        const text = (row.getAttribute('data-search') || '').toLowerCase();
+        row.style.display = text.includes(s) ? '' : 'none';
+      });
+    });
+  },
+
+  selectPresenceTab(which) {
+    const hasNA = (this.presencesNAData && this.presencesNAData.length > 0);
+    if (!hasNA) return;
+    const tabM = document.getElementById('presence-tab-membres');
+    const tabN = document.getElementById('presence-tab-na');
+    const panM = document.getElementById('presence-panel-membres');
+    const panN = document.getElementById('presence-panel-na');
+    if (!panM || !panN) return;
+    const showM = which === 'membres';
+    panM.style.display = showM ? '' : 'none';
+    panN.style.display = showM ? 'none' : '';
+    if (tabM) {
+      tabM.classList.toggle('active', showM);
+      tabM.setAttribute('aria-selected', showM ? 'true' : 'false');
+    }
+    if (tabN) {
+      tabN.classList.toggle('active', !showM);
+      tabN.setAttribute('aria-selected', showM ? 'false' : 'true');
+    }
+  },
+
+  searchProgrammePresenceByQuery(qRaw) {
+    const q = (qRaw || '').trim().toLowerCase();
+    if (!q || !this.currentProgrammeId) return [];
+    const out = [];
+    (this.presencesData || []).forEach((p) => {
+      const name = `${p.membre.prenom || ''} ${p.membre.nom || ''}`.trim();
+      if (name.toLowerCase().includes(q)) {
+        out.push({ kind: 'membre', id: p.disciple_id, label: name, sub: 'Membre — ce programme' });
+      }
+    });
+    (this.presencesNAData || []).forEach((p) => {
+      const name = `${p.na.prenom || ''} ${p.na.nom || ''}`.trim();
+      if (name.toLowerCase().includes(q)) {
+        out.push({ kind: 'nouvelle_ame', id: p.nouvelle_ame_id, label: name, sub: 'NA/NC — ce programme' });
+      }
+    });
+    return out.slice(0, 12);
+  },
+
+  findPresenceRowEl(kind, id) {
+    if (!id) return null;
+    if (kind === 'membre') {
+      return Array.from(document.querySelectorAll('#presence-list .presence-row[data-type="membre"]'))
+        .find(r => r.getAttribute('data-disciple-id') === id) || null;
+    }
+    return Array.from(document.querySelectorAll('#presence-list-na .presence-row[data-type="na"]'))
+      .find(r => r.getAttribute('data-nouvelle-ame-id') === id) || null;
+  },
+
+  revealPresencesListRow(kind, id) {
+    if (!id) return;
+    const isMembre = kind === 'membre';
+    if ((this.presencesNAData || []).length > 0) {
+      this.selectPresenceTab(isMembre ? 'membres' : 'na');
+    }
+    const run = () => {
+      const row = this.findPresenceRowEl(kind, id);
+      if (!row) {
+        Toast.warning('Personne introuvable sur ce programme avec les filtres actuels.');
+        return;
+      }
+      row.style.display = '';
+      row.classList.remove('presence-row--flash');
+      void row.offsetWidth;
+      row.classList.add('presence-row--flash');
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      window.setTimeout(() => row.classList.remove('presence-row--flash'), 2200);
+    };
+    requestAnimationFrame(() => requestAnimationFrame(run));
   },
 
   filterHistoriqueNATable(search) {

@@ -64,6 +64,15 @@
   /* Typography */
   --font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-heading: 'Playfair Display', Georgia, serif;
+
+  /* Effectifs membres / NA-NC (accent visuel commun) */
+  --count-membres: #2e7d32;
+  --count-membres-soft: rgba(46, 125, 50, 0.14);
+  --count-membres-border: rgba(46, 125, 50, 0.42);
+  --count-nanc: #7b1fa2;
+  --count-nanc-deep: #4a148c;
+  --count-nanc-soft: rgba(123, 31, 162, 0.16);
+  --count-nanc-border: rgba(123, 31, 162, 0.45);
 }
 
 /* Thème sombre */
@@ -567,11 +576,153 @@ a:focus-visible {
 }
 
 .stat-value {
-  font-size: 1.75rem;
+  font-size: 2.1rem;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1;
   margin-bottom: var(--spacing-xs);
+}
+
+.stat-value.stat-value--membres {
+  color: var(--count-membres);
+}
+
+.stat-value.stat-value--nanc {
+  color: var(--count-nanc);
+}
+
+/* Chiffres d’effectif dans les titres de page (HTML safe : uniquement les nombres) */
+.page-title-count {
+  font-size: 1.28em;
+  font-weight: 800;
+  display: inline-block;
+  line-height: 1.1;
+}
+
+.page-title-count--membres {
+  color: var(--count-membres);
+}
+
+.page-title-count--nanc {
+  color: var(--count-nanc);
+}
+
+body.theme-dark .page-title-count--membres {
+  color: #81c784;
+}
+
+body.theme-dark .page-title-count--nanc {
+  color: #ce93d8;
+}
+
+/* Onglets Membres / NA-NC — page pointage */
+.presence-tab.presence-tab--membres:not(.active) {
+  background: var(--count-membres-soft);
+  color: var(--count-membres);
+  border-bottom-color: transparent;
+}
+
+.presence-tab.presence-tab--membres.active {
+  background: var(--count-membres);
+  color: #fff;
+  border-bottom-color: #1b5e20;
+}
+
+.presence-tab.presence-tab--na:not(.active) {
+  background: var(--count-nanc-soft);
+  color: var(--count-nanc-deep);
+  border-bottom-color: transparent;
+}
+
+.presence-tab.presence-tab--na.active {
+  background: var(--count-nanc);
+  color: #fff;
+  border-bottom-color: var(--count-nanc-deep);
+}
+
+.presence-tab.presence-tab--membres:hover,
+.presence-tab.presence-tab--na:hover {
+  background: #fff !important;
+}
+
+.presence-tab.presence-tab--membres:hover {
+  color: var(--count-membres) !important;
+  box-shadow: inset 0 0 0 2px var(--count-membres-border);
+}
+
+.presence-tab.presence-tab--na:hover {
+  color: var(--count-nanc-deep) !important;
+  box-shadow: inset 0 0 0 2px var(--count-nanc-border);
+}
+
+body.theme-dark .presence-tab.presence-tab--membres:not(.active) {
+  background: rgba(129, 199, 132, 0.14);
+  color: #c8e6c9;
+}
+
+body.theme-dark .presence-tab.presence-tab--na:not(.active) {
+  background: rgba(186, 104, 200, 0.18);
+  color: #e1bee7;
+}
+
+.presence-tab .presence-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.06rem;
+  font-weight: 800;
+  min-width: 2.1rem;
+  padding: 0.14rem 0.55rem;
+  border-radius: var(--radius-full);
+  line-height: 1.2;
+}
+
+.presence-tab--membres:not(.active) .presence-tab-badge--membres {
+  background: #fff;
+  color: var(--count-membres);
+  border: 1px solid var(--count-membres-border);
+}
+
+.presence-tab--membres.active .presence-tab-badge--membres {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+.presence-tab--na:not(.active) .presence-tab-badge--na {
+  background: #fff;
+  color: var(--count-nanc-deep);
+  border: 1px solid var(--count-nanc-border);
+}
+
+.presence-tab--na.active .presence-tab-badge--na {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+/* Badges d’effectif dans les titres de cartes (stats, etc.) */
+.head-count-badge {
+  font-size: 0.95rem !important;
+  font-weight: 800 !important;
+  vertical-align: middle;
+}
+
+.head-count-badge--membres {
+  background: var(--count-membres-soft) !important;
+  color: var(--count-membres) !important;
+  border: 1px solid var(--count-membres-border);
+}
+
+.head-count-badge--nanc {
+  background: var(--count-nanc-soft) !important;
+  color: var(--count-nanc-deep) !important;
+  border: 1px solid var(--count-nanc-border);
+}
+
+/* Blocs stats NA/NC (taille des chiffres) */
+.presence-stats-bar .stat-value {
+  font-size: 1.85rem !important;
 }
 
 .stat-label {
@@ -1342,6 +1493,15 @@ select.form-control {
   background: var(--bg-primary);
 }
 
+.member-card.na-nc-card {
+  align-items: flex-start;
+}
+
+.member-card.na-nc-card .member-meta,
+.member-card.na-nc-card .member-actions {
+  align-self: center;
+}
+
 .member-avatar {
   width: 50px;
   height: 50px;
@@ -1567,4 +1727,98 @@ select.form-control {
   .form-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* Bloc « date d'arrivée dans la famille » (NA/NC + cohérence cartes) */
+.na-card-edits-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+.na-card-edits-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--spacing-sm);
+}
+.na-arrivee-well {
+  margin: 0;
+  padding: var(--spacing-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.na-arrivee-well:focus-within {
+  border-color: var(--primary-light);
+  box-shadow: 0 0 0 2px rgba(45, 90, 123, 0.1);
+}
+body.theme-dark .na-arrivee-well:focus-within {
+  box-shadow: 0 0 0 2px rgba(74, 122, 155, 0.25);
+}
+.na-arrivee-well__title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 var(--spacing-xs) 0;
+  letter-spacing: 0.01em;
+}
+.na-arrivee-well__title i {
+  color: var(--primary);
+  font-size: 0.9rem;
+  opacity: 0.95;
+}
+.na-arrivee-well__hint {
+  margin: 0 0 var(--spacing-sm) 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  max-width: 36rem;
+}
+.na-arrivee-well__input {
+  width: 100%;
+  max-width: 260px;
+}
+.na-arrivee-well--compact {
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+.na-arrivee-well--inline {
+  max-width: 100%;
+}
+.na-arrivee-readonly {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs) 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+.na-arrivee-readonly i {
+  color: var(--primary);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+@media (max-width: 576px) {
+  .na-arrivee-well__input {
+    max-width: none;
+  }
+}
+
+/* Champ date membres — même finition douce que les blocs NA */
+.member-date-arrivee .form-control {
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.member-date-arrivee .form-control:focus {
+  border-color: var(--primary-light);
+  box-shadow: 0 0 0 2px rgba(45, 90, 123, 0.1);
+}
+body.theme-dark .member-date-arrivee .form-control:focus {
+  box-shadow: 0 0 0 2px rgba(74, 122, 155, 0.22);
 }

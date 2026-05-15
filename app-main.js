@@ -168,8 +168,8 @@ const App = {
           if (err.code === 'permission-denied' || (err.message && err.message.includes('insufficient permissions'))) {
             Toast.error('Connexion OK mais chargement des membres refusé. Vérifiez les règles Firestore pour la collection utilisateurs (requête par famille_id).');
           }
-          this.navigate('dashboard');
         }
+        this.navigate('dashboard');
       }
     });
   },
@@ -290,7 +290,7 @@ const App = {
         const nbNANC = (typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getAll)
           ? NouvellesAmes.getAll().filter(na => na.statut !== 'integre').length
           : 0;
-        pageTitle = `Membres (${nbMembres}${nbNANC > 0 ? ` + ${nbNANC} NA/NC` : ''})`;
+        pageTitle = `Membres (<span class="page-title-count page-title-count--membres">${nbMembres}</span>${nbNANC > 0 ? ` + <span class="page-title-count page-title-count--nanc">${nbNANC}</span> NA/NC` : ''})`;
         pageContent = Pages.renderMembres();
         break;
       }
@@ -299,7 +299,7 @@ const App = {
         let archives = (AppState.membres || []).filter(m => m.statut_compte === 'inactif');
         if (typeof Permissions !== 'undefined' && !Permissions.isAdmin()) archives = archives.filter(m => m.role !== 'adjoint_superviseur');
         const nbArchives = archives.length;
-        pageTitle = `Archivage des membres (${nbArchives})`;
+        pageTitle = `Archivage des membres (<span class="page-title-count page-title-count--membres">${nbArchives}</span>)`;
         pageContent = Pages.renderArchivesMembres();
         break;
       }
@@ -308,13 +308,13 @@ const App = {
       case 'mon-compte': pageTitle = 'Mon compte'; pageContent = Pages.renderMonCompte(); break;
       case 'annuaire': {
         const nbAnnuaire = (typeof Membres !== 'undefined' && Membres.getMembresPourStatsEtPointage) ? Membres.getMembresPourStatsEtPointage().length : (AppState.membres || []).filter(m => m.statut_compte === 'actif' && !m.compte_test).length;
-        pageTitle = `Annuaire (${nbAnnuaire})`;
+        pageTitle = `Annuaire (<span class="page-title-count page-title-count--membres">${nbAnnuaire}</span>)`;
         pageContent = Pages.renderAnnuaire();
         break;
       }
       case 'mes-disciples': {
         const nbDisciples = (typeof Membres !== 'undefined' && AppState.user) ? Membres.getDisciples(AppState.user.id).filter(m => !m.compte_test).length : 0;
-        pageTitle = `Mes disciples (${nbDisciples})`;
+        pageTitle = `Mes disciples (<span class="page-title-count page-title-count--membres">${nbDisciples}</span>)`;
         pageContent = Pages.renderMembres();
         break;
       }
@@ -706,15 +706,15 @@ const App = {
         <div class="dashboard-grid dashboard-grid-4" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacing-md);">
           <div class="stat-card clickable" onclick="App.navigate('nouvelles-ames', { categorie: 'na' });" title="Voir les Nouveaux Arrivants (NA)" style="cursor: pointer;">
             <div class="stat-icon" style="background: #2196F320; color: #2196F3; cursor: pointer;"><i class="fas fa-user-plus"></i></div>
-            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${countNA}</div><div class="stat-label" style="cursor: pointer;">Nouveaux Arrivants (NA)</div></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value stat-value--nanc" style="cursor: pointer;">${countNA}</div><div class="stat-label" style="cursor: pointer;">Nouveaux Arrivants (NA)</div></div>
           </div>
           <div class="stat-card clickable" onclick="App.navigate('nouvelles-ames', { categorie: 'nc' });" title="Voir les Nouveaux Convertis (NC)" style="cursor: pointer;">
             <div class="stat-icon" style="background: #E91E6320; color: #E91E63; cursor: pointer;"><i class="fas fa-heart"></i></div>
-            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${countNC}</div><div class="stat-label" style="cursor: pointer;">Nouveaux Convertis (NC)</div></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value stat-value--nanc" style="cursor: pointer;">${countNC}</div><div class="stat-label" style="cursor: pointer;">Nouveaux Convertis (NC)</div></div>
           </div>
           <div class="stat-card clickable" onclick="App.navigate('nouvelles-ames')" title="Voir les nouvelles âmes" style="cursor: pointer;">
             <div class="stat-icon" style="background: #8BC34A20; color: #8BC34A; cursor: pointer;"><i class="fas fa-seedling"></i></div>
-            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${statsNouvellesAmes.total}</div><div class="stat-label" style="cursor: pointer;">Nouvelles âmes</div></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value stat-value--nanc" style="cursor: pointer;">${statsNouvellesAmes.total}</div><div class="stat-label" style="cursor: pointer;">Nouvelles âmes</div></div>
           </div>
           <div class="stat-card clickable" onclick="App.navigate('evangelisation')" title="Voir l'évangélisation" style="cursor: pointer;">
             <div class="stat-icon" style="background: #00968820; color: #009688; cursor: pointer;"><i class="fas fa-bullhorn"></i></div>
@@ -729,11 +729,11 @@ const App = {
           ${Permissions.hasRole('mentor') ? `
           <div class="stat-card clickable" onclick="App.navigate('membres')" title="Voir tous les membres" style="cursor: pointer;">
             <div class="stat-icon primary" style="cursor: pointer;"><i class="fas fa-users"></i></div>
-            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.total}</div><div class="stat-label" style="cursor: pointer;">Membres actifs</div></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value stat-value--membres" style="cursor: pointer;">${stats.total}</div><div class="stat-label" style="cursor: pointer;">Membres actifs</div></div>
           </div>
           <div class="stat-card clickable" onclick="App.navigate('mes-disciples')" title="Voir mes disciples" style="cursor: pointer;">
             <div class="stat-icon success" style="cursor: pointer;"><i class="fas fa-user-friends"></i></div>
-            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${mesDisciples.length}</div><div class="stat-label" style="cursor: pointer;">Mes disciples</div></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value stat-value--membres" style="cursor: pointer;">${mesDisciples.length}</div><div class="stat-label" style="cursor: pointer;">Mes disciples</div></div>
           </div>
           <div class="stat-card clickable" onclick="App.navigate('programmes')" title="Voir les programmes" style="cursor: pointer;">
             <div class="stat-icon warning" style="cursor: pointer;"><i class="fas fa-calendar-alt"></i></div>
@@ -750,7 +750,7 @@ const App = {
           </div>
           <div class="stat-card clickable" onclick="App.navigate('annuaire')" title="Voir l'annuaire" style="cursor: pointer;">
             <div class="stat-icon info" style="cursor: pointer;"><i class="fas fa-address-book"></i></div>
-            <div class="stat-content" style="cursor: pointer;"><div class="stat-value" style="cursor: pointer;">${stats.total}</div><div class="stat-label" style="cursor: pointer;">Annuaire famille</div></div>
+            <div class="stat-content" style="cursor: pointer;"><div class="stat-value stat-value--membres" style="cursor: pointer;">${stats.total}</div><div class="stat-label" style="cursor: pointer;">Annuaire famille</div></div>
           </div>
           <div class="stat-card clickable" onclick="App.navigate('annuaire')" title="Anniversaires du jour" style="cursor: pointer;">
             <div class="stat-icon" style="background: #E91E6320; color: #E91E63; cursor: pointer;"><i class="fas fa-birthday-cake"></i></div>
@@ -910,8 +910,13 @@ const App = {
               <h1 class="page-title">${pageTitle}</h1>
             </div>
             <div class="header-right">
+              ${AppState.currentPage === 'nouvelles-ames' && typeof Permissions !== 'undefined' && Permissions.canManageNouvellesAmes() ? `
+              <button type="button" class="btn btn-primary" style="white-space: nowrap; flex-shrink: 0;" onclick="App.navigate('nouvelles-ames-add')">
+                <i class="fas fa-user-plus"></i> Ajouter
+              </button>
+              ` : ''}
               <div class="global-search header-search" style="position: relative;">
-                <input type="text" class="form-control" id="global-search-input" placeholder="Rechercher membre, nouvelle âme..." 
+                <input type="text" class="form-control" id="global-search-input" placeholder="${AppState.currentPage === 'presences' ? 'Liste de ce programme (prénom, nom…)…' : 'Rechercher membre, nouvelle âme...'}" 
                        style="width: 220px; padding-left: 36px;" 
                        oninput="App.globalSearchDebounce()" onfocus="App.globalSearchShow()" onblur="setTimeout(() => App.globalSearchHide(), 150)">
                 <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;"></i>
@@ -975,12 +980,66 @@ const App = {
   globalSearchHide() {
     const dd = document.getElementById('global-search-results');
     if (dd) dd.style.display = 'none';
+    if (typeof AppState !== 'undefined' && AppState.currentPage === 'presences' &&
+      typeof PagesPresences !== 'undefined' && PagesPresences.currentProgrammeId) {
+      PagesPresences.resetPresenceRowFilters();
+    }
   },
   globalSearch() {
     const q = (document.getElementById('global-search-input')?.value || '').trim().toLowerCase();
     const dd = document.getElementById('global-search-results');
     if (!dd) return;
-    if (q.length < 2) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
+
+    const positionDropdown = () => {
+      dd.style.position = 'absolute';
+      dd.style.top = '100%';
+      dd.style.left = '0';
+      dd.style.right = '0';
+      dd.style.background = 'var(--bg-secondary)';
+      dd.style.border = '1px solid var(--border-color)';
+      dd.style.borderRadius = 'var(--radius-sm)';
+      dd.style.boxShadow = 'var(--shadow-lg)';
+      dd.style.zIndex = '1000';
+      dd.style.maxHeight = '300px';
+      dd.style.overflowY = 'auto';
+    };
+
+    if (q.length < 2) {
+      dd.style.display = 'none';
+      dd.innerHTML = '';
+      if (typeof AppState !== 'undefined' && AppState.currentPage === 'presences' &&
+        typeof PagesPresences !== 'undefined' && PagesPresences.currentProgrammeId) {
+        PagesPresences.resetPresenceRowFilters();
+      }
+      return;
+    }
+
+    if (typeof AppState !== 'undefined' && AppState.currentPage === 'presences' &&
+      typeof PagesPresences !== 'undefined' && PagesPresences.currentProgrammeId) {
+      PagesPresences.applyGlobalPresenceSearchFilter(q);
+      const localHits = PagesPresences.searchProgrammePresenceByQuery(q);
+      let htmlItems = '';
+      if (localHits.length > 0) {
+        htmlItems = localHits.map(hit =>
+          `<div class="global-search-item" onclick='PagesPresences.revealPresencesListRow(${JSON.stringify(hit.kind)}, ${JSON.stringify(hit.id)}); App.globalSearchHide(); document.getElementById("global-search-input").value="";'
+               style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border-color);">
+            <i class="fas fa-clipboard-check" style="color:var(--primary)"></i>
+            <div><div style="font-weight:600">${Utils.escapeHtml(hit.label)}</div>
+            <div style="font-size:0.8rem;color:var(--text-muted)">${Utils.escapeHtml(hit.sub)} · aller à la ligne</div></div>
+          </div>`
+        ).join('');
+      } else {
+        htmlItems = `<div style="padding:12px;color:var(--text-muted)">
+          <div style="font-weight:600;margin-bottom:6px;color:var(--text-secondary)">À ce programme : aucun résultat</div>
+          <div style="font-size:0.85rem;">Saisissez le prénom ou le nom comme sur la liste du pointage. Pour ouvrir une fiche, quittez d'abord cette page.</div>
+        </div>`;
+      }
+      dd.innerHTML = htmlItems;
+      dd.style.display = 'block';
+      positionDropdown();
+      return;
+    }
+
     const results = [];
     const membres = (typeof Membres !== 'undefined' && Membres.getVisibleActifs) ? Membres.getVisibleActifs() : (AppState.membres?.filter(m => m.statut_compte === 'actif') || []);
     membres.forEach(m => {
@@ -1010,9 +1069,7 @@ const App = {
     }).join('');
     dd.innerHTML = html ? html : '<div style="padding:12px;color:var(--text-muted)">Aucun résultat</div>';
     dd.style.display = 'block';
-    dd.style.position = 'absolute'; dd.style.top = '100%'; dd.style.left = '0'; dd.style.right = '0';
-    dd.style.background = 'var(--bg-secondary)'; dd.style.border = '1px solid var(--border-color)'; dd.style.borderRadius = 'var(--radius-sm)';
-    dd.style.boxShadow = 'var(--shadow-lg)'; dd.style.zIndex = '1000'; dd.style.maxHeight = '300px'; dd.style.overflowY = 'auto';
+    positionDropdown();
   },
 
   filterMembres() { const search = document.getElementById('search-membres')?.value.toLowerCase() || ''; const roleFilter = document.getElementById('filter-role')?.value || ''; const mentorFilter = document.getElementById('filter-mentor')?.value || ''; document.querySelectorAll('#membres-list .member-card').forEach(card => { const name = card.dataset.name || ''; const role = card.dataset.role || ''; const mentorId = card.dataset.mentorId || ''; const matchMentor = !mentorFilter || (mentorFilter === 'none' ? mentorId === '' : mentorId === mentorFilter); card.style.display = name.includes(search) && (!roleFilter || role === roleFilter) && matchMentor ? '' : 'none'; }); },

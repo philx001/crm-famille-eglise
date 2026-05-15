@@ -950,7 +950,7 @@ const PagesStatistiques = {
       <!-- Répartition des membres par mentor (superviseur + admin uniquement) -->
       <div class="card mt-3">
         <div class="card-header">
-          <h3 class="card-title"><i class="fas fa-users-cog"></i> Répartition des membres par mentor <span class="badge badge-secondary" style="font-weight: 600;">${this.stats.global.totalMembres} membre${this.stats.global.totalMembres !== 1 ? 's' : ''}</span></h3>
+          <h3 class="card-title"><i class="fas fa-users-cog"></i> Répartition des membres par mentor <span class="badge badge-secondary head-count-badge head-count-badge--membres">${this.stats.global.totalMembres} membre${this.stats.global.totalMembres !== 1 ? 's' : ''}</span></h3>
           <span class="badge badge-secondary">Proportion de la famille</span>
         </div>
         <div class="card-body">
@@ -2022,28 +2022,28 @@ const PagesStatistiques = {
         <div class="stat-card">
           <div class="stat-icon" style="background: #9C27B0;"><i class="fas fa-seedling"></i></div>
           <div class="stat-content">
-            <div class="stat-value">${naStats.total}</div>
+            <div class="stat-value stat-value--nanc">${naStats.total}</div>
             <div class="stat-label">Total NA/NC (période)</div>
           </div>
         </div>
         <div class="stat-card">
           <div class="stat-icon primary"><i class="fas fa-user-plus"></i></div>
           <div class="stat-content">
-            <div class="stat-value">${naStats.na}</div>
+            <div class="stat-value stat-value--nanc">${naStats.na}</div>
             <div class="stat-label">Nouveaux Arrivants</div>
           </div>
         </div>
         <div class="stat-card">
           <div class="stat-icon success"><i class="fas fa-heart"></i></div>
           <div class="stat-content">
-            <div class="stat-value">${naStats.nc}</div>
+            <div class="stat-value stat-value--nanc">${naStats.nc}</div>
             <div class="stat-label">Nouveaux Convertis</div>
           </div>
         </div>
         <div class="stat-card">
           <div class="stat-icon warning"><i class="fas fa-user-check"></i></div>
           <div class="stat-content">
-            <div class="stat-value">${naStats.enSuivi}</div>
+            <div class="stat-value stat-value--nanc">${naStats.enSuivi}</div>
             <div class="stat-label">En suivi</div>
           </div>
         </div>
@@ -2126,7 +2126,7 @@ const PagesStatistiques = {
       <!-- Détail par NA/NC -->
       <div class="card mt-3">
         <div class="card-header" style="flex-wrap: wrap; gap: var(--spacing-sm);">
-          <h3 class="card-title"><i class="fas fa-users"></i> Présences par NA/NC <span class="badge badge-secondary">${presenceStats.parNA.length}</span></h3>
+          <h3 class="card-title"><i class="fas fa-users"></i> Présences par NA/NC <span class="badge badge-secondary head-count-badge head-count-badge--nanc">${presenceStats.parNA.length}</span></h3>
           ${presenceStats.parNA.length > 0 ? `
           <div class="search-box" style="min-width: 220px;" onclick="event.stopPropagation()">
             <i class="fas fa-search"></i>

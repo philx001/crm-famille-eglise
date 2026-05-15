@@ -291,6 +291,9 @@ const Pages = {
     const statutLabel = (typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getStatutLabel)
       ? NouvellesAmes.getStatutLabel(na.statut)
       : (na.statut || '-');
+    const datePastBounds = Utils.getDatePastBounds();
+    const effectiveArrivee = typeof Utils.getDateEntreeFamilleNA === 'function' ? Utils.getDateEntreeFamilleNA(na) : new Date();
+    const canEditNA = typeof NouvellesAmes !== 'undefined' && NouvellesAmes.canEditNouvelleAme(na);
     return `
       <div class="member-card na-nc-card" data-id="${na.id}" data-role="na_nc"
            data-name="${((na.prenom || '') + ' ' + (na.nom || '')).toLowerCase()}" data-mentor-id="${na.suivi_par_id || ''}"
@@ -300,7 +303,23 @@ const Pages = {
         </div>
         <div class="member-info">
           <div class="member-name">${Utils.escapeHtml(na.prenom || '')} ${Utils.escapeHtml(na.nom || '')}</div>
-          <div class="member-email">Suivi: ${Utils.escapeHtml(na.suivi_par_nom || '-')}</div>
+          <div class="member-email">Suivi&nbsp;: ${Utils.escapeHtml(na.suivi_par_nom || '-')}</div>
+          ${canEditNA ? `
+          <div class="na-arrivee-well na-arrivee-well--compact na-arrivee-well--inline" style="margin-top: var(--spacing-sm);">
+            <div class="na-arrivee-well__title"><i class="fas fa-calendar-day" aria-hidden="true"></i> Date d'arrivée dans la famille</div>
+            <p class="na-arrivee-well__hint" style="margin-bottom: var(--spacing-sm);">Pointage et stats — par défaut&nbsp;: 1er contact.</p>
+            <input type="date" class="form-control form-control-sm input-date na-arrivee-well__input"
+                   min="${datePastBounds.min}" max="${datePastBounds.max}"
+                   value="${Utils.toDateInputValue(effectiveArrivee)}"
+                   title="Par défaut : date du premier contact"
+                   onchange="PagesNouvellesAmes.updateDateArriveeFamilleNA('${na.id}', this.value)" />
+          </div>
+          ` : `
+          <div class="na-arrivee-readonly" title="Entrée prise en compte pour stats et pointage">
+            <i class="fas fa-calendar-check" aria-hidden="true"></i>
+            <span>Entrée famille&nbsp;: <strong>${Utils.formatDate(effectiveArrivee)}</strong></span>
+          </div>
+          `}
         </div>
         <div class="member-meta">
           <span class="badge" style="background: #9C27B0; color: white;">NA/NC</span>
@@ -311,6 +330,11 @@ const Pages = {
           <button class="btn btn-icon btn-secondary" onclick="App.navigate('nouvelle-ame-detail', { id: '${na.id}' })" title="Voir fiche NA/NC">
             <i class="fas fa-eye"></i>
           </button>
+          ${typeof Permissions !== 'undefined' && Permissions.canDeleteNouvelleAme() ? `
+          <button type="button" class="btn btn-icon btn-outline btn-outline-danger" onclick="PagesNouvellesAmes.confirmDeleteNouvelleAme('${na.id}', ${JSON.stringify(String(na.prenom || ''))}, ${JSON.stringify(String(na.nom || ''))}, true)" title="Supprimer cette NA/NC">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+          ` : ''}
         </div>
       </div>
     `;

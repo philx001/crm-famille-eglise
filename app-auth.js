@@ -103,7 +103,6 @@ const Auth = {
         localStorage.setItem('crm_famille_id', familleId);
         localStorage.setItem('crm_famille_nom', familleNom);
         InactivityManager.init();
-        App.navigate('dashboard');
         Toast.success(`Bienvenue ${userData.prenom} !`);
       } catch (err) {
         throw err;
@@ -856,7 +855,7 @@ const Permissions = {
   },
 
   canDeleteNouvelleAme() {
-    return this.hasRole('superviseur');
+    return this.hasRole('superviseur'); // inclut les administrateurs (niveau de rôle supérieur)
   },
 
   // Évangélisation

@@ -144,6 +144,26 @@ const Utils = {
     return dkEntree <= dkProg;
   },
 
+  /**
+   * Date d'entrée « famille » pour une fiche NA/NC (pointage / stats), alignée sur les membres.
+   * Priorité : date_arrivee_famille (surcharge manuelle) > date_premier_contact > created_at.
+   */
+  getDateEntreeFamilleNA(na) {
+    if (!na) return new Date();
+    const src = na.date_arrivee_famille || na.date_premier_contact || na.created_at;
+    if (!src) return new Date();
+    return src.toDate ? src.toDate() : new Date(src);
+  },
+
+  /** NA/NC considéré comme présent dans le périmètre famille à la date du programme (même logique jour que les membres). */
+  naEtaitDansFamilleALaDate(na, dateProgramme) {
+    const dkProg = this.localDayKey(dateProgramme);
+    if (dkProg == null) return false;
+    const dkEntree = this.localDayKey(this.getDateEntreeFamilleNA(na));
+    if (dkEntree == null) return false;
+    return dkEntree <= dkProg;
+  },
+
   formatRelativeDate(date) {
     if (!date) return '';
     const d = date.toDate ? date.toDate() : new Date(date);

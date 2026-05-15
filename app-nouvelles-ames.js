@@ -317,10 +317,10 @@ const NouvellesAmes = {
     }
   },
 
-  // Supprimer une nouvelle âme (superviseur uniquement)
+  // Supprimer une nouvelle âme (rôles autorisés : voir Permissions.canDeleteNouvelleAme)
   async delete(id) {
     try {
-      if (!Permissions.hasRole('superviseur')) {
+      if (!Permissions.canDeleteNouvelleAme()) {
         Toast.error('Permission refusée');
         return false;
       }
@@ -1088,7 +1088,7 @@ const PagesNouvellesAmes = {
             <div class="na-stats-summary-block">
               <span class="na-stats-summary-title">Par catégorie</span>
               <div class="na-stats-summary-chips">
-                <button type="button" class="na-stat-chip ${cat === 'all' ? 'active' : ''}" onclick="PagesNouvellesAmes.setCategorieView('all')" title="Voir toutes">
+                <button type="button" class="na-stat-chip na-stat-chip-toutes ${cat === 'all' ? 'active' : ''}" onclick="PagesNouvellesAmes.setCategorieView('all')" title="Voir toutes">
                   Toutes <strong>${countNA + countNC}</strong>
                 </button>
                 <button type="button" class="na-stat-chip na-stat-chip-na ${cat === 'na' ? 'active' : ''}" onclick="PagesNouvellesAmes.setCategorieView('na')" title="Filtrer par NA">
@@ -1162,9 +1162,6 @@ const PagesNouvellesAmes = {
           <button class="btn btn-outline" onclick="PagesNouvellesAmes.exportPDFAll()" title="Export PDF (toutes catégories)">
             <i class="fas fa-file-pdf"></i> PDF (tout)
           </button>
-          <button class="btn btn-primary" onclick="App.navigate('nouvelles-ames-add')">
-            <i class="fas fa-user-plus"></i> Ajouter
-          </button>
           ${Permissions.hasRole('superviseur') ? `
           <button type="button" class="btn btn-outline" onclick="PagesNouvellesAmes.runMigrationMergeDuplicates()" title="Fusionner les fiches en doublon (même personne) en une seule par personne">
             <i class="fas fa-compress-arrows-alt"></i> Fusionner doublons
@@ -1236,6 +1233,11 @@ const PagesNouvellesAmes = {
           border-radius: var(--radius-sm);
           font-size: 0.9rem;
         }
+        .stat-mini strong {
+          font-size: 1.18em;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+        }
         .header-actions {
           display: flex;
           gap: var(--spacing-sm);
@@ -1252,7 +1254,7 @@ const PagesNouvellesAmes = {
         }
         .na-card {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           gap: var(--spacing-md);
           padding: var(--spacing-md);
           border-bottom: 1px solid var(--border-color);
@@ -1295,10 +1297,13 @@ const PagesNouvellesAmes = {
           display: flex;
           gap: var(--spacing-xs);
           flex-wrap: wrap;
+          align-self: center;
         }
         .na-actions {
           display: flex;
           gap: var(--spacing-xs);
+          flex-wrap: wrap;
+          align-self: center;
         }
         .badge-canal {
           font-size: 0.75rem;
@@ -1311,15 +1316,9 @@ const PagesNouvellesAmes = {
           border-radius: 12px;
           color: white;
         }
-        .na-card-assign {
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-xs);
-          margin-top: 6px;
-          flex-wrap: wrap;
-        }
         .na-assign-select {
-          max-width: 160px;
+          max-width: 168px;
+          min-width: 120px;
           font-size: 0.8rem;
           padding: 2px 6px;
           height: auto;
@@ -1357,6 +1356,11 @@ const PagesNouvellesAmes = {
           font-size: 0.85rem;
           transition: all 0.2s;
         }
+        .na-stat-chip strong {
+          font-size: 1.2em;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+        }
         .na-stat-chip:hover {
           background: var(--bg-primary);
           border-color: var(--primary);
@@ -1365,6 +1369,14 @@ const PagesNouvellesAmes = {
           background: var(--primary-light);
           border-color: var(--primary);
           color: var(--primary);
+        }
+        .na-stat-chip-toutes.active {
+          background: var(--primary);
+          border-color: var(--primary);
+          color: #fff;
+        }
+        .na-stat-chip-toutes.active strong {
+          color: #fff;
         }
         .na-stat-chip[style*="--chip-color"] {
           border-color: var(--chip-color);
@@ -1384,6 +1396,8 @@ const PagesNouvellesAmes = {
     const canal = CANAUX.find(c => c.value === na.canal) || {};
     const avatarBg = na.sexe === 'F' ? '#E91E63' : 'var(--primary)';
     const canEdit = NouvellesAmes.canEditNouvelleAme(na);
+    const datePastBounds = Utils.getDatePastBounds();
+    const effectiveArrivee = Utils.getDateEntreeFamilleNA(na);
 
     return `
       <div class="na-card ${isAlerte ? 'alerte' : ''}" onclick="App.navigate('nouvelle-ame-detail', {id: '${na.id}'})">
@@ -1399,13 +1413,24 @@ const PagesNouvellesAmes = {
             <span><i class="fas fa-user"></i> ${Utils.escapeHtml(na.suivi_par_nom || '-')}</span>
           </div>
           ${canEdit ? `
-          <div class="na-card-assign" onclick="event.stopPropagation()">
-            <select class="form-control form-control-sm na-assign-select" title="Affecter au canal" onchange="PagesNouvellesAmes.updateCanal('${na.id}', this.value)">
-              ${CANAUX.map(c => `<option value="${c.value}" ${(na.canal || '') === c.value ? 'selected' : ''}>${c.label}</option>`).join('')}
-            </select>
-            <select class="form-control form-control-sm na-assign-select" title="NA ou NC" onchange="PagesNouvellesAmes.updateCategorie('${na.id}', this.value)">
-              ${CATEGORIES_NA_NC.map(c => `<option value="${c.value}" ${(na.categorie || 'na') === c.value ? 'selected' : ''}>${c.shortLabel}</option>`).join('')}
-            </select>
+          <div class="na-card-edits-stack" onclick="event.stopPropagation()">
+            <div class="na-card-edits-row">
+              <select class="form-control form-control-sm na-assign-select" title="Canal d'acquisition" onchange="PagesNouvellesAmes.updateCanal('${na.id}', this.value)">
+                ${CANAUX.map(c => `<option value="${c.value}" ${(na.canal || '') === c.value ? 'selected' : ''}>${c.label}</option>`).join('')}
+              </select>
+              <select class="form-control form-control-sm na-assign-select" title="NA ou NC" onchange="PagesNouvellesAmes.updateCategorie('${na.id}', this.value)">
+                ${CATEGORIES_NA_NC.map(c => `<option value="${c.value}" ${(na.categorie || 'na') === c.value ? 'selected' : ''}>${c.shortLabel}</option>`).join('')}
+              </select>
+            </div>
+            <div class="na-arrivee-well na-arrivee-well--inline">
+              <div class="na-arrivee-well__title"><i class="fas fa-calendar-day" aria-hidden="true"></i> Date d'arrivée dans la famille</div>
+              <p class="na-arrivee-well__hint">Pointage et statistiques — par défaut alignée sur la date du premier contact.</p>
+              <input type="date" class="form-control form-control-sm input-date na-arrivee-well__input"
+                     min="${datePastBounds.min}" max="${datePastBounds.max}"
+                     value="${Utils.toDateInputValue(effectiveArrivee)}"
+                     title="Calendrier : prise en compte à partir de ce jour"
+                     onchange="PagesNouvellesAmes.updateDateArriveeFamilleNA('${na.id}', this.value)" />
+            </div>
           </div>
           ` : ''}
         </div>
@@ -1424,6 +1449,11 @@ const PagesNouvellesAmes = {
           <button class="btn btn-sm btn-secondary" onclick="App.navigate('nouvelle-ame-suivi', {id: '${na.id}'})" title="Ajouter un suivi">
             <i class="fas fa-phone"></i>
           </button>
+          ${Permissions.canDeleteNouvelleAme() ? `
+          <button type="button" class="btn btn-sm btn-outline btn-outline-danger" onclick="PagesNouvellesAmes.confirmDeleteNouvelleAme('${na.id}', ${JSON.stringify(String(na.prenom || ''))}, ${JSON.stringify(String(na.nom || ''))}, false)" title="Supprimer cette fiche NA/NC">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+          ` : ''}
         </div>
       </div>
     `;
@@ -1444,6 +1474,35 @@ const PagesNouvellesAmes = {
       Toast.success('Catégorie mise à jour');
       this.applyFilters();
       this.refreshStatsSummary();
+    }
+  },
+
+  async updateDateArriveeFamilleNA(id, dateValue) {
+    const na = NouvellesAmes.getById(id);
+    if (!na || !NouvellesAmes.canEditNouvelleAme(na)) {
+      Toast.error('Modification non autorisée.');
+      return;
+    }
+    const premier = na.date_premier_contact?.toDate ? na.date_premier_contact.toDate() : new Date(na.date_premier_contact || Date.now());
+    const premierKey = Utils.localDayKey(premier);
+    let date_arrivee_famille = null;
+    if (dateValue && String(dateValue).trim()) {
+      const chosen = new Date(String(dateValue) + 'T12:00:00');
+      const chosenKey = Utils.localDayKey(chosen);
+      if (chosenKey != null && chosenKey !== premierKey) {
+        date_arrivee_famille = chosen;
+      }
+    }
+    const ok = await NouvellesAmes.update(id, { date_arrivee_famille }, true);
+    if (ok) {
+      Toast.success('Date d\'arrivée enregistrée');
+      if (AppState.currentPage === 'nouvelles-ames') {
+        this.applyFilters();
+      } else if (AppState.currentPage === 'nouvelle-ame-detail') {
+        App.navigate('nouvelle-ame-detail', { id });
+      } else if (AppState.currentPage === 'membres') {
+        App.navigate('membres');
+      }
     }
   },
 
@@ -1497,6 +1556,31 @@ const PagesNouvellesAmes = {
       );
     } else {
       if (confirm('Fusionner les fiches doublons (même personne) en une seule ? Les suivis seront rattachés à la fiche conservée.')) run();
+    }
+  },
+
+  /**
+   * Suppression d'une fiche NA/NC (contrôle Permissions.canDeleteNouvelleAme).
+   * @param fromMembersList true si l'action vient de la page Tous les membres (rafraîchit la liste).
+   */
+  confirmDeleteNouvelleAme(id, prenom, nom, fromMembersList) {
+    const label = [prenom, nom].filter(Boolean).join(' ').trim() || 'cette fiche';
+    const run = async () => {
+      const ok = await NouvellesAmes.delete(id);
+      if (!ok) return;
+      if (fromMembersList) {
+        App.navigate('membres');
+      } else {
+        this.applyFilters();
+        this.refreshStatsSummary();
+        if (typeof PagesNouvellesAmes.initCharts === 'function') PagesNouvellesAmes.initCharts();
+      }
+    };
+    const msg = `Supprimer définitivement « ${label} » des nouvelles âmes ? Cette action est irréversible.`;
+    if (typeof Modal !== 'undefined' && Modal.confirm) {
+      Modal.confirm('Supprimer la fiche', msg, run);
+    } else if (confirm(`Supprimer définitivement « ${label} » ?`)) {
+      run();
     }
   },
 
@@ -1821,6 +1905,8 @@ const PagesNouvellesAmes = {
     const dateContact = na.date_premier_contact?.toDate 
       ? na.date_premier_contact.toDate() 
       : new Date(na.date_premier_contact);
+    const datePastBounds = Utils.getDatePastBounds();
+    const effectiveArrivee = Utils.getDateEntreeFamilleNA(na);
     
     return `
       <div class="na-detail-header">
@@ -1912,6 +1998,24 @@ const PagesNouvellesAmes = {
                   <span class="info-label">Date du premier contact</span>
                   <span class="info-value">${Utils.formatDate(dateContact)}</span>
                 </div>
+                ${NouvellesAmes.canEditNouvelleAme(na) ? `
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <div class="na-arrivee-well mt-2">
+                    <div class="na-arrivee-well__title"><i class="fas fa-calendar-day" aria-hidden="true"></i> Date d'arrivée dans la famille</div>
+                    <p class="na-arrivee-well__hint">Prise en compte pour le pointage et les statistiques. Tant que vous ne changez pas la date ci-dessous, elle reste alignée sur le premier contact.</p>
+                    <input type="date" class="form-control input-date na-arrivee-well__input"
+                           min="${datePastBounds.min}" max="${datePastBounds.max}"
+                           value="${Utils.toDateInputValue(effectiveArrivee)}"
+                           title="Sélectionner une date dans le calendrier"
+                           onchange="PagesNouvellesAmes.updateDateArriveeFamilleNA('${id}', this.value)" />
+                  </div>
+                </div>
+                ` : `
+                <div class="info-item" style="grid-column: 1 / -1;">
+                  <span class="info-label">Date d'arrivée (stats / pointage)</span>
+                  <span class="info-value">${Utils.formatDate(effectiveArrivee)}</span>
+                </div>
+                `}
                 <div class="info-item">
                   <span class="info-label">Lieu du contact</span>
                   <span class="info-value">${Utils.escapeHtml(na.lieu_contact || '-')}</span>
@@ -1961,7 +2065,7 @@ const PagesNouvellesAmes = {
               </button>
             </div>
             <div class="card-body">
-              <p class="text-muted mb-0">Les pointages de présence sont effectués par les mentors et rôles supérieurs sur la page de pointage de chaque programme.</p>
+              <p class="text-muted mb-0" style="line-height: 1.55;">Les pointages sont saisis sur chaque programme. La date d'arrivée dans la famille (ci-dessus) permet d'aligner la fiche NA/NC sur les mêmes règles de période que les membres.</p>
             </div>
           </div>
 

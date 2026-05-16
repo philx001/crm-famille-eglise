@@ -897,12 +897,16 @@ const Permissions = {
     return this.canEditEvangelisationSession(session);
   },
 
+  /**
+   * Édition complète du profil d’un autre membre (y compris rôle et mentor) : adjoint superviseur, superviseur et admin.
+   * (hasRole('adjoint_superviseur') couvre niveau 3 et au-dessus, exclut le seul mentor.)
+   */
   canEditMember(membreId) {
     if (!AppState.user) return false;
     if (membreId === AppState.user.id) return true;
     const membre = AppState.membres?.find(m => m.id === membreId);
     if (membre?.role === 'admin' && !this.isAdmin()) return false; // Seul un admin peut modifier un admin
-    if (this.hasRole('superviseur')) return true;
+    if (this.hasRole('adjoint_superviseur')) return true;
     return false;
   },
 

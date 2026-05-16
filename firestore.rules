@@ -158,7 +158,7 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (
         request.auth.uid == userId ||
         (resource.data.mentor_id == request.auth.uid && (resource.data.role == 'disciple' || resource.data.role == 'nouveau')) ||
-        (hasRole('superviseur') && sameFamilleId(resource.data.famille_id, getUserData().famille_id) && resource.data.role != 'admin') ||
+        (hasRole('adjoint_superviseur') && !isAdmin() && sameFamilleId(resource.data.famille_id, getUserData().famille_id) && resource.data.role != 'admin' && request.resource.data.role != 'admin') ||
         (hasRole('mentor') && resource.data.mentor_id == request.auth.uid) ||
         mentorCanUpdateDisciple() ||
         adjointServiceMentorReassignUpdate(userId) ||

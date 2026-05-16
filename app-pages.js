@@ -582,7 +582,7 @@ const Pages = {
         </div>
         <div class="card-body">
           <form id="form-edit-profil" onsubmit="App.submitEditProfil(event, '${membre.id}')">
-            ${Permissions.canEditMember(membre.id) && membre.id !== AppState.user.id && (Permissions.hasRole('superviseur') || Permissions.isAdmin()) ? `
+            ${Permissions.canEditMember(membre.id) && membre.id !== AppState.user.id && Permissions.hasRole('adjoint_superviseur') ? `
             <h4 class="mb-2">Rôle et affectation</h4>
             <div class="form-group">
               <label class="form-label required">Rôle</label>

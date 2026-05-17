@@ -14,6 +14,7 @@ Application web SPA (Single Page Application) vanilla JavaScript utilisant Fireb
 - **Rendu :** Template literals injectés dans le DOM
 - **État :** Objet global `AppState`
 - **Routing :** Manuel via `App.navigate()`
+- **Évolution stack (réf.) :** contraintes, risques et conséquences d’un basculement hypothétique Firebase → Supabase dans [**ETUDE_MIGRATION_FIREBASE_SUPABASE.md**](ETUDE_MIGRATION_FIREBASE_SUPABASE.md)
 
 ---
 
@@ -325,6 +326,7 @@ Nouveau module ajouté pour gérer les erreurs réseau et de session :
 
 ## 🔄 Évolutions futures possibles
 
+- **Backend :** analyse non engageante Firebase → Supabase — [**ETUDE_MIGRATION_FIREBASE_SUPABASE.md**](ETUDE_MIGRATION_FIREBASE_SUPABASE.md)
 - Migration vers un bundler (Vite, Webpack) pour gérer les dépendances
 - Modularisation ES6 (import/export)
 - Tests unitaires (Jest)

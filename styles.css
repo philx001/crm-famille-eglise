@@ -1539,6 +1539,8 @@ select.form-control {
 .member-actions {
   display: flex;
   gap: var(--spacing-xs);
+  position: relative;
+  z-index: 2;
 }
 
 /* ============================================

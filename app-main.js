@@ -1742,8 +1742,27 @@ const App = {
     btn.setAttribute('title', isPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
   },
 
-  showForgotPassword() { const e = prompt('Entrez votre adresse email :'); if (e && Utils.isValidEmail(e)) Auth.resetPassword(e); else if (e) Toast.error('Email invalide'); }
+  showForgotPassword() { const e = prompt('Entrez votre adresse email :'); if (e && Utils.isValidEmail(e)) Auth.resetPassword(e); else if (e) Toast.error('Email invalide'); },
+
+  /** Point d’entrée unique suppression fiche NA/NC (liste Nouvelles âmes ou Tous les membres). */
+  confirmDeleteNouvelleAme(id, fromMembersList) {
+    const fid = String(id || '').trim();
+    if (!fid || typeof PagesNouvellesAmes === 'undefined') return;
+    let prenom = '';
+    let nom = '';
+    if (typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getById) {
+      const na = NouvellesAmes.getById(fid);
+      if (na) {
+        prenom = String(na.prenom || '');
+        nom = String(na.nom || '');
+      }
+    }
+    PagesNouvellesAmes.confirmDeleteNouvelleAme(fid, prenom, nom, !!fromMembersList);
+  }
 };
 
 window.App = App;
+// onclick="" résout les symboles via window ; const global ≠ propriété window (cf. PagesNouvellesAmes).
+if (typeof PagesNouvellesAmes !== 'undefined') window.PagesNouvellesAmes = PagesNouvellesAmes;
+
 document.addEventListener('DOMContentLoaded', () => App.init());

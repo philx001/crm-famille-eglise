@@ -331,8 +331,8 @@ const Pages = {
             <i class="fas fa-eye"></i>
           </button>
           ${typeof Permissions !== 'undefined' && Permissions.canDeleteNouvelleAme() ? `
-          <button type="button" class="btn btn-icon btn-outline btn-outline-danger" onclick="PagesNouvellesAmes.confirmDeleteNouvelleAme('${na.id}', ${JSON.stringify(String(na.prenom || ''))}, ${JSON.stringify(String(na.nom || ''))}, true)" title="Supprimer cette NA/NC">
-            <i class="fas fa-trash-alt"></i>
+          <button type="button" class="btn btn-icon btn-outline btn-outline-danger" onclick="event.stopPropagation(); event.preventDefault(); App.confirmDeleteNouvelleAme('${na.id}', true);" title="Supprimer cette NA/NC">
+            <i class="fas fa-trash-alt" style="pointer-events:none;"></i>
           </button>
           ` : ''}
         </div>

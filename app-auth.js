@@ -854,8 +854,9 @@ const Permissions = {
     return this.hasRole('adjoint_superviseur');
   },
 
+  /** Suppression d'une fiche NA/NC : adjoint superviseur, superviseur, admin (niveau ≥ 3). */
   canDeleteNouvelleAme() {
-    return this.hasRole('superviseur'); // inclut les administrateurs (niveau de rôle supérieur)
+    return this.hasRole('adjoint_superviseur');
   },
 
   // Évangélisation

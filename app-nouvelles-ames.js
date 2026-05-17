@@ -1304,6 +1304,8 @@ const PagesNouvellesAmes = {
           gap: var(--spacing-xs);
           flex-wrap: wrap;
           align-self: center;
+          position: relative;
+          z-index: 2;
         }
         .badge-canal {
           font-size: 0.75rem;
@@ -1450,8 +1452,8 @@ const PagesNouvellesAmes = {
             <i class="fas fa-phone"></i>
           </button>
           ${Permissions.canDeleteNouvelleAme() ? `
-          <button type="button" class="btn btn-sm btn-outline btn-outline-danger" onclick="PagesNouvellesAmes.confirmDeleteNouvelleAme('${na.id}', ${JSON.stringify(String(na.prenom || ''))}, ${JSON.stringify(String(na.nom || ''))}, false)" title="Supprimer cette fiche NA/NC">
-            <i class="fas fa-trash-alt"></i>
+          <button type="button" class="btn btn-sm btn-outline btn-outline-danger" onclick="event.stopPropagation(); event.preventDefault(); App.confirmDeleteNouvelleAme('${na.id}', false);" title="Supprimer cette fiche NA/NC">
+            <i class="fas fa-trash-alt" style="pointer-events:none;"></i>
           </button>
           ` : ''}
         </div>

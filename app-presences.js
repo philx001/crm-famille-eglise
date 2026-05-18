@@ -6,10 +6,20 @@ const PagesPresences = {
   currentProgrammeId: null,
   presencesData: [],
   presencesNAData: [],
+  /** Filtre liste membres depuis les tuiles du résumé (null = tout afficher). */
+  summaryFilterMembres: null,
+  /** Filtre liste NA/NC depuis les tuiles du résumé. */
+  summaryFilterNA: null,
+
+  /** Onglet actif du pointage : membres | na (pour n'afficher qu'une ligne de tuiles de résumé). */
+  activePresenceTab: 'membres',
 
   // Page de pointage des présences
   async renderPresences(programmeId) {
     this.currentProgrammeId = programmeId;
+    this.summaryFilterMembres = null;
+    this.summaryFilterNA = null;
+    this.activePresenceTab = 'membres';
     const programme = Programmes.getById(programmeId);
     
     if (!programme) {
@@ -102,6 +112,9 @@ const PagesPresences = {
     const showModeSelector = isRoleSuperior && hasDisciples;
     const hasNANCPanel = this.presencesNAData.length > 0;
 
+    const summaryClass = hasNANCPanel ? 'presence-summary presence-summary--panel-membres' : 'presence-summary';
+    const summaryAria = 'Filtrer les membres par statut de présence';
+
     return `
       <div class="presences-header">
         <div>
@@ -140,9 +153,9 @@ const PagesPresences = {
       </div>
 
       <div class="card">
-        <div class="card-header">
+        <div class="card-header presences-card-header">
           <h3 class="card-title"><i class="fas fa-clipboard-check"></i> Pointage des présences</h3>
-          <div class="presence-summary" id="presence-summary">
+          <div class="${summaryClass}" id="presence-summary" role="toolbar" aria-label="${summaryAria}">
             ${this.renderSummary()}
           </div>
         </div>
@@ -324,18 +337,80 @@ const PagesPresences = {
         .pointage-mode-selector .btn-group .btn:last-child {
           border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
         }
+        .presences-card-header {
+          flex-wrap: wrap;
+          gap: var(--spacing-md);
+          align-items: flex-start;
+        }
         .presence-summary {
           display: flex;
           gap: var(--spacing-md);
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
           justify-content: flex-end;
           align-items: flex-start;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          max-width: 100%;
+        }
+        .presence-summary--panel-na {
+          justify-content: flex-end;
         }
         .summary-item {
           text-align: center;
           padding: var(--spacing-sm) var(--spacing-md);
           background: var(--bg-primary);
           border-radius: var(--radius-sm);
+        }
+        .summary-filter-btn {
+          text-align: center;
+          padding: var(--spacing-sm) var(--spacing-md);
+          background: var(--bg-primary);
+          border-radius: var(--radius-sm);
+          border: 2px solid transparent;
+          cursor: pointer;
+          font: inherit;
+          color: inherit;
+          box-shadow: var(--shadow-sm);
+          transition:
+            transform var(--transition-fast),
+            border-color var(--transition-fast),
+            box-shadow var(--transition-fast),
+            background var(--transition-fast);
+        }
+        .summary-filter-btn:hover {
+          transform: translateY(-2px);
+          border-color: color-mix(in srgb, var(--summary-accent, var(--primary)) 55%, transparent);
+          box-shadow: var(--shadow-md);
+        }
+        .summary-filter-btn:focus-visible {
+          outline: 2px solid var(--primary);
+          outline-offset: 2px;
+        }
+        .summary-filter-btn:active {
+          transform: translateY(0);
+        }
+        .summary-filter-btn--active {
+          border-color: var(--summary-accent, var(--primary));
+          box-shadow:
+            inset 0 0 0 1px color-mix(in srgb, var(--summary-accent, var(--primary)) 35%, transparent),
+            var(--shadow-sm);
+          background: color-mix(in srgb, var(--summary-accent, var(--primary)) 12%, var(--bg-primary));
+        }
+        body.theme-dark .summary-filter-btn--active {
+          background: color-mix(in srgb, var(--summary-accent, var(--primary)) 18%, var(--bg-primary));
+        }
+        .summary-filter-btn--reset {
+          border-style: dashed;
+          border-color: color-mix(in srgb, var(--summary-accent, var(--primary)) 28%, transparent);
+        }
+        .summary-item--hint {
+          margin-top: var(--spacing-xs);
+          padding-top: var(--spacing-xs);
+          border-top: 1px dashed var(--border-color);
+          font-size: 0.72rem;
+          color: var(--text-muted);
+          text-align: right;
+          flex-basis: 100%;
         }
         .summary-value {
           font-size: 1.38rem;
@@ -445,7 +520,7 @@ const PagesPresences = {
     const searchText = ((membre.prenom || '') + ' ' + (membre.nom || '') + ' ' + (Utils.getRoleLabel(membre.role) || '')).toLowerCase();
 
     return `
-      <div class="presence-row" data-index="${index}" data-type="membre" data-disciple-id="${membre.id}" data-search="${Utils.escapeAttr(searchText)}">
+      <div class="presence-row" data-index="${index}" data-type="membre" data-disciple-id="${membre.id}" data-presence-statut="${presence.statut}" data-search="${Utils.escapeAttr(searchText)}">
         <div class="presence-membre">
           <div class="member-avatar" style="background: ${membre.sexe === 'F' ? '#E91E63' : 'var(--primary)'}; width: 40px; height: 40px; font-size: 0.9rem;">
             ${Utils.getInitials(membre.prenom, membre.nom)}
@@ -488,7 +563,7 @@ const PagesPresences = {
     const searchText = (na.prenom + ' ' + na.nom + ' ' + (na.suivi_par_nom || '')).toLowerCase().replace(/"/g, "'");
 
     return `
-      <div class="presence-row" data-index="${index}" data-type="na" data-nouvelle-ame-id="${na.id}" data-search="${Utils.escapeAttr(searchText)}">
+      <div class="presence-row" data-index="${index}" data-type="na" data-nouvelle-ame-id="${na.id}" data-presence-statut="${presence.statut}" data-search="${Utils.escapeAttr(searchText)}">
         <div class="presence-membre">
           <div class="member-avatar" style="background: #9C27B0; width: 40px; height: 40px; font-size: 0.9rem;">
             ${Utils.getInitials(na.prenom, na.nom)}
@@ -524,59 +599,184 @@ const PagesPresences = {
   },
 
   renderSummary() {
-    const counts = { present: 0, absent: 0, excuse: 0, autre_campus: 0, en_ligne: 0, non_renseigne: 0 };
-    const countsNA = { present: 0, absent: 0, excuse: 0, non_renseigne: 0, autre_campus: 0, en_ligne: 0, pas_revenir: 0, injoignable: 0 };
+    const hasNA = (this.presencesNAData && this.presencesNAData.length > 0);
+    const onNAPanel = hasNA && this.activePresenceTab === 'na';
+
+    const counts = { culte_comfrat: 0, present: 0, absent: 0, excuse: 0, autre_campus: 0, en_ligne: 0, non_renseigne: 0 };
+    const countsNA = { culte_comfrat: 0, present: 0, absent: 0, excuse: 0, non_renseigne: 0, autre_campus: 0, en_ligne: 0, pas_revenir: 0, injoignable: 0 };
 
     this.presencesData.forEach(p => { counts[p.statut] = (counts[p.statut] || 0) + 1; });
     this.presencesNAData.forEach(p => { countsNA[p.statut] = (countsNA[p.statut] || 0) + 1; });
 
     const total = this.presencesData.length;
     const totalNA = this.presencesNAData.length;
-    const taux = total > 0 ? Math.round((counts.present / total) * 100) : 0;
-    const tauxNA = totalNA > 0 ? Math.round((countsNA.present / totalNA) * 100) : 0;
+    const effectifMembres = (counts.present || 0) + (counts.culte_comfrat || 0);
+    const effectifNA = (countsNA.present || 0) + (countsNA.culte_comfrat || 0);
+    const taux = total > 0 ? Math.round((effectifMembres / total) * 100) : 0;
+    const tauxNA = totalNA > 0 ? Math.round((effectifNA / totalNA) * 100) : 0;
 
-    return `
-      <div class="summary-item" style="color: var(--success);">
-        <div class="summary-value">${counts.present}</div>
-        <div class="summary-label">Présents (membres)</div>
-      </div>
-      <div class="summary-item" style="color: var(--danger);">
-        <div class="summary-value">${counts.absent}</div>
-        <div class="summary-label">Absents</div>
-      </div>
-      <div class="summary-item" style="color: var(--warning);">
-        <div class="summary-value">${counts.excuse}</div>
-        <div class="summary-label">Excusés</div>
-      </div>
-      <div class="summary-item" style="color: #2196F3;">
-        <div class="summary-value">${counts.autre_campus || 0}</div>
-        <div class="summary-label">Autre campus</div>
-      </div>
-      <div class="summary-item" style="color: #673AB7;">
-        <div class="summary-value">${counts.en_ligne || 0}</div>
-        <div class="summary-label">En ligne</div>
-      </div>
-      <div class="summary-item" style="color: var(--primary);">
+    const fm = this.summaryFilterMembres;
+    const fn = this.summaryFilterNA;
+
+    const membreBtn = (statut, count, label, color) => {
+      const active = fm === statut;
+      return `
+      <button type="button" class="summary-filter-btn ${active ? 'summary-filter-btn--active' : ''}"
+              style="--summary-accent: ${color}; color: ${color};"
+              title="${Utils.escapeAttr('Membres — afficher uniquement : ' + label)}"
+              aria-pressed="${active ? 'true' : 'false'}"
+              onclick="PagesPresences.toggleSummaryFilter('membres','${statut}')">
+        <div class="summary-value">${count}</div>
+        <div class="summary-label">${label}</div>
+      </button>`;
+    };
+
+    const naBtn = (statut, count, label, color, extraClass = '') => {
+      const active = fn === statut;
+      return `
+      <button type="button" class="summary-filter-btn ${extraClass} ${active ? 'summary-filter-btn--active' : ''}"
+              style="--summary-accent: ${color}; color: ${color};"
+              title="${Utils.escapeAttr('NA/NC — afficher uniquement : ' + label)}"
+              aria-pressed="${active ? 'true' : 'false'}"
+              onclick="PagesPresences.toggleSummaryFilter('na','${statut}')">
+        <div class="summary-value">${count}</div>
+        <div class="summary-label">${label}</div>
+      </button>`;
+    };
+
+    let html = '';
+
+    if (!onNAPanel) {
+      html += `
+      ${membreBtn('culte_comfrat', counts.culte_comfrat || 0, 'Culte et Comfrat', '#00695C')}
+      ${membreBtn('present', counts.present, 'Présents (membres)', 'var(--success)')}
+      ${membreBtn('absent', counts.absent, 'Absents', 'var(--danger)')}
+      ${membreBtn('excuse', counts.excuse, 'Excusés', 'var(--warning)')}
+      ${membreBtn('autre_campus', counts.autre_campus || 0, 'Autre campus', '#2196F3')}
+      ${membreBtn('en_ligne', counts.en_ligne || 0, 'En ligne', '#673AB7')}
+      ${counts.non_renseigne > 0 ? membreBtn('non_renseigne', counts.non_renseigne, 'Non renseigné', '#9E9E9E') : ''}
+      <button type="button" class="summary-filter-btn summary-filter-btn--reset"
+              style="--summary-accent: var(--primary); color: var(--primary);"
+              title="${Utils.escapeAttr('Afficher tous les membres (retirer le filtre par statut)')}"
+              aria-pressed="false"
+              onclick="PagesPresences.resetSummaryFilterScope('membres')">
         <div class="summary-value">${taux}%</div>
         <div class="summary-label">Taux membres</div>
-      </div>
-      ${totalNA > 0 ? `
-      <div class="summary-item" style="color: #9C27B0; border-left: 1px solid #9C27B0; padding-left: 8px;">
-        <div class="summary-value">${countsNA.present}/${totalNA}</div>
-        <div class="summary-label">NA/NC présents</div>
-      </div>
-      <div class="summary-item" style="color: #9C27B0;">
+      </button>
+    `;
+    }
+
+    if (onNAPanel && totalNA > 0) {
+      html += `
+      ${naBtn('culte_comfrat', countsNA.culte_comfrat || 0, 'Culte et Comfrat (NA)', '#00695C', '')}
+      ${naBtn('present', countsNA.present, 'Présents (NA)', 'var(--success)', '')}
+      ${naBtn('absent', countsNA.absent, 'Absents (NA)', 'var(--danger)', '')}
+      ${naBtn('excuse', countsNA.excuse, 'Excusés (NA)', 'var(--warning)', '')}
+      ${naBtn('autre_campus', countsNA.autre_campus || 0, 'Autre campus (NA)', '#2196F3', '')}
+      ${naBtn('en_ligne', countsNA.en_ligne || 0, 'En ligne (NA)', '#673AB7', '')}
+      ${countsNA.non_renseigne > 0 ? naBtn('non_renseigne', countsNA.non_renseigne, 'Non renseigné (NA)', '#9E9E9E', '') : ''}
+      ${(countsNA.pas_revenir || 0) > 0 ? naBtn('pas_revenir', countsNA.pas_revenir, 'Pas retour (NA)', '#795548', '') : ''}
+      ${(countsNA.injoignable || 0) > 0 ? naBtn('injoignable', countsNA.injoignable, 'Injoignable (NA)', '#607D8B', '') : ''}
+      <button type="button" class="summary-filter-btn summary-filter-btn--reset"
+              style="--summary-accent: #9C27B0; color: #9C27B0;"
+              title="${Utils.escapeAttr('Afficher toutes les NA/NC (retirer le filtre par statut)')}"
+              aria-pressed="false"
+              onclick="PagesPresences.resetSummaryFilterScope('na')">
         <div class="summary-value">${tauxNA}%</div>
         <div class="summary-label">Taux NA/NC</div>
-      </div>
-      ${(countsNA.autre_campus || 0) + (countsNA.en_ligne || 0) + (countsNA.pas_revenir || 0) + (countsNA.injoignable || 0) > 0 ? `
-      <div class="summary-item" style="color: #607D8B; font-size: 0.85rem;">
-        <div class="summary-value">${countsNA.autre_campus || 0} / ${countsNA.en_ligne || 0} / ${countsNA.pas_revenir || 0} / ${countsNA.injoignable || 0}</div>
-        <div class="summary-label">Autre campus / En ligne / Pas retour / Injoignable</div>
-      </div>
-      ` : ''}
-      ` : ''}
+      </button>
     `;
+      if ((countsNA.autre_campus || 0) + (countsNA.en_ligne || 0) + (countsNA.pas_revenir || 0) + (countsNA.injoignable || 0) > 0) {
+        html += `
+      <div class="summary-item summary-item--static" style="color: #607D8B; font-size: 0.85rem; flex: 0 0 auto;">
+        <div class="summary-value" style="font-size: 1.12rem;">${countsNA.autre_campus || 0} / ${countsNA.en_ligne || 0} / ${countsNA.pas_revenir || 0} / ${countsNA.injoignable || 0}</div>
+        <div class="summary-label">Synthèse NA : campus / ligne / pas retour / injoignable</div>
+      </div>`;
+      }
+    }
+
+    html += `
+      <div class="summary-item--hint" role="note"><i class="fas fa-hand-pointer"></i> Cliquez sur une tuile colorée pour filtrer la liste ci-dessous ; recliquez sur la même tuile pour tout réafficher.</div>
+    `;
+    return html;
+  },
+
+  updatePresenceSummaryDOM() {
+    const el = document.getElementById('presence-summary');
+    if (!el) return;
+    const hasNA = (this.presencesNAData && this.presencesNAData.length > 0);
+    const isNA = hasNA && this.activePresenceTab === 'na';
+    el.className = 'presence-summary' + (hasNA ? (isNA ? ' presence-summary--panel-na' : ' presence-summary--panel-membres') : '');
+    el.setAttribute('aria-label', isNA ? 'Filtrer les NA/NC par statut de présence' : 'Filtrer les membres par statut de présence');
+    el.innerHTML = this.renderSummary();
+  },
+
+  /** Synchronise les onglets Membres / NA et la visibilité des panneaux avec `activePresenceTab`. */
+  _syncPresenceTabPanels() {
+    const hasNA = (this.presencesNAData && this.presencesNAData.length > 0);
+    if (!hasNA) return;
+    const tabM = document.getElementById('presence-tab-membres');
+    const tabN = document.getElementById('presence-tab-na');
+    const panM = document.getElementById('presence-panel-membres');
+    const panN = document.getElementById('presence-panel-na');
+    if (!panM || !panN) return;
+    const showM = this.activePresenceTab === 'membres';
+    panM.style.display = showM ? '' : 'none';
+    panN.style.display = showM ? 'none' : '';
+    if (tabM) {
+      tabM.classList.toggle('active', showM);
+      tabM.setAttribute('aria-selected', showM ? 'true' : 'false');
+    }
+    if (tabN) {
+      tabN.classList.toggle('active', !showM);
+      tabN.setAttribute('aria-selected', showM ? 'false' : 'true');
+    }
+  },
+
+  toggleSummaryFilter(scope, statut) {
+    const key = scope === 'na' ? 'summaryFilterNA' : 'summaryFilterMembres';
+    const cur = this[key];
+    if (cur === statut) {
+      this[key] = null;
+    } else {
+      this[key] = statut;
+      if (scope === 'na') {
+        this.activePresenceTab = 'na';
+      } else {
+        this.activePresenceTab = 'membres';
+      }
+      this._syncPresenceTabPanels();
+    }
+    this.updatePresenceSummaryDOM();
+    this.applySummaryFiltersToLists();
+  },
+
+  resetSummaryFilterScope(scope) {
+    const key = scope === 'na' ? 'summaryFilterNA' : 'summaryFilterMembres';
+    this[key] = null;
+    if (scope === 'na') {
+      this.activePresenceTab = 'na';
+    } else {
+      this.activePresenceTab = 'membres';
+    }
+    this._syncPresenceTabPanels();
+    this.updatePresenceSummaryDOM();
+    this.applySummaryFiltersToLists();
+  },
+
+  applySummaryFiltersToLists() {
+    const inpM = document.querySelector('#presence-panel-membres .presence-panel-toolbar-search input');
+    const inpN = document.querySelector('#presence-panel-na .presence-panel-toolbar-search input');
+    const g = typeof document !== 'undefined' ? document.getElementById('global-search-input') : null;
+    const globalQ = (g && typeof AppState !== 'undefined' && AppState.currentPage === 'presences')
+      ? (g.value || '').trim().toLowerCase()
+      : '';
+    if (globalQ.length >= 2) {
+      this.applyGlobalPresenceSearchFilter(globalQ);
+      return;
+    }
+    this.filterPresencesSection('membres', inpM ? inpM.value : '');
+    this.filterPresencesSection('na', inpN ? inpN.value : '');
   },
 
   setStatut(index, statut, type) {
@@ -599,8 +799,8 @@ const PagesPresences = {
       }
     }
 
-    const summaryEl = document.getElementById('presence-summary');
-    if (summaryEl) summaryEl.innerHTML = this.renderSummary();
+    this.updatePresenceSummaryDOM();
+    this.applySummaryFiltersToLists();
   },
 
   setStatutNA(index, statut) {
@@ -729,10 +929,12 @@ const PagesPresences = {
 
     // Calculer les stats
     const total = historique.length;
+    const culteComfrat = historique.filter(h => h.statut === 'culte_comfrat').length;
     const presents = historique.filter(h => h.statut === 'present').length;
     const absents = historique.filter(h => h.statut === 'absent').length;
     const excuses = historique.filter(h => h.statut === 'excuse').length;
-    const taux = total > 0 ? Math.round((presents / total) * 100) : 0;
+    const pourTaux = historique.filter(h => Presences.estPourTauxPresence(h.statut)).length;
+    const taux = total > 0 ? Math.round((pourTaux / total) * 100) : 0;
 
     return `
       <div class="card" style="max-width: 800px; margin: 0 auto;">
@@ -749,6 +951,10 @@ const PagesPresences = {
         </div>
         
         <div class="presence-stats-bar">
+          <div class="stat-item" style="--color: #00695C">
+            <span class="stat-value">${culteComfrat}</span>
+            <span class="stat-label">Culte et Comfrat</span>
+          </div>
           <div class="stat-item" style="--color: var(--success)">
             <span class="stat-value">${presents}</span>
             <span class="stat-label">Présent${presents > 1 ? 's' : ''}</span>
@@ -851,10 +1057,12 @@ const PagesPresences = {
     });
 
     const total = historique.length;
+    const culteComfrat = historique.filter(h => h.statut === 'culte_comfrat').length;
     const presents = historique.filter(h => h.statut === 'present').length;
     const absents = historique.filter(h => h.statut === 'absent').length;
     const excuses = historique.filter(h => h.statut === 'excuse').length;
-    const taux = total > 0 ? Math.round((presents / total) * 100) : 0;
+    const pourTaux = historique.filter(h => Presences.estPourTauxPresence(h.statut)).length;
+    const taux = total > 0 ? Math.round((pourTaux / total) * 100) : 0;
 
     return `
       <div class="card" style="max-width: 900px; margin: 0 auto;">
@@ -889,6 +1097,10 @@ const PagesPresences = {
         </div>
         
         <div class="presence-stats-bar">
+          <div class="stat-item" style="--color: #00695C">
+            <span class="stat-value">${culteComfrat}</span>
+            <span class="stat-label">Culte et Comfrat</span>
+          </div>
           <div class="stat-item" style="--color: var(--success)">
             <span class="stat-value">${presents}</span>
             <span class="stat-label">Présent${presents > 1 ? 's' : ''}</span>
@@ -983,53 +1195,48 @@ const PagesPresences = {
   filterPresencesSection(which, search) {
     const s = (search || '').toLowerCase().trim();
     const listSel = which === 'na' ? '#presence-list-na' : '#presence-list';
+    const statutFilter = which === 'na' ? this.summaryFilterNA : this.summaryFilterMembres;
     document.querySelectorAll(`${listSel} .presence-row`).forEach(row => {
       const text = (row.getAttribute('data-search') || '').toLowerCase();
-      row.style.display = !s || text.includes(s) ? '' : 'none';
+      const rowStatut = row.getAttribute('data-presence-statut') || '';
+      const searchOk = !s || text.includes(s);
+      const statutOk = !statutFilter || rowStatut === statutFilter;
+      row.style.display = searchOk && statutOk ? '' : 'none';
     });
   },
 
-  /** Affiche à nouveau toutes les lignes (après recherche globale ou vide). */
+  /** Réinitialise uniquement la recherche globale sur les lignes ; réapplique filtres tuiles et recherche locale. */
   resetPresenceRowFilters() {
-    document.querySelectorAll('#presence-list .presence-row, #presence-list-na .presence-row').forEach(row => {
-      row.style.display = '';
-    });
+    this.applySummaryFiltersToLists();
   },
 
   /** Filtre les deux listes selon la recherche en-tête (personnes présentes à ce programme uniquement). */
   applyGlobalPresenceSearchFilter(query) {
     const s = (query || '').trim().toLowerCase();
     if (!s) {
-      this.resetPresenceRowFilters();
+      this.applySummaryFiltersToLists();
       return;
     }
-    ['#presence-list', '#presence-list-na'].forEach(listSel => {
+    const applyRows = (listSel, scope) => {
+      const statutFilter = scope === 'na' ? this.summaryFilterNA : this.summaryFilterMembres;
       document.querySelectorAll(`${listSel} .presence-row`).forEach(row => {
         const text = (row.getAttribute('data-search') || '').toLowerCase();
-        row.style.display = text.includes(s) ? '' : 'none';
+        const rowStatut = row.getAttribute('data-presence-statut') || '';
+        const statutOk = !statutFilter || rowStatut === statutFilter;
+        row.style.display = text.includes(s) && statutOk ? '' : 'none';
       });
-    });
+    };
+    applyRows('#presence-list', 'membres');
+    applyRows('#presence-list-na', 'na');
   },
 
   selectPresenceTab(which) {
     const hasNA = (this.presencesNAData && this.presencesNAData.length > 0);
     if (!hasNA) return;
-    const tabM = document.getElementById('presence-tab-membres');
-    const tabN = document.getElementById('presence-tab-na');
-    const panM = document.getElementById('presence-panel-membres');
-    const panN = document.getElementById('presence-panel-na');
-    if (!panM || !panN) return;
-    const showM = which === 'membres';
-    panM.style.display = showM ? '' : 'none';
-    panN.style.display = showM ? 'none' : '';
-    if (tabM) {
-      tabM.classList.toggle('active', showM);
-      tabM.setAttribute('aria-selected', showM ? 'true' : 'false');
-    }
-    if (tabN) {
-      tabN.classList.toggle('active', !showM);
-      tabN.setAttribute('aria-selected', showM ? 'false' : 'true');
-    }
+    this.activePresenceTab = which === 'na' ? 'na' : 'membres';
+    this._syncPresenceTabPanels();
+    this.updatePresenceSummaryDOM();
+    this.applySummaryFiltersToLists();
   },
 
   searchProgrammePresenceByQuery(qRaw) {

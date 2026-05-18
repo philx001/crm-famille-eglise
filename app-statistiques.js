@@ -50,6 +50,7 @@ const Statistiques = {
     const totalMembres = membres.length;
 
     const presencesByStatut = {
+      culte_comfrat: 0,
       present: 0,
       absent: 0,
       excuse: 0,
@@ -67,9 +68,10 @@ const Statistiques = {
     });
 
     // totalPresencesAttendues = présences réellement pointées (fiches enregistrées), pour cohérence avec par membre
-    const totalPresencesAttendues = presencesByStatut.present + presencesByStatut.absent + presencesByStatut.excuse + presencesByStatut.autre_campus + presencesByStatut.en_ligne + presencesByStatut.non_renseigne;
+    const totalPresencesAttendues = presencesByStatut.present + presencesByStatut.culte_comfrat + presencesByStatut.absent + presencesByStatut.excuse + presencesByStatut.autre_campus + presencesByStatut.en_ligne + presencesByStatut.non_renseigne;
+    const presentsPourTaux = presencesByStatut.present + presencesByStatut.culte_comfrat;
     const tauxPresenceGlobal = totalPresencesAttendues > 0 
-      ? Math.round((presencesByStatut.present / totalPresencesAttendues) * 100 * 10) / 10
+      ? Math.round((presentsPourTaux / totalPresencesAttendues) * 100 * 10) / 10
       : 0;
 
     // Stats par type de programme (présences réellement pointées, cohérent avec par membre)
@@ -83,7 +85,7 @@ const Statistiques = {
         Utils.membreEtaitDansFamilleALaDate(membres.find(x => x.id === p.disciple_id), p.programme?.date_debut)
       );
       const nbPointesOfType = presencesOfType.length;
-      const presentOfType = presencesOfType.filter(p => p.statut === 'present').length;
+      const presentOfType = presencesOfType.filter(p => Presences.estPourTauxPresence(p.statut)).length;
 
       if (progsOfType.length > 0) {
         statsByType[type.value] = {
@@ -128,11 +130,13 @@ const Statistiques = {
         });
       const nbProgrammesNonPointes = programmesNonPointesList.length;
       const presents = presencesMembre.filter(p => p.statut === 'present').length;
+      const nbCulteComfrat = presencesMembre.filter(p => p.statut === 'culte_comfrat').length;
       const absents = presencesMembre.filter(p => p.statut === 'absent').length;
       const excuses = presencesMembre.filter(p => p.statut === 'excuse').length;
       const autreCampus = presencesMembre.filter(p => p.statut === 'autre_campus').length;
       const enLigne = presencesMembre.filter(p => p.statut === 'en_ligne').length;
       const mentor = Membres.getById(membre.mentor_id);
+      const pourTauxMembre = presents + nbCulteComfrat;
 
       return {
         id: membre.id,
@@ -142,6 +146,7 @@ const Statistiques = {
         mentor: mentor ? `${mentor.prenom} ${mentor.nom}` : '-',
         mentorId: membre.mentor_id,
         nbPresences: presents,
+        nbCulteComfrat,
         nbAbsences: absents,
         nbExcuses: excuses,
         nbAutreCampus: autreCampus,
@@ -150,7 +155,7 @@ const Statistiques = {
         nbProgrammesAttendus,
         nbProgrammesNonPointes,
         programmesNonPointesList,
-        tauxPresence: nbTotal > 0 ? Math.round((presents / nbTotal) * 100 * 10) / 10 : 0
+        tauxPresence: nbTotal > 0 ? Math.round((pourTauxMembre / nbTotal) * 100 * 10) / 10 : 0
       };
     }).sort((a, b) => b.tauxPresence - a.tauxPresence);
 
@@ -163,7 +168,9 @@ const Statistiques = {
         totalProgrammes,
         totalMembres,
         totalPresencesAttendues,
-        totalPresencesEffectives: presencesByStatut.present,
+        totalPresencesEffectives: presentsPourTaux,
+        totalPresentsStrict: presencesByStatut.present,
+        totalCulteComfrat: presencesByStatut.culte_comfrat,
         totalAbsences: presencesByStatut.absent,
         totalExcuses: presencesByStatut.excuse,
         totalAutreCampus: presencesByStatut.autre_campus,
@@ -249,7 +256,7 @@ const Statistiques = {
       
       if (monthlyData[monthKey]) {
         monthlyData[monthKey].nbAttendus++;
-        if (p.statut === 'present') monthlyData[monthKey].nbPresences++;
+        if (Presences.estPourTauxPresence(p.statut)) monthlyData[monthKey].nbPresences++;
       }
     });
 
@@ -293,7 +300,7 @@ const Statistiques = {
         return Utils.membreEtaitDansFamilleALaDate(membre, programme.date_debut);
       });
       
-      const nbPresents = mentorPresences.filter(p => p.statut === 'present').length;
+      const nbPresents = mentorPresences.filter(p => Presences.estPourTauxPresence(p.statut)).length;
       const nbTotal = mentorPresences.length;
       const tauxPresence = nbTotal > 0 ? Math.round((nbPresents / nbTotal) * 100 * 10) / 10 : 0;
 
@@ -321,7 +328,7 @@ const Statistiques = {
       const discipleIds = new Set(disciples.map(d => d.id));
       const membresMentor = parMembre.filter(m => discipleIds.has(m.id));
       const totalPresences = membresMentor.reduce((s, m) => s + (m.nbTotal || 0), 0);
-      const totalPresents = membresMentor.reduce((s, m) => s + (m.nbPresences || 0), 0);
+      const totalPresents = membresMentor.reduce((s, m) => s + (m.nbPresences || 0) + (m.nbCulteComfrat || 0), 0);
       const tauxPresence = totalPresences > 0
         ? Math.round((totalPresents / totalPresences) * 100 * 10) / 10
         : 0;
@@ -477,7 +484,7 @@ const Statistiques = {
     const allNA = (typeof NouvellesAmes !== 'undefined' && NouvellesAmes.getAll) ? NouvellesAmes.getAll() : [];
     const naIds = new Set(allNA.filter(na => na.statut !== 'integre' && na.statut !== 'perdu').map(na => na.id));
 
-    const global = { present: 0, absent: 0, excuse: 0, autre_campus: 0, en_ligne: 0, pas_revenir: 0, injoignable: 0, non_renseigne: 0, total: 0 };
+    const global = { culte_comfrat: 0, present: 0, absent: 0, excuse: 0, autre_campus: 0, en_ligne: 0, pas_revenir: 0, injoignable: 0, non_renseigne: 0, total: 0 };
     allPresences.forEach(p => {
       if (naIds.has(p.nouvelle_ame_id)) {
         global[p.statut] = (global[p.statut] || 0) + 1;
@@ -488,6 +495,7 @@ const Statistiques = {
     const parNA = allNA.filter(na => naIds.has(na.id)).map(na => {
       const presencesNA = allPresences.filter(p => p.nouvelle_ame_id === na.id);
       const presents = presencesNA.filter(p => p.statut === 'present').length;
+      const nbCulteComfrat = presencesNA.filter(p => p.statut === 'culte_comfrat').length;
       const absents = presencesNA.filter(p => p.statut === 'absent').length;
       const excuses = presencesNA.filter(p => p.statut === 'excuse').length;
       const autreCampus = presencesNA.filter(p => p.statut === 'autre_campus').length;
@@ -495,6 +503,7 @@ const Statistiques = {
       const pasRevenir = presencesNA.filter(p => p.statut === 'pas_revenir').length;
       const injoignable = presencesNA.filter(p => p.statut === 'injoignable').length;
       const total = presencesNA.length;
+      const pourTaux = presents + nbCulteComfrat;
       return {
         id: na.id,
         prenom: na.prenom,
@@ -502,6 +511,7 @@ const Statistiques = {
         nomComplet: `${na.prenom} ${na.nom}`,
         suivi_par_nom: na.suivi_par_nom,
         nbPresences: presents,
+        nbCulteComfrat,
         nbAbsences: absents,
         nbExcuses: excuses,
         nbAutreCampus: autreCampus,
@@ -509,14 +519,14 @@ const Statistiques = {
         nbPasRevenir: pasRevenir,
         nbInjoignable: injoignable,
         nbTotal: total,
-        tauxPresence: total > 0 ? Math.round((presents / total) * 100 * 10) / 10 : 0
+        tauxPresence: total > 0 ? Math.round((pourTaux / total) * 100 * 10) / 10 : 0
       };
     }).sort((a, b) => b.tauxPresence - a.tauxPresence);
 
     return {
       global: {
         ...global,
-        tauxPresence: global.total > 0 ? Math.round((global.present / global.total) * 100 * 10) / 10 : 0
+        tauxPresence: global.total > 0 ? Math.round(((global.present + (global.culte_comfrat || 0)) / global.total) * 100 * 10) / 10 : 0
       },
       parNA
     };
@@ -907,6 +917,7 @@ const PagesStatistiques = {
                   <th onclick="PagesStatistiques.sortTable('nomComplet')">Membre ↕</th>
                   <th onclick="PagesStatistiques.sortTable('mentor')">Mentor ↕</th>
                   <th onclick="PagesStatistiques.sortTable('nbPresences')" class="text-center">Présences ↕</th>
+                  <th onclick="PagesStatistiques.sortTable('nbCulteComfrat')" class="text-center" title="Culte et Comfrat">C. Comfrat ↕</th>
                   <th onclick="PagesStatistiques.sortTable('nbAbsences')" class="text-center">Absences ↕</th>
                   <th onclick="PagesStatistiques.sortTable('nbExcuses')" class="text-center">Excusés ↕</th>
                   <th onclick="PagesStatistiques.sortTable('nbAutreCampus')" class="text-center" title="Présence dans un autre campus">Autre campus ↕</th>
@@ -922,6 +933,7 @@ const PagesStatistiques = {
                     <td><strong>${Utils.escapeHtml(m.nomComplet)}</strong></td>
                     <td class="text-muted">${Utils.escapeHtml(m.mentor)}</td>
                     <td class="text-center"><span class="badge badge-success">${m.nbPresences}</span></td>
+                    <td class="text-center"><span class="badge" style="background: #00695C; color: white;">${m.nbCulteComfrat ?? 0}</span></td>
                     <td class="text-center"><span class="badge badge-danger">${m.nbAbsences}</span></td>
                     <td class="text-center"><span class="badge badge-warning">${m.nbExcuses}</span></td>
                     <td class="text-center"><span class="badge" style="background: #2196F3; color: white;">${m.nbAutreCampus || 0}</span></td>
@@ -1646,9 +1658,9 @@ const PagesStatistiques = {
     const evolution = this.stats.evolution || [];
     if (g.totalPresencesEffectives !== undefined && g.totalAbsences !== undefined) {
       ChartsHelper.createDoughnut('chart-stats-repartition',
-        ['Présents', 'Absents', 'Excusés', 'Autre campus', 'En ligne'],
-        [g.totalPresencesEffectives || 0, g.totalAbsences || 0, g.totalExcuses || 0, g.totalAutreCampus || 0, g.totalEnLigne || 0],
-        ['#4CAF50', '#F44336', '#FF9800', '#2196F3', '#673AB7']);
+        ['Culte et Comfrat', 'Présents', 'Absents', 'Excusés', 'Autre campus', 'En ligne'],
+        [g.totalCulteComfrat || 0, g.totalPresentsStrict != null ? g.totalPresentsStrict : Math.max(0, (g.totalPresencesEffectives || 0) - (g.totalCulteComfrat || 0)), g.totalAbsences || 0, g.totalExcuses || 0, g.totalAutreCampus || 0, g.totalEnLigne || 0],
+        ['#00695C', '#4CAF50', '#F44336', '#FF9800', '#2196F3', '#673AB7']);
     }
     if (parType.length > 0) {
       ChartsHelper.createBar('chart-stats-type',
@@ -1762,6 +1774,7 @@ const PagesStatistiques = {
         <td><strong>${Utils.escapeHtml(m.nomComplet)}</strong></td>
         <td class="text-muted">${Utils.escapeHtml(m.mentor)}</td>
         <td class="text-center"><span class="badge badge-success">${m.nbPresences}</span></td>
+        <td class="text-center"><span class="badge" style="background: #00695C; color: white;">${m.nbCulteComfrat ?? 0}</span></td>
         <td class="text-center"><span class="badge badge-danger">${m.nbAbsences}</span></td>
         <td class="text-center"><span class="badge badge-warning">${m.nbExcuses}</span></td>
         <td class="text-center"><span class="badge" style="background: #2196F3; color: white;">${m.nbAutreCampus || 0}</span></td>
@@ -1832,11 +1845,12 @@ const PagesStatistiques = {
       return;
     }
     const rows = [
-      ['Membre', 'Mentor', 'Présences', 'Absences', 'Excusés', 'Autre campus', 'En ligne', 'Non pointés', 'Taux %'],
+      ['Membre', 'Mentor', 'Présences', 'Culte et Comfrat', 'Absences', 'Excusés', 'Autre campus', 'En ligne', 'Non pointés', 'Taux %'],
       ...this.stats.parMembre.map(m => [
         m.nomComplet,
         m.mentor,
         m.nbPresences,
+        m.nbCulteComfrat ?? 0,
         m.nbAbsences,
         m.nbExcuses,
         m.nbAutreCampus ?? 0,
@@ -1970,6 +1984,12 @@ const PagesStatistiques = {
         this.currentNADateDebut = new Date(now.getFullYear(), now.getMonth(), 1);
         this.currentNADateFin = now;
         break;
+      case 'trimestre': {
+        const quarter = Math.floor(now.getMonth() / 3);
+        this.currentNADateDebut = new Date(now.getFullYear(), quarter * 3, 1);
+        this.currentNADateFin = now;
+        break;
+      }
       case 'annee':
         this.currentNADateDebut = new Date(now.getFullYear(), 0, 1);
         this.currentNADateFin = now;
@@ -1997,6 +2017,7 @@ const PagesStatistiques = {
           <select class="form-control" id="stats-na-periode" onchange="PagesStatistiques.changeNAPeriode(this.value)">
             <option value="semaine" ${this.currentNAPeriode === 'semaine' ? 'selected' : ''}>Cette semaine</option>
             <option value="mois" ${this.currentNAPeriode === 'mois' ? 'selected' : ''}>Ce mois</option>
+            <option value="trimestre" ${this.currentNAPeriode === 'trimestre' ? 'selected' : ''}>Ce trimestre</option>
             <option value="annee" ${this.currentNAPeriode === 'annee' ? 'selected' : ''}>Cette année</option>
           </select>
         </div>
@@ -2087,6 +2108,10 @@ const PagesStatistiques = {
         </div>
         <div class="card-body">
           <div class="presence-stats-bar" style="display: flex; gap: var(--spacing-lg); flex-wrap: wrap;">
+            <div class="stat-item" style="--color: #00695C">
+              <span class="stat-value" style="display: block; font-size: 1.5rem; font-weight: 700;">${presenceStats.global.culte_comfrat || 0}</span>
+              <span class="stat-label">Culte et Comfrat</span>
+            </div>
             <div class="stat-item" style="--color: var(--success)">
               <span class="stat-value" style="display: block; font-size: 1.5rem; font-weight: 700;">${presenceStats.global.present}</span>
               <span class="stat-label">Présents</span>
@@ -2144,6 +2169,7 @@ const PagesStatistiques = {
                     <th>NA/NC</th>
                     <th>Suivi par</th>
                     <th class="text-center">Présents</th>
+                    <th class="text-center" title="Culte et Comfrat">C. Comfrat</th>
                     <th class="text-center">Absents</th>
                     <th class="text-center">Excusés</th>
                     <th class="text-center" title="Autre campus">Autre campus</th>
@@ -2160,6 +2186,7 @@ const PagesStatistiques = {
                       <td><strong>${Utils.escapeHtml(m.nomComplet)}</strong></td>
                       <td class="text-muted">${Utils.escapeHtml(m.suivi_par_nom || '-')}</td>
                       <td class="text-center"><span class="badge badge-success">${m.nbPresences}</span></td>
+                      <td class="text-center"><span class="badge" style="background: #00695C; color: white;">${m.nbCulteComfrat ?? 0}</span></td>
                       <td class="text-center"><span class="badge badge-danger">${m.nbAbsences}</span></td>
                       <td class="text-center"><span class="badge badge-warning">${m.nbExcuses}</span></td>
                       <td class="text-center"><span class="badge" style="background: #2196F3; color: white;">${m.nbAutreCampus || 0}</span></td>
@@ -2238,9 +2265,9 @@ const PagesStatistiques = {
     }
     if (d.presenceStats && d.presenceStats.parNA.length > 0) {
       csv += 'Présences par NA/NC\r\n';
-      csv += ['NA/NC', 'Suivi par', 'Présents', 'Absents', 'Excusés', 'Autre campus', 'En ligne', 'Pas retour', 'Injoignable', 'Taux %'].map(escapeCsv).join(';') + '\r\n';
+      csv += ['NA/NC', 'Suivi par', 'Présents', 'Culte et Comfrat', 'Absents', 'Excusés', 'Autre campus', 'En ligne', 'Pas retour', 'Injoignable', 'Taux %'].map(escapeCsv).join(';') + '\r\n';
       d.presenceStats.parNA.forEach(m => {
-        csv += [m.nomComplet, m.suivi_par_nom || '-', m.nbPresences, m.nbAbsences, m.nbExcuses, m.nbAutreCampus || 0, m.nbEnLigne || 0, m.nbPasRevenir || 0, m.nbInjoignable || 0, m.tauxPresence].map(escapeCsv).join(';') + '\r\n';
+        csv += [m.nomComplet, m.suivi_par_nom || '-', m.nbPresences, m.nbCulteComfrat ?? 0, m.nbAbsences, m.nbExcuses, m.nbAutreCampus || 0, m.nbEnLigne || 0, m.nbPasRevenir || 0, m.nbInjoignable || 0, m.tauxPresence].map(escapeCsv).join(';') + '\r\n';
       });
     }
     if (csv === '\uFEFF') {
@@ -2276,6 +2303,7 @@ const PagesStatistiques = {
         <td>${Utils.escapeHtml(m.nomComplet)}</td>
         <td>${Utils.escapeHtml(m.suivi_par_nom || '-')}</td>
         <td class="text-center">${m.nbPresences}</td>
+        <td class="text-center">${m.nbCulteComfrat ?? 0}</td>
         <td class="text-center">${m.nbAbsences}</td>
         <td class="text-center">${m.nbExcuses}</td>
         <td class="text-center">${m.nbAutreCampus || 0}</td>
@@ -2322,6 +2350,7 @@ const PagesStatistiques = {
   ` : ''}
   <h3 style="margin-bottom: 10px; color: #9C27B0;">Présences NA/NC</h3>
   <div class="stats-bar">
+    <div class="stat-box"><div class="stat-value" style="color: #00695C;">${g.culte_comfrat || 0}</div><div class="stat-label">Culte et Comfrat</div></div>
     <div class="stat-box"><div class="stat-value" style="color: #4CAF50;">${g.present || 0}</div><div class="stat-label">Présents</div></div>
     <div class="stat-box"><div class="stat-value" style="color: #F44336;">${g.absent || 0}</div><div class="stat-label">Absents</div></div>
     <div class="stat-box"><div class="stat-value" style="color: #FF9800;">${g.excuse || 0}</div><div class="stat-label">Excusés</div></div>
@@ -2339,6 +2368,7 @@ const PagesStatistiques = {
         <th>NA/NC</th>
         <th>Suivi par</th>
         <th class="text-center">Présents</th>
+        <th class="text-center">Culte et Comfrat</th>
         <th class="text-center">Absents</th>
         <th class="text-center">Excusés</th>
         <th class="text-center">Autre campus</th>

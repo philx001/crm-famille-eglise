@@ -151,8 +151,12 @@ const PDFExport = {
         <div class="stat-label">Programmes</div>
       </div>
       <div class="stat-box">
-        <div class="stat-value success">${global.totalPresencesEffectives != null ? global.totalPresencesEffectives : 0}</div>
-        <div class="stat-label">Présences</div>
+        <div class="stat-value" style="color: #00695C;">${global.totalCulteComfrat != null ? global.totalCulteComfrat : 0}</div>
+        <div class="stat-label">Culte et Comfrat</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value success">${global.totalPresentsStrict != null ? global.totalPresentsStrict : 0}</div>
+        <div class="stat-label">Présents</div>
       </div>
       <div class="stat-box">
         <div class="stat-value danger">${global.totalAbsences != null ? global.totalAbsences : 0}</div>
@@ -196,13 +200,14 @@ const PDFExport = {
     <h2 class="section-title">Détail par Membre</h2>
     <table>
       <colgroup>
-        <col class="col-membre"><col class="col-mentor"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-taux">
+        <col class="col-membre"><col class="col-mentor"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-num"><col class="col-taux">
       </colgroup>
       <thead>
         <tr>
           <th>Membre</th>
           <th>Mentor</th>
           <th class="text-center">Prés.</th>
+          <th class="text-center" title="Culte et Comfrat">C.Comfr.</th>
           <th class="text-center">Abs.</th>
           <th class="text-center">Excus.</th>
           <th class="text-center" title="Présence dans un autre campus">Autre camp.</th>
@@ -213,7 +218,7 @@ const PDFExport = {
       </thead>
       <tbody>
         ${parMembre.length === 0
-          ? '<tr><td colspan="9" class="text-center" style="padding:12px;color:#888;">Aucun membre dans cette période.</td></tr>'
+          ? '<tr><td colspan="10" class="text-center" style="padding:12px;color:#888;">Aucun membre dans cette période.</td></tr>'
           : parMembre.map(m => {
               const taux = capTaux(m.tauxPresence);
               const nonPointes = m.nbProgrammesNonPointes ?? 0;
@@ -222,6 +227,7 @@ const PDFExport = {
             <td><strong>${Utils.escapeHtml(m.nomComplet || '')}</strong></td>
             <td>${Utils.escapeHtml(m.mentor || '-')}</td>
             <td class="text-center"><span class="badge badge-success">${m.nbPresences != null ? m.nbPresences : 0}</span></td>
+            <td class="text-center"><span class="badge" style="background: #E0F2F1; color: #004D40;">${m.nbCulteComfrat != null ? m.nbCulteComfrat : 0}</span></td>
             <td class="text-center"><span class="badge badge-danger">${m.nbAbsences != null ? m.nbAbsences : 0}</span></td>
             <td class="text-center"><span class="badge badge-warning">${m.nbExcuses != null ? m.nbExcuses : 0}</span></td>
             <td class="text-center"><span class="badge" style="background: #E3F2FD; color: #1976D2;">${m.nbAutreCampus != null ? m.nbAutreCampus : 0}</span></td>
@@ -393,6 +399,7 @@ const PDFExport = {
     const getStatutLabel = (statut) => (typeof Presences !== 'undefined' && Presences.getStatutLabel) ? Presences.getStatutLabel(statut) : (statut || '');
     const getStatutBadge = (statut) => {
       const badges = {
+        culte_comfrat: 'badge-culte-comfrat',
         present: 'badge-success',
         absent: 'badge-danger',
         excuse: 'badge-warning',
@@ -406,10 +413,11 @@ const PDFExport = {
     };
 
     // Calculer les stats (inclut les nouveaux statuts NA/NC)
-    const counts = { present: 0, absent: 0, excuse: 0, autre_campus: 0, en_ligne: 0, pas_revenir: 0, injoignable: 0, non_renseigne: 0 };
+    const counts = { culte_comfrat: 0, present: 0, absent: 0, excuse: 0, autre_campus: 0, en_ligne: 0, pas_revenir: 0, injoignable: 0, non_renseigne: 0 };
     presencesData.forEach(p => { counts[p.statut] = (counts[p.statut] || 0) + 1; });
     const total = presencesData.length;
-    const taux = total > 0 ? Math.round((counts.present / total) * 100) : 0;
+    const effectifPourTaux = (counts.present || 0) + (counts.culte_comfrat || 0);
+    const taux = total > 0 ? Math.round((effectifPourTaux / total) * 100) : 0;
 
     const rows = presencesData.map(p => {
       const prenom = p._prenom ?? p.membre?.prenom ?? '';
@@ -461,6 +469,7 @@ const PDFExport = {
     .badge-purple { background: #EDE7F6; color: #5E35B1; }
     .badge-brown { background: #EFEBE9; color: #5D4037; }
     .badge-secondary { background: #ECEFF1; color: #546E7A; }
+    .badge-culte-comfrat { background: #E0F2F1; color: #004D40; }
     .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; font-size: 9pt; color: #888; }
     .btn-print { position: fixed; bottom: 20px; right: 20px; padding: 12px 24px; background: #2D5A7B; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
     .btn-print:hover { background: #1E3D5C; }
@@ -477,6 +486,10 @@ const PDFExport = {
   </div>
   
   <div class="stats-summary">
+    <div class="stat-box">
+      <div class="stat-value" style="color: #00695C;">${counts.culte_comfrat || 0}</div>
+      <div class="stat-label">Culte et Comfrat</div>
+    </div>
     <div class="stat-box">
       <div class="stat-value success">${counts.present}</div>
       <div class="stat-label">Présents</div>

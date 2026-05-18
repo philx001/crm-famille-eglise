@@ -640,6 +640,7 @@ const Presences = {
   // Statuts possibles
   getStatuts() {
     return [
+      { value: 'culte_comfrat', label: 'Culte et Comfrat', icon: 'fa-calendar-check', color: '#00695C', title: 'Présence au culte et à la Com\'frat' },
       { value: 'present', label: 'Présent', icon: 'fa-check-circle', color: '#4CAF50' },
       { value: 'absent', label: 'Absent', icon: 'fa-times-circle', color: '#F44336' },
       { value: 'excuse', label: 'Excusé', icon: 'fa-info-circle', color: '#FF9800' },
@@ -652,6 +653,7 @@ const Presences = {
   /** Statuts spécifiques NA/NC : base + Autre campus, Pas de retour prévu, Injoignable */
   getStatutsNA() {
     return [
+      { value: 'culte_comfrat', label: 'Culte et Comfrat', icon: 'fa-calendar-check', color: '#00695C', title: 'Présence au culte et à la Com\'frat' },
       { value: 'present', label: 'Présent', icon: 'fa-check-circle', color: '#4CAF50' },
       { value: 'absent', label: 'Absent', icon: 'fa-times-circle', color: '#F44336' },
       { value: 'excuse', label: 'Excusé', icon: 'fa-info-circle', color: '#FF9800' },
@@ -671,6 +673,11 @@ const Presences = {
   getStatutColor(statut) {
     const found = this.getStatuts().find(s => s.value === statut) || this.getStatutsNA().find(s => s.value === statut);
     return found ? found.color : '#9E9E9E';
+  },
+
+  /** Compte comme présence effective pour les taux (avec « Présent »). */
+  estPourTauxPresence(statut) {
+    return statut === 'present' || statut === 'culte_comfrat';
   },
 
   /** Période en jours pour le calcul des stats (semaine, mois, trimestre, année). */
@@ -695,11 +702,13 @@ const Presences = {
     const presencesValides = presences.filter(p => Programmes.getById(p.programme_id));
     const total = presencesValides.length;
     const present = presencesValides.filter(p => p.statut === 'present').length;
+    const culte_comfrat = presencesValides.filter(p => p.statut === 'culte_comfrat').length;
     const absent = presencesValides.filter(p => p.statut === 'absent').length;
     const excuse = presencesValides.filter(p => p.statut === 'excuse').length;
     const non_renseigne = presencesValides.filter(p => p.statut === 'non_renseigne').length;
-    const rate = total > 0 ? Math.round((present / total) * 100) : 0;
-    return { present, absent, excuse, non_renseigne, total, rate };
+    const pourTaux = presencesValides.filter(p => this.estPourTauxPresence(p.statut)).length;
+    const rate = total > 0 ? Math.round((pourTaux / total) * 100) : 0;
+    return { present, culte_comfrat, absent, excuse, non_renseigne, total, rate };
   },
 
   /** Liste des présences de l'utilisateur par programme sur une période (pour affichage détaillé). */
@@ -1162,11 +1171,14 @@ const PagesCalendrier = {
 
   /** Génère le HTML du bloc statistiques (tous confondus + tableau par programme). */
   renderOwnPresenceStatsInner(stats, byProgramme) {
-    if (!stats) stats = { present: 0, absent: 0, excuse: 0, non_renseigne: 0, total: 0, rate: 0 };
+    if (!stats) stats = { present: 0, culte_comfrat: 0, absent: 0, excuse: 0, non_renseigne: 0, total: 0, rate: 0 };
     if (!byProgramme) byProgramme = [];
     const total = stats.total || 0;
     return `
       <div class="stats-summary mb-3" style="display: flex; flex-wrap: wrap; gap: var(--spacing-md);">
+        <div class="stat-mini" style="padding: var(--spacing-sm) var(--spacing-md); background: rgba(0,105,92,0.12); border-radius: var(--radius-sm);">
+          <span style="font-weight: 700; color: #00695C;">${stats.culte_comfrat ?? 0}</span> Culte et Comfrat
+        </div>
         <div class="stat-mini" style="padding: var(--spacing-sm) var(--spacing-md); background: rgba(76,175,80,0.15); border-radius: var(--radius-sm);">
           <span style="font-weight: 700; color: #4CAF50;">${stats.present}</span> Présent${stats.present !== 1 ? 's' : ''}
         </div>
